@@ -1,0 +1,51 @@
+#pragma once
+
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_ttf.h>
+#include <memory>
+#include <string>
+
+// Forward declarations
+class Renderer;
+class Player;
+
+class UISystem {
+public:
+    explicit UISystem(SDL_Renderer* renderer);
+    ~UISystem() = default;
+
+    // Core functions
+    void update(float deltaTime);
+    void render();
+    
+    // UI elements
+    void renderHealthBar(int x, int y, int width, int height, int current, int max);
+    void renderManaBar(int x, int y, int width, int height, int current, int max);
+    void renderExperienceBar(int x, int y, int width, int height, int current, int max);
+    void renderGoldDisplay(int x, int y, int gold);
+    void renderPlayerStats(const Player* player);
+    void renderDebugInfo(const Player* player);
+    
+    // Text rendering
+    void renderText(const std::string& text, int x, int y, SDL_Color color = {255, 255, 255, 255});
+    void renderTextCentered(const std::string& text, int x, int y, SDL_Color color = {255, 255, 255, 255});
+    void renderInteractionPrompt(const std::string& prompt, int x, int y);
+    void renderLootNotification(const std::string& lootText, int x, int y);
+    
+private:
+    SDL_Renderer* renderer;
+    TTF_Font* defaultFont;
+    TTF_Font* smallFont;
+    
+    // UI colors
+    SDL_Color healthColor;
+    SDL_Color manaColor;
+    SDL_Color experienceColor;
+    SDL_Color backgroundColor;
+    SDL_Color textColor;
+    
+    // Helper functions
+    void initializeFonts();
+    void initializeColors();
+    std::string formatStatText(const std::string& label, int value, int maxValue = 0);
+};

@@ -1,0 +1,73 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install CMake
+      uses: jwlawson/actions-setup-cmake@v1.13
+      with:
+        cmake-version: '3.28.0'
+    
+    - name: Install SDL2
+      run: |
+        # Download and extract SDL2
+        curl -L -o sdl2.zip https://github.com/libsdl-org/SDL/releases/download/release-2.28.5/SDL2-devel-2.28.5-VC.zip
+        Expand-Archive -Path sdl2.zip -DestinationPath C:\
+        echo "SDL2_DIR=C:\SDL2-2.28.5" >> $env:GITHUB_ENV
+        
+        # Download and extract SDL2_image
+        curl -L -o sdl2_image.zip https://github.com/libsdl-org/SDL_image/releases/download/release-2.6.3/SDL2_image-devel-2.6.3-VC.zip
+        Expand-Archive -Path sdl2_image.zip -DestinationPath C:\
+        
+        # Download and extract SDL2_ttf
+        curl -L -o sdl2_ttf.zip https://github.com/libsdl-org/SDL_ttf/releases/download/release-2.20.2/SDL2_ttf-devel-2.20.2-VC.zip
+        Expand-Archive -Path sdl2_ttf.zip -DestinationPath C:\
+    
+    - name: Configure CMake
+      run: cmake -B build -G "Visual Studio 17 2022" -A x64
+    
+    - name: Build
+      run: cmake --build build --config Release
+    
+  build-linux:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev build-essential cmake
+    
+    - name: Configure CMake
+      run: cmake -B build
+    
+    - name: Build
+      run: cmake --build build -j$(nproc)
+    
+  build-macos:
+    runs-on: macos-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install dependencies
+      run: |
+        brew install sdl2 sdl2_image sdl2_ttf cmake
+    
+    - name: Configure CMake
+      run: cmake -B build
+    
+    - name: Build
+      run: cmake --build build -j$(sysctl -n hw.ncpu)
