@@ -15,6 +15,7 @@ class Player;
 class World;
 class UISystem;
 class AudioManager;
+class AutotileDemo;
 
 class Game {
 public:
@@ -62,6 +63,8 @@ private:
     std::unique_ptr<World> world;
     std::unique_ptr<UISystem> uiSystem;
     std::unique_ptr<AudioManager> audioManager;
+    std::unique_ptr<AutotileDemo> autotileDemo;
+    bool demoMode = false;
     
     // Game state
     bool isRunning;

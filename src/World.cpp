@@ -2,6 +2,7 @@
 #include "Renderer.h"
 #include "AssetManager.h"
 #include "Object.h"
+#include "Enemy.h"
 #include <iostream>
 #include <random>
 #include <cmath> // Required for sin and cos
@@ -38,7 +39,7 @@ void World::initializeDefaultWorld() {
     defaultConfig.worldWidth = width;
     defaultConfig.worldHeight = height;
     defaultConfig.chunkSize = 64;
-    defaultConfig.renderDistance = 1; // Render current chunk and immediate neighbors
+    defaultConfig.renderDistance = 3; // Render current chunk and neighbors (reduces edge void)
     // New stone-first priority system
     defaultConfig.stoneWeight = 40.0f;         // stone_tile.png - highest priority
     defaultConfig.grassWeight = 20.0f;         // grass_tile.png - lower priority
@@ -78,6 +79,12 @@ void World::update(float deltaTime) {
     // Update all objects
     for (auto& object : objects) {
         object->update(deltaTime);
+    }
+}
+
+void World::updateEnemies(float deltaTime, float playerX, float playerY) {
+    for (auto& enemy : enemies) {
+        if (enemy) enemy->update(deltaTime, playerX, playerY);
     }
 }
 
@@ -124,7 +131,7 @@ void World::render(Renderer* renderer) {
                     chunk->tiles[y][x].id = TILE_GRASS;
                 }
                 
-                // Check visibility - render all tiles, but apply fog of war effect if enabled
+                    // Check visibility - render all tiles, but apply fog of war effect if enabled
                 bool isVisible = true;
                 bool isExplored = true;
                 
@@ -156,93 +163,53 @@ void World::render(Renderer* renderer) {
                         visibleTilesCount++;
                     }
                     
-                    // Check if we have a texture for this tile type
-                    if (tileId >= 0 && tileId < tileTextures.size() && tileTextures[tileId]) {
-                        // Render using texture
-                        Texture* texture = tileTextures[tileId];
-                        if (texture && texture->getTexture()) {
-                            SDL_Rect destRect = {
-                                screenX,
-                                screenY,
-                                tileSize,
-                                tileSize
-                            };
-                            
-                            // Set the blend mode to ensure proper rendering
-                            SDL_SetTextureBlendMode(texture->getTexture(), SDL_BLENDMODE_BLEND);
-                            
-                            // Apply fog of war effect - darken explored but not visible tiles
+                    // Explicit render path: grass vs stone (treat all non-grass as stone)
+                    SDL_Rect destRect = { screenX, screenY, tileSize, tileSize };
+
+                    if (tileId == TILE_GRASS) {
+                        Texture* grassTex = tileTextures[TILE_GRASS];
+                        SDL_Texture* sdlTex = grassTex ? grassTex->getTexture() : nullptr;
+                        if (sdlTex) {
+                            SDL_SetTextureBlendMode(sdlTex, SDL_BLENDMODE_BLEND);
                             if (fogOfWarEnabled && isExplored && !isVisible) {
-                                // Darken the texture for explored but not visible tiles
-                                SDL_SetTextureColorMod(texture->getTexture(), 100, 100, 100);
+                                SDL_SetTextureColorMod(sdlTex, 100, 100, 100);
                             } else if (fogOfWarEnabled && !isExplored) {
-                                // Very dark for unexplored tiles
-                                SDL_SetTextureColorMod(texture->getTexture(), 50, 50, 50);
+                                SDL_SetTextureColorMod(sdlTex, 50, 50, 50);
                             } else {
-                                // Reset color modulation for visible tiles
-                                SDL_SetTextureColorMod(texture->getTexture(), 255, 255, 255);
+                                SDL_SetTextureColorMod(sdlTex, 255, 255, 255);
                             }
-                            
-                            // Render the texture
-                            int result = SDL_RenderCopy(renderer->getSDLRenderer(), texture->getTexture(), nullptr, &destRect);
-                            if (result != 0) {
-                                // If rendering failed, fall back to colored rectangle
-                                TileColor tileColor = getTileColor(tileId);
-                                SDL_Color color = {tileColor.r, tileColor.g, tileColor.b, tileColor.a};
-                                
-                                // Apply fog of war effect to colored rectangles too
-                                if (fogOfWarEnabled && isExplored && !isVisible) {
-                                    color.r = color.r / 2;
-                                    color.g = color.g / 2;
-                                    color.b = color.b / 2;
-                                } else if (fogOfWarEnabled && !isExplored) {
-                                    color.r = color.r / 4;
-                                    color.g = color.g / 4;
-                                    color.b = color.b / 4;
-                                }
-                                
-                                renderer->renderRect(screenX, screenY, tileSize, tileSize, color, true);
-                            }
-                        } else {
-                            // Fallback to colored rectangles if texture is invalid
-                            TileColor tileColor = getTileColor(tileId);
-                            SDL_Color color = {tileColor.r, tileColor.g, tileColor.b, tileColor.a};
-                            
-                            // Apply fog of war effect to colored rectangles
-                            if (fogOfWarEnabled && isExplored && !isVisible) {
-                                color.r = color.r / 2;
-                                color.g = color.g / 2;
-                                color.b = color.b / 2;
-                            } else if (fogOfWarEnabled && !isExplored) {
-                                color.r = color.r / 4;
-                                color.g = color.g / 4;
-                                color.b = color.b / 4;
-                            }
-                            
-                            renderer->renderRect(screenX, screenY, tileSize, tileSize, color, true);
+                            SDL_RenderCopy(renderer->getSDLRenderer(), sdlTex, nullptr, &destRect);
                         }
                     } else {
-                        // Fallback to colored rectangles if texture not available or out-of-bounds tileId
-                        int safeTileId = tileId;
-                        if (safeTileId < 0 || safeTileId >= static_cast<int>(tileTextures.size())) {
-                            safeTileId = TILE_GRASS;
+                        // Stone autotiling for stone and any non-grass type
+                        std::string mask = buildMaskFromNeighbors(worldX, worldY);
+                        Texture* edgeTex = getEdgeTextureForMask(mask);
+                        SDL_Texture* sdlTex = edgeTex ? edgeTex->getTexture() : nullptr;
+                        if (sdlTex || !mask.empty()) {
+                            SDL_SetTextureBlendMode(sdlTex, SDL_BLENDMODE_BLEND);
+                            if (fogOfWarEnabled && isExplored && !isVisible) {
+                                SDL_SetTextureColorMod(sdlTex, 100, 100, 100);
+                            } else if (fogOfWarEnabled && !isExplored) {
+                                SDL_SetTextureColorMod(sdlTex, 50, 50, 50);
+                            } else {
+                                SDL_SetTextureColorMod(sdlTex, 255, 255, 255);
+                            }
+                            if (mask == "R" && edgeTextures.find("L") != edgeTextures.end() && edgeTextures["L"]) {
+                                SDL_RenderCopyEx(renderer->getSDLRenderer(), edgeTextures["L"]->getTexture(), nullptr, &destRect, 0.0, nullptr, SDL_FLIP_HORIZONTAL);
+                            } else if (mask == "T" && (edgeTextures.find("T") == edgeTextures.end() || !edgeTextures["T"])) {
+                                if (edgeTextures.find("B") != edgeTextures.end() && edgeTextures["B"]) {
+                                    SDL_RenderCopyEx(renderer->getSDLRenderer(), edgeTextures["B"]->getTexture(), nullptr, &destRect, 180.0, nullptr, SDL_FLIP_NONE);
+                                } else if (tileTextures[TILE_STONE]) {
+                                    SDL_RenderCopy(renderer->getSDLRenderer(), tileTextures[TILE_STONE]->getTexture(), nullptr, &destRect);
+                                }
+                            } else if (sdlTex) {
+                                SDL_RenderCopy(renderer->getSDLRenderer(), sdlTex, nullptr, &destRect);
+                            } else if (tileTextures[TILE_STONE]) {
+                                SDL_RenderCopy(renderer->getSDLRenderer(), tileTextures[TILE_STONE]->getTexture(), nullptr, &destRect);
+                            }
+                        } else if (tileTextures[TILE_STONE]) {
+                            SDL_RenderCopy(renderer->getSDLRenderer(), tileTextures[TILE_STONE]->getTexture(), nullptr, &destRect);
                         }
-                        
-                        TileColor tileColor = getTileColor(safeTileId);
-                        SDL_Color color = {tileColor.r, tileColor.g, tileColor.b, tileColor.a};
-                        
-                        // Apply fog of war effect - darken explored but not visible tiles
-                        if (fogOfWarEnabled && isExplored && !isVisible) {
-                            color.r = color.r / 2;
-                            color.g = color.g / 2;
-                            color.b = color.b / 2;
-                        } else if (fogOfWarEnabled && !isExplored) {
-                            color.r = color.r / 4;
-                            color.g = color.g / 4;
-                            color.b = color.b / 4;
-                        }
-                        
-                        renderer->renderRect(screenX, screenY, tileSize, tileSize, color, true);
                     }
                 }
             }
@@ -276,6 +243,17 @@ void World::render(Renderer* renderer) {
             object->render(renderer->getSDLRenderer(), cameraX, cameraY, tileSize);
         }
     }
+
+    // Render enemies (screen-space culling)
+    for (auto& enemy : enemies) {
+        if (!enemy) continue;
+        int screenX = static_cast<int>(enemy->getX()) - cameraX;
+        int screenY = static_cast<int>(enemy->getY()) - cameraY;
+        if (screenX + 512 > -200 && screenX < 1920 + 200 &&
+            screenY + 512 > -200 && screenY < 1080 + 200) {
+            enemy->render(renderer->getSDLRenderer(), cameraX, cameraY);
+        }
+    }
 }
 
 void World::loadTileTextures() {
@@ -306,26 +284,28 @@ void World::loadTileTextures() {
         std::cout << "SUCCESS: Stone tile texture loaded successfully" << std::endl;
     }
     
-    // Load all stone_grass_tile variants
-    tileTextures[TILE_STONE_GRASS] = assetManager->getTexture("assets/FULL_Fantasy Forest/Tiles/stone_grass_tile.png");
-    tileTextures[TILE_STONE_GRASS_2] = assetManager->getTexture("assets/FULL_Fantasy Forest/Tiles/stone_grass_tile_2.png");
-    tileTextures[TILE_STONE_GRASS_3] = assetManager->getTexture("assets/FULL_Fantasy Forest/Tiles/stone_grass_tile_3.png");
-    tileTextures[TILE_STONE_GRASS_4] = assetManager->getTexture("assets/FULL_Fantasy Forest/Tiles/stone_grass_tile_4.png");
-    tileTextures[TILE_STONE_GRASS_5] = assetManager->getTexture("assets/FULL_Fantasy Forest/Tiles/stone_grass_tile_5.png");
-    tileTextures[TILE_STONE_GRASS_6] = assetManager->getTexture("assets/FULL_Fantasy Forest/Tiles/stone_grass_tile_6.png");
-    tileTextures[TILE_STONE_GRASS_7] = assetManager->getTexture("assets/FULL_Fantasy Forest/Tiles/stone_grass_tile_7.png");
-    tileTextures[TILE_STONE_GRASS_8] = assetManager->getTexture("assets/FULL_Fantasy Forest/Tiles/stone_grass_tile_8.png");
-    tileTextures[TILE_STONE_GRASS_9] = assetManager->getTexture("assets/FULL_Fantasy Forest/Tiles/stone_grass_tile_9.png");
-    tileTextures[TILE_STONE_GRASS_10] = assetManager->getTexture("assets/FULL_Fantasy Forest/Tiles/stone_grass_tile_10.png");
-    tileTextures[TILE_STONE_GRASS_11] = assetManager->getTexture("assets/FULL_Fantasy Forest/Tiles/stone_grass_tile_11.png");
-    tileTextures[TILE_STONE_GRASS_12] = assetManager->getTexture("assets/FULL_Fantasy Forest/Tiles/stone_grass_tile_12.png");
-    tileTextures[TILE_STONE_GRASS_13] = assetManager->getTexture("assets/FULL_Fantasy Forest/Tiles/stone_grass_tile_13.png");
-    tileTextures[TILE_STONE_GRASS_14] = assetManager->getTexture("assets/FULL_Fantasy Forest/Tiles/stone_grass_tile_14.png");
-    tileTextures[TILE_STONE_GRASS_15] = assetManager->getTexture("assets/FULL_Fantasy Forest/Tiles/stone_grass_tile_15.png");
-    tileTextures[TILE_STONE_GRASS_16] = assetManager->getTexture("assets/FULL_Fantasy Forest/Tiles/stone_grass_tile_16.png");
-    tileTextures[TILE_STONE_GRASS_17] = assetManager->getTexture("assets/FULL_Fantasy Forest/Tiles/stone_grass_tile_17.png");
-    tileTextures[TILE_STONE_GRASS_18] = assetManager->getTexture("assets/FULL_Fantasy Forest/Tiles/stone_grass_tile_18.png");
-    tileTextures[TILE_STONE_GRASS_19] = assetManager->getTexture("assets/FULL_Fantasy Forest/Tiles/stone_grass_tile_19.png");
+    // Load stone/grass edge textures for autotiling
+    auto addEdge = [&](const std::string& key, const char* file){
+        edgeTextures[key] = assetManager->getTexture(std::string("assets/FULL_Fantasy Forest/Tiles/") + file);
+    };
+    // Treat NONE as plain stone to avoid center grass from asset
+    edgeTextures["NONE"] = tileTextures[TILE_STONE];
+    // Load dedicated T and R if present
+    addEdge("T",    "stone_grass_T.png");
+    addEdge("B",    "stone_grass_B.png");
+    addEdge("L",    "stone_grass_L.png");
+    addEdge("R",    "stone_grass_R.png");
+    addEdge("TL",   "stone_grass_TL.png");
+    addEdge("TR",   "stone_grass_TR.png");
+    addEdge("BL",   "stone_grass_BL.png");
+    addEdge("BR",   "stone_grass_BR.png");
+    addEdge("TB",   "stone_grass_TB.png");
+    addEdge("LR",   "stone_grass_LR.png");
+    addEdge("TBL",  "stone_grass_TBL.png");
+    addEdge("TBR",  "stone_grass_TBR.png");
+    addEdge("TLR",  "stone_grass_TLR.png");
+    addEdge("BLR",  "stone_grass_BLR.png");
+    addEdge("ALL",  "stone_grass_ALL.png");
     
     tileTextures[TILE_WATER] = nullptr; // Water not implemented yet
     
@@ -372,6 +352,40 @@ void World::loadTileTextures() {
     std::cout << "AssetManager TILESET_PATH: " << AssetManager::TILESET_PATH << std::endl;
 }
 
+bool World::isGrassAt(int tx, int ty) {
+    auto [chunkX, chunkY] = worldToChunkCoords(tx, ty);
+    Chunk* c = getChunk(chunkX, chunkY);
+    if (!c) return false;
+    const int s = tileGenConfig.chunkSize;
+    int lx = tx - chunkX * s;
+    int ly = ty - chunkY * s;
+    if (lx < 0 || ly < 0 || lx >= s || ly >= s) return false;
+    return c->tiles[ly][lx].id == TILE_GRASS;
+}
+
+std::string World::buildMaskFromNeighbors(int tx, int ty) {
+    // Only for stone center tiles
+    std::string m;
+    if (isGrassAt(tx, ty - 1)) m += 'T';
+    if (isGrassAt(tx, ty + 1)) m += 'B';
+    if (isGrassAt(tx - 1, ty)) m += 'L';
+    if (isGrassAt(tx + 1, ty)) m += 'R';
+    if (m.empty()) return "";
+    if (m.size() == 4) return "ALL";
+    return m;
+}
+
+Texture* World::getEdgeTextureForMask(const std::string& mask) {
+    if (mask.empty()) return tileTextures[TILE_STONE];
+    auto it = edgeTextures.find(mask);
+    if (it != edgeTextures.end() && it->second) return it->second;
+    if (mask == "R") {
+        auto itLR = edgeTextures.find("LR");
+        if (itLR != edgeTextures.end() && itLR->second) return itLR->second;
+    }
+    return tileTextures[TILE_STONE];
+}
+
 void World::loadTilemap(const std::string& filename) {
     // TODO: Implement tilemap loading from file
     std::cout << "Loading tilemap: " << filename << " (not implemented yet)" << std::endl;
@@ -407,6 +421,12 @@ bool World::isWalkable(int x, int y) const {
 void World::addObject(std::unique_ptr<Object> object) {
     if (object) {
         objects.push_back(std::move(object));
+    }
+}
+
+void World::addEnemy(std::unique_ptr<Enemy> enemy) {
+    if (enemy) {
+        enemies.push_back(std::move(enemy));
     }
 }
 
@@ -1304,79 +1324,45 @@ void World::generateChunkTiles(Chunk* chunk) {
     int worldStartX = chunk->chunkX * chunkSize;
     int worldStartY = chunk->chunkY * chunkSize;
     
+    // 1) Fill with stone by default
     for (int y = 0; y < chunkSize; y++) {
         for (int x = 0; x < chunkSize; x++) {
-            int worldX = worldStartX + x;
-            int worldY = worldStartY + y;
-            
-            // If outside finite arrays, synthesize a default tile (grass)
-            if (worldX < 0 || worldY < 0 || worldX >= width || worldY >= height) {
-                chunk->tiles[y][x] = Tile(TILE_GRASS, true, true);
-                continue;
+            chunk->tiles[y][x] = Tile(TILE_STONE, true, true);
+        }
+    }
+
+    // 2) Carve random grass patches (stable per chunk)
+    carveRandomGrassPatches(chunk);
+}
+
+void World::carveRandomGrassPatches(Chunk* chunk) {
+    const int s = tileGenConfig.chunkSize;
+    // Deterministic seed per chunk for stability
+    std::mt19937 prng(static_cast<unsigned int>((chunk->chunkX * 73856093) ^ (chunk->chunkY * 19349663)));
+    std::uniform_int_distribution<int> patchCountDist(4, 12);
+    std::uniform_int_distribution<int> sizeDist(1, 9);
+
+    int patches = patchCountDist(prng);
+    for (int i = 0; i < patches; ++i) {
+        int size = std::min(sizeDist(prng), s);
+        if (size <= 0) continue;
+        std::uniform_int_distribution<int> xDist(0, std::max(0, s - size));
+        std::uniform_int_distribution<int> yDist(0, std::max(0, s - size));
+        int ox = xDist(prng);
+        int oy = yDist(prng);
+        for (int y = oy; y < oy + size; ++y) {
+            for (int x = ox; x < ox + size; ++x) {
+                chunk->tiles[y][x].id = TILE_GRASS;
             }
-            
-            // Generate tile based on biome and noise
-            int tileType;
-            if (tileGenConfig.enableBiomes) {
-                int biomeType = getBiomeType(worldX, worldY);
-                tileType = generateBiomeBasedTile(worldX, worldY, biomeType);
-            } else {
-                tileType = generateWeightedTileType(worldX, worldY);
-            }
-            
-            // Set tile properties
-            bool walkable = true;
-            bool transparent = true;
-            
-            switch (tileType) {
-                case TILE_GRASS:
-                    walkable = true;
-                    transparent = true;
-                    break;
-                case TILE_STONE:
-                    walkable = true;
-                    transparent = true;
-                    break;
-                case TILE_STONE_GRASS:
-                case TILE_STONE_GRASS_2:
-                case TILE_STONE_GRASS_3:
-                case TILE_STONE_GRASS_4:
-                case TILE_STONE_GRASS_5:
-                case TILE_STONE_GRASS_6:
-                case TILE_STONE_GRASS_7:
-                case TILE_STONE_GRASS_8:
-                case TILE_STONE_GRASS_9:
-                case TILE_STONE_GRASS_10:
-                case TILE_STONE_GRASS_11:
-                case TILE_STONE_GRASS_12:
-                case TILE_STONE_GRASS_13:
-                case TILE_STONE_GRASS_14:
-                case TILE_STONE_GRASS_15:
-                case TILE_STONE_GRASS_16:
-                case TILE_STONE_GRASS_17:
-                case TILE_STONE_GRASS_18:
-                case TILE_STONE_GRASS_19:
-                    walkable = true;
-                    transparent = true;
-                    break;
-                case TILE_WATER:
-                    walkable = false;
-                    transparent = true;
-                    break;
-                default:
-                    walkable = true;
-                    transparent = true;
-                    break;
-            }
-            
-            chunk->tiles[y][x] = Tile(tileType, walkable, transparent);
         }
     }
 }
 
 void World::updateVisibleChunks(float playerX, float playerY) {
-    // Convert player position to chunk coordinates
-    auto [playerChunkX, playerChunkY] = worldToChunkCoords(static_cast<int>(playerX / tileSize), static_cast<int>(playerY / tileSize));
+    // Convert player pixel position to tile, then to chunk coordinates
+    int playerTileX = static_cast<int>(std::floor(playerX / static_cast<float>(tileSize)));
+    int playerTileY = static_cast<int>(std::floor(playerY / static_cast<float>(tileSize)));
+    auto [playerChunkX, playerChunkY] = worldToChunkCoords(playerTileX, playerTileY);
     
     // Clear previous visible chunks
     visibleChunks.clear();

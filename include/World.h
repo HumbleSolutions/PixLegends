@@ -11,6 +11,7 @@
 class Renderer;
 class Texture;
 class Object;
+class Enemy;
 class AssetManager;
 
 // Tile type constants
@@ -125,6 +126,7 @@ public:
     // Core functions
     void update(float deltaTime);
     void render(Renderer* renderer);
+    void updateEnemies(float deltaTime, float playerX, float playerY);
     
     // Tilemap management
     void loadTilemap(const std::string& filename);
@@ -142,6 +144,10 @@ public:
     void removeObject(int x, int y);
     Object* getObjectAt(int x, int y) const;
     const std::vector<std::unique_ptr<Object>>& getObjects() const { return objects; }
+
+    // Enemy management
+    void addEnemy(std::unique_ptr<Enemy> enemy);
+    const std::vector<std::unique_ptr<Enemy>>& getEnemies() const { return enemies; }
 
     // Asset management
     void setAssetManager(AssetManager* assetManager) { this->assetManager = assetManager; }
@@ -179,6 +185,8 @@ private:
     
     // Objects
     std::vector<std::unique_ptr<Object>> objects;
+    // Enemies
+    std::vector<std::unique_ptr<Enemy>> enemies;
     
     // Rendering
     Texture* tilesetTexture;
@@ -188,6 +196,8 @@ private:
     
     // Tile textures
     std::vector<Texture*> tileTextures;
+    // Edge textures for autotiling (stone with grass edges)
+    std::unordered_map<std::string, Texture*> edgeTextures;
     
     // Random number generation for tile placement
     std::mt19937 rng;
@@ -204,6 +214,11 @@ private:
     // Helper functions
     void initializeDefaultWorld();
     void loadTileTextures();
+    // Autotiling helpers (tile coordinates, not pixels)
+    std::string buildMaskFromNeighbors(int tx, int ty);
+    Texture* getEdgeTextureForMask(const std::string& mask);
+    bool isGrassAt(int tx, int ty);
+    void carveRandomGrassPatches(Chunk* chunk);
     int getPrioritizedTileType(int x, int y);
     bool shouldPlaceStone(int x, int y);
     bool shouldPlaceStoneGrass(int x, int y);

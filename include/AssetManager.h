@@ -68,6 +68,8 @@ public:
     // Sprite sheet loading
     SpriteSheet* loadSpriteSheet(const std::string& path, int frameWidth, int frameHeight, int framesPerRow = 0, int totalFrames = 0);
     SpriteSheet* getSpriteSheet(const std::string& path);
+    // Helper: auto-calc frame size from image dimensions and totalFrames (optionally framesPerRow)
+    SpriteSheet* loadSpriteSheetAuto(const std::string& path, int totalFrames, int framesPerRow = 0);
     
     // Font loading (for UI)
     TTF_Font* loadFont(const std::string& path, int size);
@@ -83,6 +85,8 @@ public:
     static const std::string TILESET_PATH;
     static const std::string UI_PATH;
     static const std::string OBJECTS_PATH;
+    // Optional: base path for enemies
+    static constexpr const char* DEMON_BOSS_PATH = "assets/Demon Boss 2D Pixel Art/Sprites/without_outline/";
 
 private:
     SDL_Renderer* renderer;

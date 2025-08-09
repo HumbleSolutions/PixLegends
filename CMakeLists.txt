@@ -138,6 +138,8 @@ set(SOURCES
     src/UISystem.cpp
     src/AudioManager.cpp
     src/Object.cpp
+    src/Enemy.cpp
+    src/AutotileDemo.cpp
 )
 
 # Create executable

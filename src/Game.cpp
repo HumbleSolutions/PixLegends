@@ -5,9 +5,11 @@
 #include "Player.h"
 #include "Projectile.h"
 #include "World.h"
+#include "Enemy.h"
 #include "UISystem.h"
 #include "AudioManager.h"
 #include "Object.h"
+#include "AutotileDemo.h"
 #include <iostream>
 
 Game::Game() : window(nullptr), sdlRenderer(nullptr), isRunning(false), isPaused(false), 
@@ -58,6 +60,18 @@ void Game::initializeSystems() {
     
     // Initialize objects in the world
     initializeObjects();
+
+    // Autotiling demo: press F1 to toggle; default off
+    demoMode = false;
+    autotileDemo = std::make_unique<AutotileDemo>(assetManager.get(), 20, 12, 32);
+
+    // Spawn first enemy (Demon Boss) near player start
+    if (world && assetManager) {
+        // Player starts roughly around tile (20,11) => pixels ~ (20*32, 11*32)
+        float spawnX = 26.0f * world->getTileSize();
+        float spawnY = 11.0f * world->getTileSize();
+        world->addEnemy(std::make_unique<Enemy>(spawnX, spawnY, assetManager.get()));
+    }
     
     // Set initial visibility and generate initial visible chunks around player starting position
     if (world && player) {
@@ -119,6 +133,8 @@ void Game::update(float deltaTime) {
         if (player) {
             world->updateVisibleChunks(player->getX(), player->getY());
             world->updateVisibility(player->getX(), player->getY());
+            // Update enemies with player tracking
+            world->updateEnemies(deltaTime, player->getX(), player->getY());
         }
     }
     
@@ -141,8 +157,10 @@ void Game::render() {
     SDL_SetRenderDrawColor(sdlRenderer, 0, 0, 0, 255);
     SDL_RenderClear(sdlRenderer);
     
-    // Set camera position to follow player
-    if (player) {
+    // Set camera
+    if (demoMode) {
+        renderer->setCamera(0, 0);
+    } else if (player) {
         int playerX = static_cast<int>(player->getX()); // Player position is already in pixels
         int playerY = static_cast<int>(player->getY());
         
@@ -154,8 +172,10 @@ void Game::render() {
         renderer->setCamera(cameraX, cameraY);
     }
     
-    // Render world
-    if (world) {
+    // Render world or autotile demo
+    if (demoMode) {
+        autotileDemo->render(renderer.get());
+    } else if (world) {
         world->render(renderer.get());
     }
     
@@ -220,6 +240,8 @@ void Game::handleEvents() {
                     isRunning = false;
                 } else if (event.key.keysym.sym == SDLK_p) {
                     isPaused = !isPaused;
+                } else if (event.key.keysym.sym == SDLK_F1) {
+                    demoMode = !demoMode;
                 }
                 inputManager->handleKeyDown(event.key);
                 break;

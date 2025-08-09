@@ -206,6 +206,96 @@ SpriteSheet* AssetManager::getSpriteSheet(const std::string& path) {
     return nullptr;
 }
 
+SpriteSheet* AssetManager::loadSpriteSheetAuto(const std::string& path, int totalFrames, int framesPerRow) {
+    // If already loaded, return it
+    auto it = spriteSheetCache.find(path);
+    if (it != spriteSheetCache.end()) {
+        return it->second.get();
+    }
+
+    std::string fullPath = getFullPath(path);
+    if (!fileExists(fullPath)) {
+        std::cerr << "Sprite sheet file not found: " << fullPath << std::endl;
+        return nullptr;
+    }
+
+    SDL_Surface* surface = IMG_Load(fullPath.c_str());
+    if (!surface) {
+        std::cerr << "Failed to load sprite sheet surface: " << IMG_GetError() << std::endl;
+        return nullptr;
+    }
+
+    const int imgW = surface->w;
+    const int imgH = surface->h;
+
+    int cols = 0;
+    int rows = 0;
+
+    // 1) Honor explicit framesPerRow if provided
+    if (framesPerRow > 0 && totalFrames % framesPerRow == 0) {
+        int tryCols = framesPerRow;
+        int tryRows = totalFrames / framesPerRow;
+        if (tryCols > 0 && tryRows > 0 && imgW % tryCols == 0 && imgH % tryRows == 0) {
+            cols = tryCols;
+            rows = tryRows;
+        }
+    }
+
+    // 2) Prefer single-row layout when possible
+    if (cols == 0) {
+        if (imgW % totalFrames == 0 && imgH % 1 == 0) {
+            cols = totalFrames;
+            rows = 1;
+        }
+    }
+
+    // 3) Otherwise, search divisors descending to minimize number of rows
+    if (cols == 0) {
+        for (int tryCols = totalFrames; tryCols >= 1; --tryCols) {
+            if (totalFrames % tryCols != 0) continue;
+            int tryRows = totalFrames / tryCols;
+            if (imgW % tryCols == 0 && imgH % tryRows == 0) {
+                cols = tryCols;
+                rows = tryRows;
+                break;
+            }
+        }
+    }
+
+    // 4) Absolute fallback - treat as single row slices even if height not divisible
+    if (cols == 0 || rows == 0) {
+        cols = totalFrames;
+        rows = 1;
+    }
+
+    int frameWidth = imgW / cols;
+    int frameHeight = imgH / rows;
+
+    SDL_Texture* sdlTexture = SDL_CreateTextureFromSurface(renderer, surface);
+    SDL_FreeSurface(surface);
+    if (!sdlTexture) {
+        std::cerr << "Failed to create sprite sheet texture: " << SDL_GetError() << std::endl;
+        return nullptr;
+    }
+
+    SDL_SetTextureBlendMode(sdlTexture, SDL_BLENDMODE_BLEND);
+    int width, height;
+    SDL_QueryTexture(sdlTexture, nullptr, nullptr, &width, &height);
+
+    auto spriteSheet = std::make_unique<SpriteSheet>(
+        std::make_unique<Texture>(sdlTexture, width, height), frameWidth, frameHeight, cols, totalFrames);
+
+    SpriteSheet* result = spriteSheet.get();
+    spriteSheetCache[path] = std::move(spriteSheet);
+
+    std::cout << "Auto-loaded sprite sheet: " << path
+              << " (img=" << imgW << "x" << imgH
+              << ", frame=" << frameWidth << "x" << frameHeight
+              << ", cols=" << cols << ", rows=" << rows
+              << ", total=" << totalFrames << ")" << std::endl;
+    return result;
+}
+
 TTF_Font* AssetManager::loadFont(const std::string& path, int size) {
     std::string key = path + "_" + std::to_string(size);
     
