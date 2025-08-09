@@ -304,42 +304,42 @@ void Game::initializeObjects() {
             // Create different object types based on position
             if (x == 20 && y == 10) {
                 // Nearby chest with good loot
-                object = std::make_unique<Object>(ObjectType::CHEST_UNOPENED, x, y, "assets/FULL_Fantasy Forest/Objects/chest_unopened.png");
-                object->setTexture(assetManager->getTexture("assets/FULL_Fantasy Forest/Objects/chest_unopened.png"));
+                object = std::make_unique<Object>(ObjectType::CHEST_UNOPENED, x, y, "assets/Textures/Objects/chest_unopened.png");
+                object->setTexture(assetManager->getTexture("assets/Textures/Objects/chest_unopened.png"));
                 object->addLoot(Loot(LootType::GOLD, 100, "Gold Coins"));
                 object->addLoot(Loot(LootType::EXPERIENCE, 50, "Experience"));
             } else if (x == 21 && y == 11) {
                 // Nearby pot
-                object = std::make_unique<Object>(ObjectType::CLAY_POT, x, y, "assets/FULL_Fantasy Forest/Objects/clay_pot.png");
-                object->setTexture(assetManager->getTexture("assets/FULL_Fantasy Forest/Objects/clay_pot.png"));
+                object = std::make_unique<Object>(ObjectType::CLAY_POT, x, y, "assets/Textures/Objects/clay_pot.png");
+                object->setTexture(assetManager->getTexture("assets/Textures/Objects/clay_pot.png"));
                 object->addLoot(Loot(LootType::GOLD, 25, "Gold Coins"));
             } else if (x == 20 && y == 8) {
                 // Flag (decorative)
-                object = std::make_unique<Object>(ObjectType::FLAG, x, y, "assets/FULL_Fantasy Forest/Objects/flag.png");
-                object->setTexture(assetManager->getTexture("assets/FULL_Fantasy Forest/Objects/flag.png"));
+                object = std::make_unique<Object>(ObjectType::FLAG, x, y, "assets/Textures/Objects/flag.png");
+                object->setTexture(assetManager->getTexture("assets/Textures/Objects/flag.png"));
             } else if (x == 18 && y == 20) {
                 // Bonfire (animated)
-                object = std::make_unique<Object>(ObjectType::BONFIRE, x, y, "assets/FULL_Fantasy Forest/Objects/Bonfire.png");
-                object->setSpriteSheet(assetManager->getSpriteSheet("assets/FULL_Fantasy Forest/Objects/Bonfire.png"));
+                object = std::make_unique<Object>(ObjectType::BONFIRE, x, y, "assets/Textures/Objects/Bonfire.png");
+                object->setSpriteSheet(assetManager->getSpriteSheet("assets/Textures/Objects/Bonfire.png"));
             } else if (x == 25 && y == 10) {
                 // Wood sign (decorative)
-                object = std::make_unique<Object>(ObjectType::WOOD_SIGN, x, y, "assets/FULL_Fantasy Forest/Objects/wood_sign.png");
-                object->setTexture(assetManager->getTexture("assets/FULL_Fantasy Forest/Objects/wood_sign.png"));
+                object = std::make_unique<Object>(ObjectType::WOOD_SIGN, x, y, "assets/Textures/Objects/wood_sign.png");
+                object->setTexture(assetManager->getTexture("assets/Textures/Objects/wood_sign.png"));
             } else if (x == 15 && y == 12) {
                 // Clay pot
-                object = std::make_unique<Object>(ObjectType::CLAY_POT, x, y, "assets/FULL_Fantasy Forest/Objects/clay_pot.png");
-                object->setTexture(assetManager->getTexture("assets/FULL_Fantasy Forest/Objects/clay_pot.png"));
+                object = std::make_unique<Object>(ObjectType::CLAY_POT, x, y, "assets/Textures/Objects/clay_pot.png");
+                object->setTexture(assetManager->getTexture("assets/Textures/Objects/clay_pot.png"));
                 object->addLoot(Loot(LootType::GOLD, 10, "Gold Coins"));
             } else if (x == 8 && y == 15) {
                 // Wood crate
-                object = std::make_unique<Object>(ObjectType::WOOD_CRATE, x, y, "assets/FULL_Fantasy Forest/Objects/wood_crate.png");
-                object->setTexture(assetManager->getTexture("assets/FULL_Fantasy Forest/Objects/wood_crate.png"));
+                object = std::make_unique<Object>(ObjectType::WOOD_CRATE, x, y, "assets/Textures/Objects/wood_crate.png");
+                object->setTexture(assetManager->getTexture("assets/Textures/Objects/wood_crate.png"));
                 object->addLoot(Loot(LootType::GOLD, 25, "Gold Coins"));
                 object->addLoot(Loot(LootType::HEALTH_POTION, 20, "Health Potion"));
             } else if (x == 12 && y == 18) {
                 // Steel crate
-                object = std::make_unique<Object>(ObjectType::STEEL_CRATE, x, y, "assets/FULL_Fantasy Forest/Objects/steel_crate.png");
-                object->setTexture(assetManager->getTexture("assets/FULL_Fantasy Forest/Objects/steel_crate.png"));
+                object = std::make_unique<Object>(ObjectType::STEEL_CRATE, x, y, "assets/Textures/Objects/steel_crate.png");
+                object->setTexture(assetManager->getTexture("assets/Textures/Objects/steel_crate.png"));
                 object->addLoot(Loot(LootType::GOLD, 75, "Gold Coins"));
                 object->addLoot(Loot(LootType::EXPERIENCE, 50, "Experience"));
                 object->addLoot(Loot(LootType::MANA_POTION, 30, "Mana Potion"));

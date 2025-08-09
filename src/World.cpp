@@ -269,15 +269,15 @@ void World::loadTileTextures() {
     std::cout << "Loading tile textures..." << std::endl;
     
     // Use the correct AssetManager paths - these should match how they're preloaded in AssetManager::preloadAssets()
-    // The AssetManager uses TILESET_PATH + filename, where TILESET_PATH = "assets/FULL_Fantasy Forest/Tiles/"
-    tileTextures[TILE_GRASS] = assetManager->getTexture("assets/FULL_Fantasy Forest/Tiles/grass_tile.png");
+    // The AssetManager uses TILESET_PATH + filename, where TILESET_PATH = "assets/Textures/Tiles/"
+    tileTextures[TILE_GRASS] = assetManager->getTexture("assets/Textures/Tiles/grass_tile.png");
     if (!tileTextures[TILE_GRASS]) {
         std::cout << "ERROR: Failed to load grass tile texture! Will use colored rectangle fallback." << std::endl;
     } else {
         std::cout << "SUCCESS: Grass tile texture loaded successfully" << std::endl;
     }
     
-    tileTextures[TILE_STONE] = assetManager->getTexture("assets/FULL_Fantasy Forest/Tiles/stone_tile.png");
+    tileTextures[TILE_STONE] = assetManager->getTexture("assets/Textures/Tiles/stone_tile.png");
     if (!tileTextures[TILE_STONE]) {
         std::cout << "ERROR: Failed to load stone tile texture! Will use colored rectangle fallback." << std::endl;
     } else {
@@ -286,7 +286,7 @@ void World::loadTileTextures() {
     
     // Load stone/grass edge textures for autotiling
     auto addEdge = [&](const std::string& key, const char* file){
-        edgeTextures[key] = assetManager->getTexture(std::string("assets/FULL_Fantasy Forest/Tiles/") + file);
+        edgeTextures[key] = assetManager->getTexture(std::string("assets/Textures/Tiles/") + file);
     };
     // Treat NONE as plain stone to avoid center grass from asset
     edgeTextures["NONE"] = tileTextures[TILE_STONE];
@@ -345,7 +345,7 @@ void World::loadTileTextures() {
     
     // Additional debugging: Check what happens when we try to get textures by path
     std::cout << "Testing texture retrieval by path..." << std::endl;
-    Texture* testGrass = assetManager->getTexture("assets/FULL_Fantasy Forest/Tiles/grass_tile.png");
+    Texture* testGrass = assetManager->getTexture("assets/Textures/Tiles/grass_tile.png");
     std::cout << "  Direct path test - grass: " << (testGrass ? "SUCCESS" : "FAILED") << std::endl;
     
     // Check if the issue is with the AssetManager paths

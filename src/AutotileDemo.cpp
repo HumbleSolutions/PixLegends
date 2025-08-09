@@ -12,7 +12,7 @@ AutotileDemo::AutotileDemo(AssetManager* assetManager, int gridWidth, int gridHe
 
 void AutotileDemo::loadTextures() {
     if (!assetManager) return;
-    const std::string base = AssetManager::TILESET_PATH; // assets/FULL_Fantasy Forest/Tiles/
+    const std::string base = AssetManager::TILESET_PATH; // assets/Textures/Tiles/
 
     auto load = [&](const std::string& key, const std::string& file) {
         auto tex = assetManager->getTexture(base + file);

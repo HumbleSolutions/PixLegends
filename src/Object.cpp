@@ -165,7 +165,7 @@ void Object::interact() {
             type = ObjectType::CHEST_OPENED;
             interactable = false;
             // Change texture to opened chest
-            changeTexture("assets/FULL_Fantasy Forest/Objects/chest_opened.png");
+            changeTexture("assets/Textures/Objects/chest_opened.png");
             break;
         case ObjectType::CLAY_POT:
             std::cout << "Breaking clay pot..." << std::endl;

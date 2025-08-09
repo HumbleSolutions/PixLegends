@@ -5,9 +5,9 @@
 // Static member initialization
 const std::string AssetManager::ASSETS_PATH = "assets/";
 const std::string AssetManager::WIZARD_PATH = ASSETS_PATH + "Wizard 2D Pixel Art v2.0/Sprites/without_outline/";
-const std::string AssetManager::TILESET_PATH = ASSETS_PATH + "FULL_Fantasy Forest/Tiles/";
+const std::string AssetManager::TILESET_PATH = ASSETS_PATH + "Textures/Tiles/";
 const std::string AssetManager::UI_PATH = ASSETS_PATH + "UI/";
-const std::string AssetManager::OBJECTS_PATH = ASSETS_PATH + "FULL_Fantasy Forest/Objects/";
+const std::string AssetManager::OBJECTS_PATH = ASSETS_PATH + "Textures/Objects/";
 
 // Texture implementation
 Texture::Texture(SDL_Texture* texture, int width, int height) 
