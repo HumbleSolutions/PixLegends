@@ -8,6 +8,7 @@
 // Forward declarations
 class Renderer;
 class Player;
+class AssetManager;
 
 class UISystem {
 public:
@@ -25,6 +26,7 @@ public:
     void renderGoldDisplay(int x, int y, int gold);
     void renderPlayerStats(const Player* player);
     void renderDebugInfo(const Player* player);
+    void renderPotions(const Player* player);
     
     // Text rendering
     void renderText(const std::string& text, int x, int y, SDL_Color color = {255, 255, 255, 255});
@@ -37,6 +39,11 @@ private:
     SDL_Renderer* renderer;
     TTF_Font* defaultFont;
     TTF_Font* smallFont;
+    AssetManager* assetManager = nullptr;
+    // Potion icon animation state
+    float potionAnimTimer = 0.0f;
+    int potionAnimFrame = 0;
+    float potionFrameDuration = 0.15f; // seconds per frame
     
     // UI colors
     SDL_Color healthColor;
@@ -49,4 +56,7 @@ private:
     void initializeFonts();
     void initializeColors();
     std::string formatStatText(const std::string& label, int value, int maxValue = 0);
+    // Dependency injection
+public:
+    void setAssetManager(AssetManager* am) { assetManager = am; }
 };

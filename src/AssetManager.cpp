@@ -384,9 +384,25 @@ void AssetManager::preloadAssets() {
     loadTexture(OBJECTS_PATH + "wood_crate.png");
     loadTexture(OBJECTS_PATH + "steel_crate.png");
     loadTexture(OBJECTS_PATH + "wood_sign.png");
+    // Load potion icons/sprite sheets for HUD
+    // 8-frame sprite sheets for when potions have charges
+    loadSpriteSheetAuto("assets/Textures/All Potions/HP potions/full_hp_potion.png", 8, 8);
+    loadSpriteSheetAuto("assets/Textures/All Potions/HP potions/half_hp_potion.png", 8, 8);
+    loadSpriteSheetAuto("assets/Textures/All Potions/HP potions/low_hp_potion.png", 8, 8);
+    loadSpriteSheetAuto("assets/Textures/All Potions/Mana potion/full_mana_potion.png", 8, 8);
+    loadSpriteSheetAuto("assets/Textures/All Potions/Mana potion/half_mana_potion.png", 8, 8);
+    loadSpriteSheetAuto("assets/Textures/All Potions/Mana potion/low_mana_potion.png", 8, 8);
+    // Single-frame empty icons
+    loadTexture("assets/Textures/All Potions/HP potions/empty.png");
+    loadTexture("assets/Textures/All Potions/Mana potion/empty.png");
     
     // Load bonfire as spritesheet with 6 frames
     loadSpriteSheet(OBJECTS_PATH + "Bonfire.png", 32, 48, 6, 6);
+    
+    // Preload primary UI/game font
+    loadFont("assets/Fonts/retganon.ttf", 16);
+    loadFont("assets/Fonts/retganon.ttf", 12);
+    loadFont("assets/Fonts/retganon.ttf", 24);
     
     std::cout << "Asset preloading complete! Loaded " << textureCache.size() << " textures and " << spriteSheetCache.size() << " sprite sheets." << std::endl;
 }

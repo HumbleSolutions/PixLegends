@@ -19,6 +19,7 @@ Player::Player(Game* game) : game(game), x(Game::WINDOW_WIDTH / 2.0f - 32.0f), y
                             health(BASE_HEALTH), maxHealth(BASE_HEALTH), mana(BASE_MANA), maxMana(BASE_MANA),
                             level(1), experience(0), experienceToNext(100), strength(BASE_STRENGTH), intelligence(BASE_INTELLIGENCE),
                             gold(0),
+                            healthPotionCharges(POTION_MAX_CHARGES), manaPotionCharges(POTION_MAX_CHARGES),
                             idleLeftSpriteSheet(nullptr), idleRightSpriteSheet(nullptr), walkLeftSpriteSheet(nullptr), walkRightSpriteSheet(nullptr), meleeAttackLeftSpriteSheet(nullptr), meleeAttackRightSpriteSheet(nullptr),
                              rangedAttackLeftSpriteSheet(nullptr), rangedAttackRightSpriteSheet(nullptr), hurtSpriteSheet(nullptr), deathSpriteSheet(nullptr) {
     
@@ -117,6 +118,22 @@ void Player::handleInput(const InputManager* inputManager) {
         int currentTileX = static_cast<int>(x / 32);
         int currentTileY = static_cast<int>(y / 32);
         std::cout << "Current position: pixel(" << x << ", " << y << ") tile(" << currentTileX << ", " << currentTileY << ")" << std::endl;
+    }
+
+    // Consumables: 1 for HP, 2 for MP
+    if (inputManager->isActionPressed(InputAction::USE_HP_POTION)) {
+        if (consumeHealthPotion()) {
+            std::cout << "Used HP potion. Charges left: " << healthPotionCharges << std::endl;
+        } else {
+            std::cout << "No HP potion charges left or HP already full." << std::endl;
+        }
+    }
+    if (inputManager->isActionPressed(InputAction::USE_MP_POTION)) {
+        if (consumeManaPotion()) {
+            std::cout << "Used MP potion. Charges left: " << manaPotionCharges << std::endl;
+        } else {
+            std::cout << "No MP potion charges left or MP already full." << std::endl;
+        }
     }
 }
 
@@ -247,15 +264,14 @@ void Player::interact() {
                         notification += std::to_string(item.amount) + " XP";
                         break;
                     case LootType::HEALTH_POTION:
-                        heal(item.amount);
-                        notification += "Health Potion";
-                        std::cout << "Used health potion! Restored " << item.amount << " health." << std::endl;
+                        addHealthPotionCharges(item.amount / 10 > 0 ? item.amount / 10 : 1);
+                        notification += "HP Potion Charges";
+                        std::cout << "Found HP potion charges! +" << (item.amount / 10 > 0 ? item.amount / 10 : 1) << std::endl;
                         break;
                     case LootType::MANA_POTION:
-                        // Note: useMana is for spending, we need to add mana
-                        mana = std::min(mana + item.amount, maxMana);
-                        notification += "Mana Potion";
-                        std::cout << "Used mana potion! Restored " << item.amount << " mana." << std::endl;
+                        addManaPotionCharges(item.amount / 10 > 0 ? item.amount / 10 : 1);
+                        notification += "MP Potion Charges";
+                        std::cout << "Found MP potion charges! +" << (item.amount / 10 > 0 ? item.amount / 10 : 1) << std::endl;
                         break;
                 }
             }
@@ -466,6 +482,34 @@ void Player::spendGold(int amount) {
     } else {
         std::cout << "Not enough gold! Need " << amount << " but only have " << gold << std::endl;
     }
+}
+
+bool Player::consumeHealthPotion() {
+    if (healthPotionCharges <= 0 || health >= maxHealth) {
+        return false;
+    }
+    heal(HEALTH_POTION_HEAL);
+    healthPotionCharges--;
+    return true;
+}
+
+bool Player::consumeManaPotion() {
+    if (manaPotionCharges <= 0 || mana >= maxMana) {
+        return false;
+    }
+    mana = std::min(mana + MANA_POTION_RESTORE, maxMana);
+    manaPotionCharges--;
+    return true;
+}
+
+void Player::addHealthPotionCharges(int charges) {
+    if (charges <= 0) return;
+    healthPotionCharges = std::min(healthPotionCharges + charges, POTION_MAX_CHARGES);
+}
+
+void Player::addManaPotionCharges(int charges) {
+    if (charges <= 0) return;
+    manaPotionCharges = std::min(manaPotionCharges + charges, POTION_MAX_CHARGES);
 }
 
 SpriteSheet* Player::getSpriteSheetForState(PlayerState state) {

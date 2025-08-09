@@ -72,6 +72,15 @@ public:
     void useMana(int amount);
     void addGold(int amount);
     void spendGold(int amount);
+
+    // Potions
+    bool consumeHealthPotion();
+    bool consumeManaPotion();
+    void addHealthPotionCharges(int charges);
+    void addManaPotionCharges(int charges);
+    int getHealthPotionCharges() const { return healthPotionCharges; }
+    int getManaPotionCharges() const { return manaPotionCharges; }
+    int getMaxPotionCharges() const { return POTION_MAX_CHARGES; }
     
     // Getters
     float getX() const { return x; }
@@ -126,6 +135,10 @@ private:
     int experience, experienceToNext;
     int strength, intelligence;
     int gold;
+
+    // Potions
+    int healthPotionCharges;
+    int manaPotionCharges;
     
     // Loot notification
     std::string lastLootNotification;
@@ -161,4 +174,7 @@ private:
     static constexpr int BASE_MANA = 50;
     static constexpr int BASE_STRENGTH = 10;
     static constexpr int BASE_INTELLIGENCE = 15;
+    static constexpr int POTION_MAX_CHARGES = 10;
+    static constexpr int HEALTH_POTION_HEAL = 20;
+    static constexpr int MANA_POTION_RESTORE = 20;
 };

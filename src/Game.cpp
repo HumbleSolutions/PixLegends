@@ -53,6 +53,7 @@ void Game::initializeSystems() {
     // Create World after assets are loaded
     world = std::make_unique<World>(assetManager.get());
     uiSystem = std::make_unique<UISystem>(sdlRenderer);
+    uiSystem->setAssetManager(assetManager.get());
     audioManager = std::make_unique<AudioManager>();
     
     // Create player after other systems are initialized
@@ -308,6 +309,8 @@ void Game::initializeObjects() {
                 object->setTexture(assetManager->getTexture("assets/Textures/Objects/chest_unopened.png"));
                 object->addLoot(Loot(LootType::GOLD, 100, "Gold Coins"));
                 object->addLoot(Loot(LootType::EXPERIENCE, 50, "Experience"));
+                object->addLoot(Loot(LootType::HEALTH_POTION, 20, "HP Charges"));
+                object->addLoot(Loot(LootType::MANA_POTION, 20, "MP Charges"));
             } else if (x == 21 && y == 11) {
                 // Nearby pot
                 object = std::make_unique<Object>(ObjectType::CLAY_POT, x, y, "assets/Textures/Objects/clay_pot.png");
@@ -330,19 +333,20 @@ void Game::initializeObjects() {
                 object = std::make_unique<Object>(ObjectType::CLAY_POT, x, y, "assets/Textures/Objects/clay_pot.png");
                 object->setTexture(assetManager->getTexture("assets/Textures/Objects/clay_pot.png"));
                 object->addLoot(Loot(LootType::GOLD, 10, "Gold Coins"));
+                object->addLoot(Loot(LootType::HEALTH_POTION, 10, "HP Charges"));
             } else if (x == 8 && y == 15) {
                 // Wood crate
                 object = std::make_unique<Object>(ObjectType::WOOD_CRATE, x, y, "assets/Textures/Objects/wood_crate.png");
                 object->setTexture(assetManager->getTexture("assets/Textures/Objects/wood_crate.png"));
                 object->addLoot(Loot(LootType::GOLD, 25, "Gold Coins"));
-                object->addLoot(Loot(LootType::HEALTH_POTION, 20, "Health Potion"));
+                object->addLoot(Loot(LootType::HEALTH_POTION, 20, "HP Charges"));
             } else if (x == 12 && y == 18) {
                 // Steel crate
                 object = std::make_unique<Object>(ObjectType::STEEL_CRATE, x, y, "assets/Textures/Objects/steel_crate.png");
                 object->setTexture(assetManager->getTexture("assets/Textures/Objects/steel_crate.png"));
                 object->addLoot(Loot(LootType::GOLD, 75, "Gold Coins"));
                 object->addLoot(Loot(LootType::EXPERIENCE, 50, "Experience"));
-                object->addLoot(Loot(LootType::MANA_POTION, 30, "Mana Potion"));
+                object->addLoot(Loot(LootType::MANA_POTION, 20, "MP Charges"));
             }
             
             if (object) {

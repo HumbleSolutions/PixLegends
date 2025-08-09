@@ -1,6 +1,7 @@
 #include "UISystem.h"
 #include "Renderer.h"
 #include "Player.h"
+#include "AssetManager.h"
 #include <iostream>
 #include <sstream>
 
@@ -10,10 +11,11 @@ UISystem::UISystem(SDL_Renderer* renderer) : renderer(renderer), defaultFont(nul
 }
 
 void UISystem::initializeFonts() {
-    // Try multiple font paths
+    // Prefer project font in assets/Fonts/
     const char* fontPaths[] = {
-        "assets/fonts/arial.ttf",
-        "assets/fonts/LiberationSans-Regular.ttf",
+        "assets/Fonts/retganon.ttf",
+        "assets/fonts/retganon.ttf", // case variant fallback
+        // System fallbacks (only if project font is missing)
         "C:/Windows/Fonts/arial.ttf",
         "C:/Windows/Fonts/calibri.ttf"
     };
@@ -54,7 +56,13 @@ void UISystem::initializeColors() {
 }
 
 void UISystem::update(float deltaTime) {
-    // UI update logic (animations, timers, etc.)
+    // Advance simple UI animations (e.g., potion icon flicker)
+    potionAnimTimer += deltaTime;
+    if (potionAnimTimer >= potionFrameDuration) {
+        potionAnimTimer = 0.0f;
+        // Cycle 0..7 for animated potions with remaining charges
+        potionAnimFrame = (potionAnimFrame + 1) % 8;
+    }
 }
 
 void UISystem::render() {
@@ -166,6 +174,9 @@ void UISystem::renderPlayerStats(const Player* player) {
     renderText("Level: " + std::to_string(player->getLevel()), textX, textY);
     renderText("STR: " + std::to_string(player->getStrength()), textX, textY + 20);
     renderText("INT: " + std::to_string(player->getIntelligence()), textX, textY + 40);
+
+    // Render potions HUD beneath stats
+    renderPotions(player);
 }
 
 void UISystem::renderDebugInfo(const Player* player) {
@@ -189,6 +200,73 @@ void UISystem::renderDebugInfo(const Player* player) {
         default: stateStr = "UNKNOWN"; break;
     }
     renderText("State: " + stateStr, startX, startY + 40);
+}
+
+void UISystem::renderPotions(const Player* player) {
+    if (!player) return;
+    Renderer rendererWrapper(renderer);
+    const int iconSize = 32;
+    const int margin = 10;
+    int outW = 0, outH = 0;
+    if (renderer) {
+        SDL_GetRendererOutputSize(renderer, &outW, &outH);
+    }
+    const int startX = margin; // left margin
+    const int startY = (outH > 0 ? outH : 720) - iconSize - margin; // bottom-left anchor
+    
+    // Determine which sprite sheet to show based on remaining charges
+    auto pickPotionSprite = [&](int charges, int maxCharges, bool isHealth, SDL_Texture*& outTexture, SDL_Rect& outSrcRect) {
+        if (!assetManager) return;
+        float ratio = maxCharges > 0 ? static_cast<float>(charges) / static_cast<float>(maxCharges) : 0.0f;
+        if (charges <= 0) {
+            // Empty is a single-frame image
+            Texture* t = assetManager->getTexture(isHealth ? "assets/Textures/All Potions/HP potions/empty.png"
+                                                           : "assets/Textures/All Potions/Mana potion/empty.png");
+            if (t) {
+                outTexture = t->getTexture();
+                outSrcRect = {0,0,t->getWidth(), t->getHeight()};
+            }
+            return;
+        }
+        // Use 8-frame sheet depending on ratio: low/half/full variants
+        const char* path = nullptr;
+        if (ratio <= 0.3f) {
+            path = isHealth ? "assets/Textures/All Potions/HP potions/low_hp_potion.png"
+                            : "assets/Textures/All Potions/Mana potion/low_mana_potion.png";
+        } else if (ratio <= 0.6f) {
+            path = isHealth ? "assets/Textures/All Potions/HP potions/half_hp_potion.png"
+                            : "assets/Textures/All Potions/Mana potion/half_mana_potion.png";
+        } else {
+            path = isHealth ? "assets/Textures/All Potions/HP potions/full_hp_potion.png"
+                            : "assets/Textures/All Potions/Mana potion/full_mana_potion.png";
+        }
+        SpriteSheet* sheet = assetManager->loadSpriteSheetAuto(path, 8, 8);
+        if (sheet) {
+            outTexture = sheet->getTexture()->getTexture();
+            SDL_Rect frameRect = sheet->getFrameRect(potionAnimFrame);
+            outSrcRect = frameRect;
+        }
+    };
+    
+    // Load textures via SDL directly using AssetManager for caching if available
+    auto renderPotion = [&](bool isHealth, int x, int y, const char* label, int charges, int maxCharges) {
+        SDL_Texture* tex = nullptr;
+        SDL_Rect src{0,0,0,0};
+        pickPotionSprite(charges, maxCharges, isHealth, tex, src);
+        SDL_Rect dst{ x, y, iconSize, iconSize };
+        if (tex) {
+            SDL_RenderCopy(renderer, tex, (src.w > 0 ? &src : nullptr), &dst);
+        } else {
+            SDL_Color c = isHealth ? SDL_Color{200,0,0,255} : SDL_Color{0,0,200,255};
+            rendererWrapper.renderRect(dst, c, true);
+        }
+        // draw label and charges
+        renderText(std::string(label), x + iconSize + 6, y + 4, textColor);
+        renderText("x" + std::to_string(charges), x + iconSize + 6, y + 18, textColor);
+    };
+    
+    renderPotion(true, startX, startY, "[1] HP", player->getHealthPotionCharges(), player->getMaxPotionCharges());
+    renderPotion(false, startX + 160, startY, "[2] MP", player->getManaPotionCharges(), player->getMaxPotionCharges());
 }
 
 void UISystem::renderText(const std::string& text, int x, int y, SDL_Color color) {

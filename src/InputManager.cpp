@@ -27,6 +27,10 @@ void InputManager::initializeKeyBindings() {
     actionToKey[InputAction::INVENTORY] = SDL_SCANCODE_I;
     actionToKey[InputAction::PAUSE] = SDL_SCANCODE_P;
     actionToKey[InputAction::QUIT] = SDL_SCANCODE_ESCAPE;
+
+    // Consumables
+    actionToKey[InputAction::USE_HP_POTION] = SDL_SCANCODE_1;
+    actionToKey[InputAction::USE_MP_POTION] = SDL_SCANCODE_2;
     
     // Mouse bindings
     actionToMouseButton[InputAction::ATTACK_MELEE] = SDL_BUTTON_LEFT;
