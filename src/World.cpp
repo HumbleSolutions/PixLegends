@@ -8,14 +8,14 @@
 #include <algorithm> // Required for std::max
 #include <cstdlib> // Required for std::abs
 
-World::World() : width(50), height(50), tileSize(32), tilesetTexture(nullptr), assetManager(nullptr), rng(std::random_device{}()), visibilityRadius(50), fogOfWarEnabled(true) {
+World::World() : width(1000), height(1000), tileSize(32), tilesetTexture(nullptr), assetManager(nullptr), rng(std::random_device{}()), visibilityRadius(50), fogOfWarEnabled(true) {
     // Initialize default tile generation config
     tileGenConfig.worldWidth = width;
     tileGenConfig.worldHeight = height;
     initializeDefaultWorld();
 }
 
-World::World(AssetManager* assetManager) : width(50), height(50), tileSize(32), tilesetTexture(nullptr), assetManager(assetManager), rng(std::random_device{}()), visibilityRadius(50), fogOfWarEnabled(false) {
+World::World(AssetManager* assetManager) : width(1000), height(1000), tileSize(32), tilesetTexture(nullptr), assetManager(assetManager), rng(std::random_device{}()), visibilityRadius(50), fogOfWarEnabled(true) {
     // Initialize default tile generation config
     tileGenConfig.worldWidth = width;
     tileGenConfig.worldHeight = height;
@@ -24,10 +24,12 @@ World::World(AssetManager* assetManager) : width(50), height(50), tileSize(32), 
 }
 
 void World::initializeDefaultWorld() {
-    // Initialize tile grid
-    tiles.resize(height, std::vector<Tile>(width));
+    // Initialize chunk system instead of full tile grid
+    std::cout << "Initializing chunk-based world: " << width << "x" << height << " tiles (" 
+              << (width * tileSize) << "x" << (height * tileSize) << " pixels)" << std::endl;
+    std::cout << "Chunk size: " << tileGenConfig.chunkSize << "x" << tileGenConfig.chunkSize << " tiles" << std::endl;
     
-    // Initialize visibility arrays
+    // Initialize visibility arrays for the entire world (for fog of war)
     visibleTiles.resize(height, std::vector<bool>(width, false));
     exploredTiles.resize(height, std::vector<bool>(width, false));
     
@@ -35,6 +37,8 @@ void World::initializeDefaultWorld() {
     TileGenerationConfig defaultConfig;
     defaultConfig.worldWidth = width;
     defaultConfig.worldHeight = height;
+    defaultConfig.chunkSize = 64;
+    defaultConfig.renderDistance = 1; // Render current chunk and immediate neighbors
     // New stone-first priority system
     defaultConfig.stoneWeight = 40.0f;         // stone_tile.png - highest priority
     defaultConfig.grassWeight = 20.0f;         // grass_tile.png - lower priority
@@ -58,32 +62,15 @@ void World::initializeDefaultWorld() {
     defaultConfig.stoneGrass18Weight = 2.0f;   // stone_grass_tile_18.png
     defaultConfig.stoneGrass19Weight = 2.0f;   // stone_grass_tile_19.png
     defaultConfig.useFixedSeed = false;
-    defaultConfig.useNoiseDistribution = false;
+    defaultConfig.useNoiseDistribution = true;
+    defaultConfig.noiseScale = 0.05f;
     defaultConfig.enableStoneClustering = true;
+    defaultConfig.enableBiomes = true;
+    defaultConfig.biomeScale = 0.02f;
     
     generateTilemap(defaultConfig);
     
-    // Validate that all tiles have valid IDs after generation
-    std::cout << "Validating tile array after generation..." << std::endl;
-    int invalidTileCount = 0;
-    for (int y = 0; y < height; y++) {
-        for (int x = 0; x < width; x++) {
-            if (tiles[y][x].id < 0 || tiles[y][x].id > TILE_WATER) {
-                invalidTileCount++;
-                std::cout << "ERROR: Invalid tile ID " << tiles[y][x].id << " at position (" << x << ", " << y << ") after generation!" << std::endl;
-                // Fix invalid tiles immediately
-                tiles[y][x].id = TILE_GRASS;
-            }
-        }
-    }
-    
-    if (invalidTileCount > 0) {
-        std::cout << "WARNING: Fixed " << invalidTileCount << " invalid tile IDs during initialization!" << std::endl;
-    } else {
-        std::cout << "All tiles have valid IDs after generation." << std::endl;
-    }
-    
-    std::cout << "World initialized: " << width << "x" << height << " tiles with weighted tile generation" << std::endl;
+    std::cout << "Chunk-based world initialized successfully!" << std::endl;
     std::cout << "Fog of war enabled with visibility radius: " << visibilityRadius << " tiles" << std::endl;
 }
 
@@ -103,128 +90,125 @@ void World::render(Renderer* renderer) {
     int cameraX, cameraY;
     renderer->getCamera(cameraX, cameraY);
     
-    // OPTIMIZATION: Only render tiles that are visible on screen
-    // Calculate visible tile range based on camera position - be very generous to prevent black areas
-    int startX = std::max(0, cameraX / tileSize - 5);
-    int endX = std::min(width - 1, (cameraX + 1920) / tileSize + 5);
-    int startY = std::max(0, cameraY / tileSize - 5);
-    int endY = std::min(height - 1, (cameraY + 1080) / tileSize + 5);
-    
-    // Debug: Count tile types (only once every 300 frames to reduce spam)
+    // Debug: Count rendered chunks (only once every 300 frames to reduce spam)
     static int debugFrameCount = 0;
     if (debugFrameCount++ % 300 == 0) {
-        std::cout << "Rendering tiles in range (" << startX << "," << startY << ") to (" << endX << "," << endY << ")" << std::endl;
-        
-        // Debug: Count tile types being rendered
-        int grassCount = 0, stoneCount = 0, stoneGrassTotalCount = 0, invalidCount = 0;
-        int stoneGrassCounts[19] = {0}; // Count all 19 stone_grass variants
-        
-        for (int y = startY; y <= endY; y++) {
-            for (int x = startX; x <= endX; x++) {
-                int tileId = tiles[y][x].id;
-                if (tileId == TILE_GRASS) {
-                    grassCount++;
-                } else if (tileId == TILE_STONE) {
-                    stoneCount++;
-                } else if (tileId >= TILE_STONE_GRASS && tileId <= TILE_STONE_GRASS_19) {
-                    stoneGrassTotalCount++;
-                    int variantIndex = tileId - TILE_STONE_GRASS;
-                    if (variantIndex >= 0 && variantIndex < 19) {
-                        stoneGrassCounts[variantIndex]++;
-                    }
-                } else {
-                    invalidCount++;
-                }
-            }
-        }
-        
-        std::cout << "Tile types in render range - Grass: " << grassCount << ", Stone: " << stoneCount 
-                  << ", StoneGrass Total: " << stoneGrassTotalCount << ", Invalid: " << invalidCount << std::endl;
-        
-        // Show individual stone_grass variant counts
-        for (int i = 0; i < 19; i++) {
-            if (stoneGrassCounts[i] > 0) {
-                std::cout << "  StoneGrass" << (i + 1) << ": " << stoneGrassCounts[i] << std::endl;
-            }
-        }
+        std::cout << "Rendering " << visibleChunks.size() << " visible chunks" << std::endl;
     }
     
-    // Render only visible tiles
+    // Render only visible chunks
     int renderedTiles = 0;
     int visibleTilesCount = 0;
     
-    for (int y = startY; y <= endY; y++) {
-        for (int x = startX; x <= endX; x++) {
-            int tileId = tiles[y][x].id;
-            
-            // Validate tile ID to catch any invalid values
-            if (tileId < 0 || tileId > TILE_WATER) {
-                std::cout << "ERROR: Invalid tile ID " << tileId << " at position (" << x << ", " << y << "). Setting to grass." << std::endl;
-                tileId = TILE_GRASS;
-                tiles[y][x].id = TILE_GRASS; // Fix the invalid tile
-            }
-            
-            // Check visibility - render all tiles, but apply fog of war effect if enabled
-            bool isVisible = true;
-            bool isExplored = true;
-            
-            if (fogOfWarEnabled) {
-                isVisible = visibleTiles[y][x];
-                isExplored = exploredTiles[y][x];
-            }
-            
-            // Calculate world position
-            int worldX = x * tileSize;
-            int worldY = y * tileSize;
-            
-            // Calculate screen position (with camera offset)
-            int screenX = worldX - cameraX;
-            int screenY = worldY - cameraY;
-            
-            // Check if the tile is visible on screen (with very generous margin to prevent black areas)
-            if (screenX + tileSize > -200 && screenX < 1920 + 200 && 
-                screenY + tileSize > -200 && screenY < 1080 + 200) {
+    for (Chunk* chunk : visibleChunks) {
+        if (!chunk || !chunk->isGenerated) continue;
+        
+        int chunkSize = tileGenConfig.chunkSize;
+        int worldStartX = chunk->chunkX * chunkSize;
+        int worldStartY = chunk->chunkY * chunkSize;
+        
+        for (int y = 0; y < chunkSize; y++) {
+            for (int x = 0; x < chunkSize; x++) {
+                int worldX = worldStartX + x;
+                int worldY = worldStartY + y;
                 
-                renderedTiles++;
-                if (isVisible) {
-                    visibleTilesCount++;
+                // Determine if tile is within the finite world arrays
+                const bool inWorldBounds = (worldX >= 0 && worldX < width && worldY >= 0 && worldY < height);
+                
+                int tileId = chunk->tiles[y][x].id;
+                
+                // Validate tile ID to catch any invalid values
+                if (tileId < 0 || tileId > TILE_WATER) {
+                    std::cout << "ERROR: Invalid tile ID " << tileId << " at position (" << worldX << ", " << worldY << "). Setting to grass." << std::endl;
+                    tileId = TILE_GRASS;
+                    chunk->tiles[y][x].id = TILE_GRASS;
                 }
                 
-                // Check if we have a texture for this tile type
-                if (tileId >= 0 && tileId < tileTextures.size() && tileTextures[tileId]) {
-                    // Render using texture
-                    Texture* texture = tileTextures[tileId];
-                    if (texture && texture->getTexture()) {
-                        SDL_Rect destRect = {
-                            screenX,
-                            screenY,
-                            tileSize,
-                            tileSize
-                        };
-                        
-                        // Set the blend mode to ensure proper rendering
-                        SDL_SetTextureBlendMode(texture->getTexture(), SDL_BLENDMODE_BLEND);
-                        
-                        // Apply fog of war effect - darken explored but not visible tiles
-                        if (fogOfWarEnabled && isExplored && !isVisible) {
-                            // Darken the texture for explored but not visible tiles
-                            SDL_SetTextureColorMod(texture->getTexture(), 100, 100, 100);
-                        } else if (fogOfWarEnabled && !isExplored) {
-                            // Very dark for unexplored tiles
-                            SDL_SetTextureColorMod(texture->getTexture(), 50, 50, 50);
+                // Check visibility - render all tiles, but apply fog of war effect if enabled
+                bool isVisible = true;
+                bool isExplored = true;
+                
+                if (fogOfWarEnabled) {
+                    if (inWorldBounds) {
+                        isVisible = visibleTiles[worldY][worldX];
+                        isExplored = exploredTiles[worldY][worldX];
+                    } else {
+                        // For tiles outside the finite world arrays (negative/overflow), render normally
+                        isVisible = true;
+                        isExplored = true;
+                    }
+                }
+                
+                // Calculate world position
+                int worldPosX = worldX * tileSize;
+                int worldPosY = worldY * tileSize;
+                
+                // Calculate screen position (with camera offset)
+                int screenX = worldPosX - cameraX;
+                int screenY = worldPosY - cameraY;
+                
+                // Check if the tile is visible on screen (with generous margin to prevent black areas)
+                if (screenX + tileSize > -200 && screenX < 1920 + 200 && 
+                    screenY + tileSize > -200 && screenY < 1080 + 200) {
+                    
+                    renderedTiles++;
+                    if (isVisible) {
+                        visibleTilesCount++;
+                    }
+                    
+                    // Check if we have a texture for this tile type
+                    if (tileId >= 0 && tileId < tileTextures.size() && tileTextures[tileId]) {
+                        // Render using texture
+                        Texture* texture = tileTextures[tileId];
+                        if (texture && texture->getTexture()) {
+                            SDL_Rect destRect = {
+                                screenX,
+                                screenY,
+                                tileSize,
+                                tileSize
+                            };
+                            
+                            // Set the blend mode to ensure proper rendering
+                            SDL_SetTextureBlendMode(texture->getTexture(), SDL_BLENDMODE_BLEND);
+                            
+                            // Apply fog of war effect - darken explored but not visible tiles
+                            if (fogOfWarEnabled && isExplored && !isVisible) {
+                                // Darken the texture for explored but not visible tiles
+                                SDL_SetTextureColorMod(texture->getTexture(), 100, 100, 100);
+                            } else if (fogOfWarEnabled && !isExplored) {
+                                // Very dark for unexplored tiles
+                                SDL_SetTextureColorMod(texture->getTexture(), 50, 50, 50);
+                            } else {
+                                // Reset color modulation for visible tiles
+                                SDL_SetTextureColorMod(texture->getTexture(), 255, 255, 255);
+                            }
+                            
+                            // Render the texture
+                            int result = SDL_RenderCopy(renderer->getSDLRenderer(), texture->getTexture(), nullptr, &destRect);
+                            if (result != 0) {
+                                // If rendering failed, fall back to colored rectangle
+                                TileColor tileColor = getTileColor(tileId);
+                                SDL_Color color = {tileColor.r, tileColor.g, tileColor.b, tileColor.a};
+                                
+                                // Apply fog of war effect to colored rectangles too
+                                if (fogOfWarEnabled && isExplored && !isVisible) {
+                                    color.r = color.r / 2;
+                                    color.g = color.g / 2;
+                                    color.b = color.b / 2;
+                                } else if (fogOfWarEnabled && !isExplored) {
+                                    color.r = color.r / 4;
+                                    color.g = color.g / 4;
+                                    color.b = color.b / 4;
+                                }
+                                
+                                renderer->renderRect(screenX, screenY, tileSize, tileSize, color, true);
+                            }
                         } else {
-                            // Reset color modulation for visible tiles
-                            SDL_SetTextureColorMod(texture->getTexture(), 255, 255, 255);
-                        }
-                        
-                        // Render the texture
-                        int result = SDL_RenderCopy(renderer->getSDLRenderer(), texture->getTexture(), nullptr, &destRect);
-                        if (result != 0) {
-                            // If rendering failed, fall back to colored rectangle
+                            // Fallback to colored rectangles if texture is invalid
                             TileColor tileColor = getTileColor(tileId);
                             SDL_Color color = {tileColor.r, tileColor.g, tileColor.b, tileColor.a};
                             
-                            // Apply fog of war effect to colored rectangles too
+                            // Apply fog of war effect to colored rectangles
                             if (fogOfWarEnabled && isExplored && !isVisible) {
                                 color.r = color.r / 2;
                                 color.g = color.g / 2;
@@ -238,11 +222,16 @@ void World::render(Renderer* renderer) {
                             renderer->renderRect(screenX, screenY, tileSize, tileSize, color, true);
                         }
                     } else {
-                        // Fallback to colored rectangles if texture is invalid
-                        TileColor tileColor = getTileColor(tileId);
+                        // Fallback to colored rectangles if texture not available or out-of-bounds tileId
+                        int safeTileId = tileId;
+                        if (safeTileId < 0 || safeTileId >= static_cast<int>(tileTextures.size())) {
+                            safeTileId = TILE_GRASS;
+                        }
+                        
+                        TileColor tileColor = getTileColor(safeTileId);
                         SDL_Color color = {tileColor.r, tileColor.g, tileColor.b, tileColor.a};
                         
-                        // Apply fog of war effect to colored rectangles
+                        // Apply fog of war effect - darken explored but not visible tiles
                         if (fogOfWarEnabled && isExplored && !isVisible) {
                             color.r = color.r / 2;
                             color.g = color.g / 2;
@@ -255,29 +244,6 @@ void World::render(Renderer* renderer) {
                         
                         renderer->renderRect(screenX, screenY, tileSize, tileSize, color, true);
                     }
-                } else {
-                    // Fallback to colored rectangles if texture not available
-                    // Additional safety check for tile ID bounds
-                    if (tileId < 0 || tileId >= tileTextures.size()) {
-                        std::cout << "ERROR: Tile ID " << tileId << " is out of bounds! tileTextures.size() = " << tileTextures.size() << std::endl;
-                        tileId = TILE_GRASS; // Use grass as fallback
-                    }
-                    
-                    TileColor tileColor = getTileColor(tileId);
-                    SDL_Color color = {tileColor.r, tileColor.g, tileColor.b, tileColor.a};
-                    
-                    // Apply fog of war effect - darken explored but not visible tiles
-                    if (fogOfWarEnabled && isExplored && !isVisible) {
-                        color.r = color.r / 2;
-                        color.g = color.g / 2;
-                        color.b = color.b / 2;
-                    } else if (fogOfWarEnabled && !isExplored) {
-                        color.r = color.r / 4;
-                        color.g = color.g / 4;
-                        color.b = color.b / 4;
-                    }
-                    
-                    renderer->renderRect(screenX, screenY, tileSize, tileSize, color, true);
                 }
             }
         }
@@ -285,7 +251,7 @@ void World::render(Renderer* renderer) {
     
     // Debug output (only print once every 300 frames to avoid spam)
     if (debugFrameCount % 300 == 0) {
-        std::cout << "Rendered tiles: " << renderedTiles << " out of " << ((endX - startX + 1) * (endY - startY + 1)) << " visible tiles" << std::endl;
+        std::cout << "Rendered tiles: " << renderedTiles << " from " << visibleChunks.size() << " chunks" << std::endl;
         if (fogOfWarEnabled) {
             std::cout << "Visible tiles: " << visibleTilesCount << " out of " << renderedTiles << " rendered tiles" << std::endl;
         }
@@ -304,7 +270,7 @@ void World::render(Renderer* renderer) {
         int objScreenX = objWorldX - cameraX;
         int objScreenY = objWorldY - cameraY;
         
-        // Check if object is visible on screen (with very generous margin)
+        // Check if object is visible on screen (with generous margin)
         if (objScreenX + tileSize > -200 && objScreenX < 1920 + 200 && 
             objScreenY + tileSize > -200 && objScreenY < 1080 + 200) {
             object->render(renderer->getSDLRenderer(), cameraX, cameraY, tileSize);
@@ -945,7 +911,7 @@ int World::generateNoiseBasedTileType(int x, int y) {
     }
 }
 
-float World::generateNoise(float x, float y) {
+float World::generateNoise(float x, float y) const {
     // Simple Perlin-like noise implementation using sine waves
     float noise = 0.0f;
     float amplitude = 1.0f;
@@ -1282,5 +1248,191 @@ World::TileColor World::getTileColor(int tileId) const {
             return TileColor(0, 191, 255, 255); // Deep sky blue
         default:
             return TileColor(34, 139, 34, 255); // Default to grass
+    }
+}
+
+// Chunk management functions
+std::string World::getChunkKey(int chunkX, int chunkY) const {
+    return std::to_string(chunkX) + "," + std::to_string(chunkY);
+}
+
+std::pair<int, int> World::worldToChunkCoords(int worldX, int worldY) const {
+    const int s = tileGenConfig.chunkSize;
+    auto floorDiv = [s](int v) -> int {
+        // Integer floor division that works for negatives
+        return (v >= 0) ? (v / s) : ((v + 1) / s - 1);
+    };
+    return {floorDiv(worldX), floorDiv(worldY)};
+}
+
+std::pair<int, int> World::chunkToWorldCoords(int chunkX, int chunkY) const {
+    return {chunkX * tileGenConfig.chunkSize, chunkY * tileGenConfig.chunkSize};
+}
+
+Chunk* World::getChunk(int chunkX, int chunkY) {
+    std::string key = getChunkKey(chunkX, chunkY);
+    auto it = chunks.find(key);
+    if (it != chunks.end()) {
+        return it->second.get();
+    }
+    return nullptr;
+}
+
+void World::generateChunk(int chunkX, int chunkY) {
+    std::string key = getChunkKey(chunkX, chunkY);
+    
+    // Check if chunk already exists
+    if (chunks.find(key) != chunks.end()) {
+        return;
+    }
+    
+    // Create new chunk
+    auto chunk = std::make_unique<Chunk>(chunkX, chunkY, tileGenConfig.chunkSize);
+    generateChunkTiles(chunk.get());
+    chunk->isGenerated = true;
+    
+    // Store chunk
+    chunks[key] = std::move(chunk);
+    
+    std::cout << "Generated chunk (" << chunkX << ", " << chunkY << ")" << std::endl;
+}
+
+void World::generateChunkTiles(Chunk* chunk) {
+    if (!chunk) return;
+    
+    int chunkSize = tileGenConfig.chunkSize;
+    int worldStartX = chunk->chunkX * chunkSize;
+    int worldStartY = chunk->chunkY * chunkSize;
+    
+    for (int y = 0; y < chunkSize; y++) {
+        for (int x = 0; x < chunkSize; x++) {
+            int worldX = worldStartX + x;
+            int worldY = worldStartY + y;
+            
+            // If outside finite arrays, synthesize a default tile (grass)
+            if (worldX < 0 || worldY < 0 || worldX >= width || worldY >= height) {
+                chunk->tiles[y][x] = Tile(TILE_GRASS, true, true);
+                continue;
+            }
+            
+            // Generate tile based on biome and noise
+            int tileType;
+            if (tileGenConfig.enableBiomes) {
+                int biomeType = getBiomeType(worldX, worldY);
+                tileType = generateBiomeBasedTile(worldX, worldY, biomeType);
+            } else {
+                tileType = generateWeightedTileType(worldX, worldY);
+            }
+            
+            // Set tile properties
+            bool walkable = true;
+            bool transparent = true;
+            
+            switch (tileType) {
+                case TILE_GRASS:
+                    walkable = true;
+                    transparent = true;
+                    break;
+                case TILE_STONE:
+                    walkable = true;
+                    transparent = true;
+                    break;
+                case TILE_STONE_GRASS:
+                case TILE_STONE_GRASS_2:
+                case TILE_STONE_GRASS_3:
+                case TILE_STONE_GRASS_4:
+                case TILE_STONE_GRASS_5:
+                case TILE_STONE_GRASS_6:
+                case TILE_STONE_GRASS_7:
+                case TILE_STONE_GRASS_8:
+                case TILE_STONE_GRASS_9:
+                case TILE_STONE_GRASS_10:
+                case TILE_STONE_GRASS_11:
+                case TILE_STONE_GRASS_12:
+                case TILE_STONE_GRASS_13:
+                case TILE_STONE_GRASS_14:
+                case TILE_STONE_GRASS_15:
+                case TILE_STONE_GRASS_16:
+                case TILE_STONE_GRASS_17:
+                case TILE_STONE_GRASS_18:
+                case TILE_STONE_GRASS_19:
+                    walkable = true;
+                    transparent = true;
+                    break;
+                case TILE_WATER:
+                    walkable = false;
+                    transparent = true;
+                    break;
+                default:
+                    walkable = true;
+                    transparent = true;
+                    break;
+            }
+            
+            chunk->tiles[y][x] = Tile(tileType, walkable, transparent);
+        }
+    }
+}
+
+void World::updateVisibleChunks(float playerX, float playerY) {
+    // Convert player position to chunk coordinates
+    auto [playerChunkX, playerChunkY] = worldToChunkCoords(static_cast<int>(playerX / tileSize), static_cast<int>(playerY / tileSize));
+    
+    // Clear previous visible chunks
+    visibleChunks.clear();
+    
+    // Generate and mark chunks within render distance as visible (smooth roaming)
+    int renderDistance = tileGenConfig.renderDistance;
+    for (int cy = playerChunkY - renderDistance; cy <= playerChunkY + renderDistance; cy++) {
+        for (int cx = playerChunkX - renderDistance; cx <= playerChunkX + renderDistance; cx++) {
+            generateChunk(cx, cy);
+            Chunk* c = getChunk(cx, cy);
+            if (c) {
+                c->isVisible = true;
+                visibleChunks.push_back(c);
+            }
+        }
+    }
+    
+    // Hide chunks outside render distance
+    for (auto& [key, chunk] : chunks) {
+        int dx = std::abs(chunk->chunkX - playerChunkX);
+        int dy = std::abs(chunk->chunkY - playerChunkY);
+        if (dx > renderDistance || dy > renderDistance) {
+            chunk->isVisible = false;
+        }
+    }
+}
+
+// Biome system
+int World::getBiomeType(int x, int y) const {
+    // Use noise to determine biome type
+    float noise = generateNoise(x * tileGenConfig.biomeScale, y * tileGenConfig.biomeScale);
+    
+    if (noise < 0.3f) return 0;      // Plains (grass dominant)
+    else if (noise < 0.6f) return 1; // Hills (stone-grass mix)
+    else return 2;                    // Mountains (stone dominant)
+}
+
+int World::generateBiomeBasedTile(int x, int y, int biomeType) const {
+    // Generate noise for this specific position
+    float noise = generateNoise(x * tileGenConfig.noiseScale, y * tileGenConfig.noiseScale);
+    
+    switch (biomeType) {
+        case 0: // Plains - mostly grass with some stone-grass
+            if (noise < 0.8f) return TILE_GRASS;
+            else return TILE_STONE_GRASS + (static_cast<int>(noise * 19) % 19);
+            
+        case 1: // Hills - mix of grass and stone-grass
+            if (noise < 0.4f) return TILE_GRASS;
+            else if (noise < 0.8f) return TILE_STONE_GRASS + (static_cast<int>(noise * 19) % 19);
+            else return TILE_STONE;
+            
+        case 2: // Mountains - mostly stone with some stone-grass
+            if (noise < 0.3f) return TILE_STONE;
+            else return TILE_STONE_GRASS + (static_cast<int>(noise * 19) % 19);
+            
+        default:
+            return TILE_GRASS;
     }
 }

@@ -133,11 +133,7 @@ void Player::move(float deltaTime) {
     x += moveX * moveSpeed * deltaTime;
     y += moveY * moveSpeed * deltaTime;
     
-    // Keep player in bounds (temporary - will be replaced with collision detection)
-    if (x < 0) x = 0;
-    if (y < 0) y = 0;
-    if (x > Game::WINDOW_WIDTH - width) x = static_cast<float>(Game::WINDOW_WIDTH - width);
-    if (y > Game::WINDOW_HEIGHT - height) y = static_cast<float>(Game::WINDOW_HEIGHT - height);
+    // Unlimited world roaming: do not clamp to window or finite world size
 }
 
 void Player::performMeleeAttack() {

@@ -59,9 +59,10 @@ void Game::initializeSystems() {
     // Initialize objects in the world
     initializeObjects();
     
-    // Set initial visibility around player starting position
+    // Set initial visibility and generate initial visible chunks around player starting position
     if (world && player) {
         world->updateVisibility(player->getX(), player->getY());
+        world->updateVisibleChunks(player->getX(), player->getY());
     }
     
     isRunning = true;
@@ -114,8 +115,9 @@ void Game::update(float deltaTime) {
     if (world) {
         world->update(deltaTime);
         
-        // Update visibility based on player position
+        // Update chunks and visibility based on player position
         if (player) {
+            world->updateVisibleChunks(player->getX(), player->getY());
             world->updateVisibility(player->getX(), player->getY());
         }
     }

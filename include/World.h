@@ -5,6 +5,7 @@
 #include <string>
 #include <random>
 #include <SDL2/SDL.h>
+#include <unordered_map> // Added for unordered_map
 
 // Forward declarations
 class Renderer;
@@ -49,38 +50,42 @@ struct Tile {
 
 // Tile generation configuration
 struct TileGenerationConfig {
-    // World dimensions
-    int worldWidth = 100;
-    int worldHeight = 100;
+    // World dimensions (in tiles)
+    int worldWidth = 1000;  // Increased from 50 to 1000 (32,000 pixels)
+    int worldHeight = 1000; // Increased from 50 to 1000 (32,000 pixels)
     
-    // Tile weights (percentages that sum to 100)
-    float stoneWeight = 40.0f;         // stone_tile.png - highest priority
-    float grassWeight = 20.0f;         // grass_tile.png - lower priority
-    float stoneGrassWeight = 2.0f;     // stone_grass_tile.png
-    float stoneGrass2Weight = 2.0f;    // stone_grass_tile_2.png
-    float stoneGrass3Weight = 2.0f;    // stone_grass_tile_3.png
-    float stoneGrass4Weight = 2.0f;    // stone_grass_tile_4.png
-    float stoneGrass5Weight = 2.0f;    // stone_grass_tile_5.png
-    float stoneGrass6Weight = 2.0f;    // stone_grass_tile_6.png
-    float stoneGrass7Weight = 2.0f;    // stone_grass_tile_7.png
-    float stoneGrass8Weight = 2.0f;    // stone_grass_tile_8.png
-    float stoneGrass9Weight = 2.0f;    // stone_grass_tile_9.png
-    float stoneGrass10Weight = 2.0f;   // stone_grass_tile_10.png
-    float stoneGrass11Weight = 2.0f;   // stone_grass_tile_11.png
-    float stoneGrass12Weight = 2.0f;   // stone_grass_tile_12.png
-    float stoneGrass13Weight = 2.0f;   // stone_grass_tile_13.png
-    float stoneGrass14Weight = 2.0f;   // stone_grass_tile_14.png
-    float stoneGrass15Weight = 2.0f;   // stone_grass_tile_15.png
-    float stoneGrass16Weight = 2.0f;   // stone_grass_tile_16.png
-    float stoneGrass17Weight = 2.0f;   // stone_grass_tile_17.png
-    float stoneGrass18Weight = 2.0f;   // stone_grass_tile_18.png
-    float stoneGrass19Weight = 2.0f;   // stone_grass_tile_19.png
+    // Chunk system for infinite world
+    int chunkSize = 64;     // 64x64 tiles per chunk
+    int renderDistance = 3; // Render chunks within 3 chunks of player
     
-    // Generation options
+    // Tile distribution weights
+    float stoneWeight = 40.0f;
+    float grassWeight = 20.0f;
+    float stoneGrassWeight = 2.0f;
+    float stoneGrass2Weight = 2.0f;
+    float stoneGrass3Weight = 2.0f;
+    float stoneGrass4Weight = 2.0f;
+    float stoneGrass5Weight = 2.0f;
+    float stoneGrass6Weight = 2.0f;
+    float stoneGrass7Weight = 2.0f;
+    float stoneGrass8Weight = 2.0f;
+    float stoneGrass9Weight = 2.0f;
+    float stoneGrass10Weight = 2.0f;
+    float stoneGrass11Weight = 2.0f;
+    float stoneGrass12Weight = 2.0f;
+    float stoneGrass13Weight = 2.0f;
+    float stoneGrass14Weight = 2.0f;
+    float stoneGrass15Weight = 2.0f;
+    float stoneGrass16Weight = 2.0f;
+    float stoneGrass17Weight = 2.0f;
+    float stoneGrass18Weight = 2.0f;
+    float stoneGrass19Weight = 2.0f;
+    
+    // Noise generation
     bool useFixedSeed = false;
-    unsigned int fixedSeed = 12345;
-    bool useNoiseDistribution = false;
-    float noiseScale = 0.1f;
+    unsigned int fixedSeed = 42;
+    bool useNoiseDistribution = true;
+    float noiseScale = 0.05f;  // Reduced for larger world
     float noiseThreshold = 0.5f;
     
     // Clustering options
@@ -88,7 +93,27 @@ struct TileGenerationConfig {
     float stoneClusterChance = 0.3f;
     int stoneClusterRadius = 3;
     
+    // Biome system
+    bool enableBiomes = true;
+    float biomeScale = 0.02f;  // Larger scale for biomes
+    
     TileGenerationConfig() = default;
+};
+
+// Chunk structure for efficient world management
+struct Chunk {
+    int chunkX, chunkY;
+    std::vector<std::vector<Tile>> tiles;
+    std::vector<std::vector<bool>> visibleTiles;
+    std::vector<std::vector<bool>> exploredTiles;
+    bool isGenerated;
+    bool isVisible;
+    
+    Chunk(int x, int y, int size) : chunkX(x), chunkY(y), isGenerated(false), isVisible(false) {
+        tiles.resize(size, std::vector<Tile>(size));
+        visibleTiles.resize(size, std::vector<bool>(size, false));
+        exploredTiles.resize(size, std::vector<bool>(size, false));
+    }
 };
 
 class World {
@@ -135,11 +160,22 @@ public:
     void enableFogOfWar(bool enable) { fogOfWarEnabled = enable; }
     bool isFogOfWarEnabled() const { return fogOfWarEnabled; }
 
+    // Chunk management
+    void generateChunk(int chunkX, int chunkY);
+    void updateVisibleChunks(float playerX, float playerY);
+    Chunk* getChunk(int chunkX, int chunkY);
+    std::pair<int, int> worldToChunkCoords(int worldX, int worldY) const;
+    std::pair<int, int> chunkToWorldCoords(int chunkX, int chunkY) const;
+
 private:
     // Tilemap data
     std::vector<std::vector<Tile>> tiles;
     int width, height;
     int tileSize;
+    
+    // Chunk system
+    std::unordered_map<std::string, std::unique_ptr<Chunk>> chunks;
+    std::vector<Chunk*> visibleChunks;
     
     // Objects
     std::vector<std::unique_ptr<Object>> objects;
@@ -181,10 +217,18 @@ private:
     void initializeRNG();
     int generateWeightedTileType(int x, int y);
     int generateNoiseBasedTileType(int x, int y);
-    float generateNoise(float x, float y);
+    float generateNoise(float x, float y) const;
     void applyStoneClustering();
     void validateTileWeights();
     void printTileDistribution();
+    
+    // Chunk generation
+    void generateChunkTiles(Chunk* chunk);
+    std::string getChunkKey(int chunkX, int chunkY) const;
+    
+    // Biome system
+    int getBiomeType(int x, int y) const;
+    int generateBiomeBasedTile(int x, int y, int biomeType) const;
     
     // Visibility calculation
     void calculateVisibility(float playerX, float playerY);
