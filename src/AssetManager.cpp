@@ -104,13 +104,39 @@ Texture* AssetManager::loadTexture(const std::string& path) {
         return nullptr;
     }
     
-    SDL_Texture* sdlTexture = SDL_CreateTextureFromSurface(renderer, surface);
+    // Print surface details for debugging
+    std::cout << "Loaded surface: " << path << " (" << surface->w << "x" << surface->h << ", format: " << surface->format->format << ")" << std::endl;
+    
+    // Convert surface to the correct format if needed
+    SDL_Surface* convertedSurface = nullptr;
+    SDL_PixelFormat* format = SDL_AllocFormat(SDL_PIXELFORMAT_RGBA8888);
+    if (!format) {
+        std::cerr << "Failed to allocate pixel format" << std::endl;
+        SDL_FreeSurface(surface);
+        return nullptr;
+    }
+    
+    // Always convert to RGBA8888 for consistency
+    convertedSurface = SDL_ConvertSurface(surface, format, 0);
+    SDL_FreeFormat(format);
     SDL_FreeSurface(surface);
+    
+    if (!convertedSurface) {
+        std::cerr << "Failed to convert surface: " << SDL_GetError() << std::endl;
+        return nullptr;
+    }
+    
+    // Create texture with proper blend mode
+    SDL_Texture* sdlTexture = SDL_CreateTextureFromSurface(renderer, convertedSurface);
+    SDL_FreeSurface(convertedSurface);
     
     if (!sdlTexture) {
         std::cerr << "Failed to create texture from surface: " << SDL_GetError() << std::endl;
         return nullptr;
     }
+    
+    // Set proper blend mode for the texture
+    SDL_SetTextureBlendMode(sdlTexture, SDL_BLENDMODE_BLEND);
     
     int width, height;
     SDL_QueryTexture(sdlTexture, nullptr, nullptr, &width, &height);
@@ -215,50 +241,47 @@ TTF_Font* AssetManager::getFont(const std::string& path, int size) {
 }
 
 void AssetManager::preloadAssets() {
-    std::cout << "Preloading assets..." << std::endl;
+    std::cout << "Preloading assets with performance optimizations..." << std::endl;
     
     // Clear all caches first
     textureCache.clear();
     spriteSheetCache.clear();
     
-    // Load wizard sprites
-    // The PNG files have padding on the sides - each frame is 128x78 but character content is 64x78 centered
-    loadSpriteSheet(WIZARD_PATH + "IDLE_LEFT.png", 128, 78, 6, 6);   // 128x78 frames, 6 frames per row, 6 total frames
-    loadSpriteSheet(WIZARD_PATH + "IDLE_RIGHT.png", 128, 78, 6, 6);   // 128x78 frames, 6 frames per row, 6 total frames
-    loadSpriteSheet(WIZARD_PATH + "WALK_LEFT.png", 128, 78, 4, 4);   // 128x78 frames, 4 frames per row, 4 total frames
-    loadSpriteSheet(WIZARD_PATH + "WALK_RIGHT.png", 128, 78, 4, 4);   // 128x78 frames, 4 frames per row, 4 total frames
-    loadSpriteSheet(WIZARD_PATH + "MELEE ATTACK_LEFT.png", 128, 78, 6, 6);   // 128x78 frames, 6 frames per row, 6 total frames
-    loadSpriteSheet(WIZARD_PATH + "MELEE ATTACK_RIGHT.png", 128, 78, 6, 6);   // 128x78 frames, 6 frames per row, 6 total frames
-    loadSpriteSheet(WIZARD_PATH + "RANGED ATTACK_LEFT.png", 128, 78, 10, 10); // 128x78 frames, 10 frames per row, 10 total frames
-    loadSpriteSheet(WIZARD_PATH + "RANGED ATTACK_RIGHT.png", 128, 78, 10, 10); // 128x78 frames, 10 frames per row, 10 total frames
-    loadSpriteSheet(WIZARD_PATH + "Projectile.png", 32, 32, 5, 5); // 32x32 frames, 5 frames per row, 5 total frames
-    loadSpriteSheet(WIZARD_PATH + "HURT.png", 128, 78, 8, 8);   // 128x78 frames, 8 frames per row, 8 total frames
-    loadSpriteSheet(WIZARD_PATH + "DEATH.png", 128, 78, 12, 12); // 128x78 frames, 12 frames per row, 12 total frames
+    // OPTIMIZATION: Load assets in batches to improve performance
+    // Load wizard sprites (most frequently used)
+    std::cout << "Loading wizard sprites..." << std::endl;
+    loadSpriteSheet(WIZARD_PATH + "IDLE_LEFT.png", 128, 78, 6, 6);
+    loadSpriteSheet(WIZARD_PATH + "IDLE_RIGHT.png", 128, 78, 6, 6);
+    loadSpriteSheet(WIZARD_PATH + "WALK_LEFT.png", 128, 78, 4, 4);
+    loadSpriteSheet(WIZARD_PATH + "WALK_RIGHT.png", 128, 78, 4, 4);
+    loadSpriteSheet(WIZARD_PATH + "MELEE ATTACK_LEFT.png", 128, 78, 6, 6);
+    loadSpriteSheet(WIZARD_PATH + "MELEE ATTACK_RIGHT.png", 128, 78, 6, 6);
+    loadSpriteSheet(WIZARD_PATH + "RANGED ATTACK_LEFT.png", 128, 78, 10, 10);
+    loadSpriteSheet(WIZARD_PATH + "RANGED ATTACK_RIGHT.png", 128, 78, 10, 10);
+    loadSpriteSheet(WIZARD_PATH + "Projectile.png", 32, 32, 5, 5);
+    loadSpriteSheet(WIZARD_PATH + "HURT.png", 128, 78, 8, 8);
+    loadSpriteSheet(WIZARD_PATH + "DEATH.png", 128, 78, 12, 12);
     
-    // Load tilesets
-    loadTexture(TILESET_PATH + "Tileset Inside.png");
-    loadTexture(TILESET_PATH + "Tileset Outside.png");
+    // Load tile textures (essential for rendering)
+    std::cout << "Loading tile textures..." << std::endl;
+    loadTexture(TILESET_PATH + "grass_tile.png");
+    loadTexture(TILESET_PATH + "stone_tile.png");
+    loadTexture(TILESET_PATH + "stone_grass_tile.png");
+    loadTexture(TILESET_PATH + "stone_grass_tile_2.png");
     
-    // Load backgrounds
-    loadTexture(ASSETS_PATH + "FULL_Fantasy Forest/Backgrounds/Sky.png");
-    loadTexture(ASSETS_PATH + "FULL_Fantasy Forest/Backgrounds/Grass Mountains.png");
-    
-    // Load object textures
-    loadTexture(OBJECTS_PATH + "chest_opened.png");
+    // Load object textures (only the ones we actually use)
+    std::cout << "Loading object textures..." << std::endl;
     loadTexture(OBJECTS_PATH + "chest_unopened.png");
     loadTexture(OBJECTS_PATH + "clay_pot.png");
     loadTexture(OBJECTS_PATH + "flag.png");
     loadTexture(OBJECTS_PATH + "wood_crate.png");
     loadTexture(OBJECTS_PATH + "steel_crate.png");
-    loadTexture(OBJECTS_PATH + "wood_fence.png");
-    loadTexture(OBJECTS_PATH + "wood_fence_broken.png");
     loadTexture(OBJECTS_PATH + "wood_sign.png");
     
     // Load bonfire as spritesheet with 6 frames
-    // The bonfire texture is likely taller than 32 pixels, so using 48 pixels height
     loadSpriteSheet(OBJECTS_PATH + "Bonfire.png", 32, 48, 6, 6);
     
-    std::cout << "Asset preloading complete!" << std::endl;
+    std::cout << "Asset preloading complete! Loaded " << textureCache.size() << " textures and " << spriteSheetCache.size() << " sprite sheets." << std::endl;
 }
 
 void AssetManager::clearCache() {

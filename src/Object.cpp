@@ -90,32 +90,66 @@ void Object::render(SDL_Renderer* renderer, int cameraX, int cameraY, int tileSi
             srcRect.w = frameWidth;
         }
         sdlTexture = texture->getTexture();
-    } else {
-        return; // No texture or spritesheet available
     }
     
-    // Destination rectangle - use actual frame dimensions for spritesheets
-    SDL_Rect dstRect;
-    if (spriteSheet) {
-        // Use actual frame dimensions for spritesheets
-        dstRect = {
-            screenX,
-            screenY,
-            spriteSheet->getFrameWidth(),
-            spriteSheet->getFrameHeight()
-        };
+    // If we have a valid texture, render it
+    if (sdlTexture) {
+        // Destination rectangle - use actual frame dimensions for spritesheets
+        SDL_Rect dstRect;
+        if (spriteSheet) {
+            // Use actual frame dimensions for spritesheets
+            dstRect = {
+                screenX,
+                screenY,
+                spriteSheet->getFrameWidth(),
+                spriteSheet->getFrameHeight()
+            };
+        } else {
+            // Use tile size for regular textures
+            dstRect = {
+                screenX,
+                screenY,
+                tileSize,
+                tileSize
+            };
+        }
+        
+        // Render the texture
+        SDL_RenderCopy(renderer, sdlTexture, &srcRect, &dstRect);
     } else {
-        // Use tile size for regular textures
-        dstRect = {
-            screenX,
-            screenY,
-            tileSize,
-            tileSize
-        };
+        // Fallback: render a colored rectangle based on object type
+        SDL_Color color;
+        switch (type) {
+            case ObjectType::CHEST_UNOPENED:
+            case ObjectType::CHEST_OPENED:
+                color = {139, 69, 19, 255}; // Brown
+                break;
+            case ObjectType::CLAY_POT:
+                color = {160, 82, 45, 255}; // Saddle brown
+                break;
+            case ObjectType::FLAG:
+                color = {255, 0, 0, 255}; // Red
+                break;
+            case ObjectType::WOOD_CRATE:
+            case ObjectType::STEEL_CRATE:
+                color = {101, 67, 33, 255}; // Dark brown
+                break;
+            case ObjectType::WOOD_SIGN:
+                color = {139, 69, 19, 255}; // Brown
+                break;
+            case ObjectType::BONFIRE:
+                color = {255, 69, 0, 255}; // Orange red
+                break;
+            default:
+                color = {128, 128, 128, 255}; // Gray
+                break;
+        }
+        
+        // Render colored rectangle as fallback
+        SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
+        SDL_Rect fallbackRect = {screenX, screenY, tileSize, tileSize};
+        SDL_RenderFillRect(renderer, &fallbackRect);
     }
-    
-    // Render the texture
-    SDL_RenderCopy(renderer, sdlTexture, &srcRect, &dstRect);
 }
 
 void Object::interact() {

@@ -5,6 +5,7 @@
 #include <vector>
 #include <unordered_map>
 #include <string>
+#include <deque>
 
 // Forward declarations
 class Renderer;
@@ -43,6 +44,11 @@ public:
     static constexpr int TARGET_FPS = 60;
     static constexpr float TARGET_FRAME_TIME = 1.0f / TARGET_FPS;
 
+    // Performance monitoring
+    float getCurrentFPS() const { return currentFPS; }
+    float getAverageFPS() const { return averageFPS; }
+    Uint32 getFrameTime() const { return frameTime; }
+
 private:
     // SDL objects
     SDL_Window* window;
@@ -61,12 +67,18 @@ private:
     bool isRunning;
     bool isPaused;
     
-    // Timing
+    // Timing and performance monitoring
     Uint32 lastFrameTime;
     float accumulator;
+    Uint32 frameTime;
+    float currentFPS;
+    float averageFPS;
+    std::deque<float> fpsHistory;
+    static constexpr size_t FPS_HISTORY_SIZE = 60; // Store 1 second of FPS data at 60 FPS
     
     // Initialize systems
     void initializeSystems();
     void initializeObjects();
     void cleanup();
+    void updatePerformanceMetrics();
 };

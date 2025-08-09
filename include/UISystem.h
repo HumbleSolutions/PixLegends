@@ -31,6 +31,7 @@ public:
     void renderTextCentered(const std::string& text, int x, int y, SDL_Color color = {255, 255, 255, 255});
     void renderInteractionPrompt(const std::string& prompt, int x, int y);
     void renderLootNotification(const std::string& lootText, int x, int y);
+    void renderFPSCounter(float currentFPS, float averageFPS, Uint32 frameTime);
     
 private:
     SDL_Renderer* renderer;

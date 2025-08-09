@@ -272,3 +272,27 @@ std::string UISystem::formatStatText(const std::string& label, int value, int ma
         return label + ": " + std::to_string(value);
     }
 }
+
+void UISystem::renderFPSCounter(float currentFPS, float averageFPS, Uint32 frameTime) {
+    // Position the FPS counter in the top-right corner
+    int x = 1200; // Right side of screen
+    int y = 20;   // Top of screen
+    
+    // Create FPS text
+    std::string fpsText = "FPS: " + std::to_string(static_cast<int>(currentFPS)) + 
+                          " | Avg: " + std::to_string(static_cast<int>(averageFPS)) + 
+                          " | Frame: " + std::to_string(frameTime) + "ms";
+    
+    // Choose color based on performance
+    SDL_Color color;
+    if (currentFPS >= 55) {
+        color = {0, 255, 0, 255}; // Green for good performance
+    } else if (currentFPS >= 30) {
+        color = {255, 255, 0, 255}; // Yellow for acceptable performance
+    } else {
+        color = {255, 0, 0, 255}; // Red for poor performance
+    }
+    
+    // Render the FPS counter
+    renderText(fpsText, x, y, color);
+}
