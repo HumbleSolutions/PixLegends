@@ -18,7 +18,24 @@ enum TileType {
     TILE_STONE = 1,
     TILE_STONE_GRASS = 2,
     TILE_STONE_GRASS_2 = 3,
-    TILE_WATER = 4
+    TILE_STONE_GRASS_3 = 4,
+    TILE_STONE_GRASS_4 = 5,
+    TILE_STONE_GRASS_5 = 6,
+    TILE_STONE_GRASS_6 = 7,
+    TILE_STONE_GRASS_7 = 8,
+    TILE_STONE_GRASS_8 = 9,
+    TILE_STONE_GRASS_9 = 10,
+    TILE_STONE_GRASS_10 = 11,
+    TILE_STONE_GRASS_11 = 12,
+    TILE_STONE_GRASS_12 = 13,
+    TILE_STONE_GRASS_13 = 14,
+    TILE_STONE_GRASS_14 = 15,
+    TILE_STONE_GRASS_15 = 16,
+    TILE_STONE_GRASS_16 = 17,
+    TILE_STONE_GRASS_17 = 18,
+    TILE_STONE_GRASS_18 = 19,
+    TILE_STONE_GRASS_19 = 20,
+    TILE_WATER = 21
 };
 
 struct Tile {
@@ -37,10 +54,27 @@ struct TileGenerationConfig {
     int worldHeight = 100;
     
     // Tile weights (percentages that sum to 100)
-    float grassWeight = 80.0f;        // grass_tile.png - common
-    float stoneWeight = 5.0f;         // stone_tile.png - rare
-    float stoneGrassWeight = 7.5f;    // stone_grass_tile.png - filler
-    float stoneGrass2Weight = 7.5f;   // stone_grass_tile_2.png - filler
+    float stoneWeight = 40.0f;         // stone_tile.png - highest priority
+    float grassWeight = 20.0f;         // grass_tile.png - lower priority
+    float stoneGrassWeight = 2.0f;     // stone_grass_tile.png
+    float stoneGrass2Weight = 2.0f;    // stone_grass_tile_2.png
+    float stoneGrass3Weight = 2.0f;    // stone_grass_tile_3.png
+    float stoneGrass4Weight = 2.0f;    // stone_grass_tile_4.png
+    float stoneGrass5Weight = 2.0f;    // stone_grass_tile_5.png
+    float stoneGrass6Weight = 2.0f;    // stone_grass_tile_6.png
+    float stoneGrass7Weight = 2.0f;    // stone_grass_tile_7.png
+    float stoneGrass8Weight = 2.0f;    // stone_grass_tile_8.png
+    float stoneGrass9Weight = 2.0f;    // stone_grass_tile_9.png
+    float stoneGrass10Weight = 2.0f;   // stone_grass_tile_10.png
+    float stoneGrass11Weight = 2.0f;   // stone_grass_tile_11.png
+    float stoneGrass12Weight = 2.0f;   // stone_grass_tile_12.png
+    float stoneGrass13Weight = 2.0f;   // stone_grass_tile_13.png
+    float stoneGrass14Weight = 2.0f;   // stone_grass_tile_14.png
+    float stoneGrass15Weight = 2.0f;   // stone_grass_tile_15.png
+    float stoneGrass16Weight = 2.0f;   // stone_grass_tile_16.png
+    float stoneGrass17Weight = 2.0f;   // stone_grass_tile_17.png
+    float stoneGrass18Weight = 2.0f;   // stone_grass_tile_18.png
+    float stoneGrass19Weight = 2.0f;   // stone_grass_tile_19.png
     
     // Generation options
     bool useFixedSeed = false;
