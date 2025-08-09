@@ -109,6 +109,32 @@ void UISystem::renderExperienceBar(int x, int y, int width, int height, int curr
     renderTextCentered(text, x + width/2, y + height/2, textColor);
 }
 
+void UISystem::renderBossHealthBar(const std::string& name, int current, int max, int screenW) {
+    if (max <= 0) return;
+    int barWidth = std::min(640, std::max(240, screenW - 300));
+    int barHeight = 18;
+    int x = screenW / 2 - barWidth / 2;
+    int y = 32;
+    float progress = static_cast<float>(std::max(0, current)) / static_cast<float>(max);
+
+    // Background
+    SDL_Rect bg{ x, y, barWidth, barHeight };
+    SDL_SetRenderDrawColor(renderer, 30, 30, 30, 220);
+    SDL_RenderFillRect(renderer, &bg);
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    SDL_RenderDrawRect(renderer, &bg);
+
+    // Foreground (boss color)
+    SDL_Color bossRed{200, 20, 20, 255};
+    SDL_Rect fg{ x + 2, y + 2, static_cast<int>((barWidth - 4) * progress), barHeight - 4 };
+    SDL_SetRenderDrawColor(renderer, bossRed.r, bossRed.g, bossRed.b, bossRed.a);
+    SDL_RenderFillRect(renderer, &fg);
+
+    // Text
+    std::string text = name + "  " + std::to_string(current) + "/" + std::to_string(max);
+    renderTextCentered(text, x + barWidth / 2, y + barHeight / 2, SDL_Color{255,255,255,255});
+}
+
 void UISystem::renderGoldDisplay(int x, int y, int gold) {
     // Create a gold-colored background
     SDL_Color goldBgColor = {255, 215, 0, 200}; // Semi-transparent gold
@@ -373,4 +399,52 @@ void UISystem::renderFPSCounter(float currentFPS, float averageFPS, Uint32 frame
     
     // Render the FPS counter
     renderText(fpsText, x, y, color);
+}
+
+void UISystem::renderDeathPopup(bool& outClickedRespawn, float fadeAlpha01) {
+    outClickedRespawn = false;
+    if (!defaultFont) return;
+    int outW = 0, outH = 0;
+    if (renderer) {
+        SDL_GetRendererOutputSize(renderer, &outW, &outH);
+    } else {
+        outW = 1280; outH = 720;
+    }
+    // Darken background
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+    Uint8 overlayAlpha = static_cast<Uint8>(std::max(0.0f, std::min(1.0f, fadeAlpha01)) * 200.0f);
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, overlayAlpha);
+    SDL_Rect dim = {0,0,outW,outH};
+    SDL_RenderFillRect(renderer, &dim);
+
+    // Popup panel
+    int panelW = 420, panelH = 220;
+    SDL_Rect panel = { outW/2 - panelW/2, outH/2 - panelH/2, panelW, panelH };
+    Uint8 panelAlpha = static_cast<Uint8>(std::max(0.0f, std::min(1.0f, fadeAlpha01)) * 240.0f);
+    SDL_SetRenderDrawColor(renderer, 30, 30, 30, panelAlpha);
+    SDL_RenderFillRect(renderer, &panel);
+    SDL_SetRenderDrawColor(renderer, 200, 200, 200, 255);
+    SDL_RenderDrawRect(renderer, &panel);
+
+    // Title
+    renderTextCentered("You died", outW/2, panel.y + 40, SDL_Color{255, 80, 80, static_cast<Uint8>(255 * fadeAlpha01)});
+    renderTextCentered("Click to respawn", outW/2, panel.y + 80, SDL_Color{230, 230, 230, static_cast<Uint8>(255 * fadeAlpha01)});
+
+    // Button
+    int btnW = 180, btnH = 44;
+    SDL_Rect btn = { outW/2 - btnW/2, panel.y + panelH - 70, btnW, btnH };
+    // Hover effect via mouse pos - InputManager not injected here, so render static button
+    SDL_SetRenderDrawColor(renderer, 70, 130, 180, static_cast<Uint8>(255 * fadeAlpha01));
+    SDL_RenderFillRect(renderer, &btn);
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    SDL_RenderDrawRect(renderer, &btn);
+    renderTextCentered("Respawn", outW/2, btn.y + btn.h/2, SDL_Color{255,255,255, static_cast<Uint8>(255 * fadeAlpha01)});
+
+    // Click detection: poll current mouse state
+    int mx, my;
+    Uint32 mouse = SDL_GetMouseState(&mx, &my);
+    bool leftDown = (mouse & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
+    if (fadeAlpha01 >= 1.0f && leftDown && mx >= btn.x && mx <= btn.x + btn.w && my >= btn.y && my <= btn.y + btn.h) {
+        outClickedRespawn = true;
+    }
 }

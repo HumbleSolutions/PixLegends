@@ -58,6 +58,14 @@ void Game::initializeSystems() {
     
     // Create player after other systems are initialized
     player = std::make_unique<Player>(this);
+    // Relocate spawn: e.g., near tile (15, 10)
+    if (world && player) {
+        int ts = world->getTileSize();
+        float spawnX = 15.0f * ts;
+        float spawnY = 10.0f * ts;
+        player->setSpawnPoint(spawnX, spawnY);
+        player->respawn(spawnX, spawnY);
+    }
     
     // Initialize objects in the world
     initializeObjects();
@@ -69,9 +77,9 @@ void Game::initializeSystems() {
     // Spawn first enemy (Demon Boss) near player start
     if (world && assetManager) {
         // Player starts roughly around tile (20,11) => pixels ~ (20*32, 11*32)
-        float spawnX = 26.0f * world->getTileSize();
-        float spawnY = 11.0f * world->getTileSize();
-        world->addEnemy(std::make_unique<Enemy>(spawnX, spawnY, assetManager.get()));
+        float bossSpawnX = 26.0f * world->getTileSize();
+        float bossSpawnY = 11.0f * world->getTileSize();
+        world->addEnemy(std::make_unique<Enemy>(bossSpawnX, bossSpawnY, assetManager.get()));
     }
     
     // Set initial visibility and generate initial visible chunks around player starting position
@@ -136,8 +144,67 @@ void Game::update(float deltaTime) {
             world->updateVisibility(player->getX(), player->getY());
             // Update enemies with player tracking
             world->updateEnemies(deltaTime, player->getX(), player->getY());
+            // Handle combat interactions after updates
+            // 1) Player projectiles vs enemies
+            auto& enemies = const_cast<std::vector<std::unique_ptr<Enemy>>&>(world->getEnemies());
+            auto& playerProjectiles = player->getProjectiles();
+            for (auto& projPtr : playerProjectiles) {
+                if (!projPtr || !projPtr->isActive()) continue;
+                SDL_Rect pRect = projPtr->getCollisionRect();
+                for (auto& enemyPtr : enemies) {
+                    if (!enemyPtr || enemyPtr->isDead()) continue;
+                    SDL_Rect eRect = enemyPtr->getCollisionRect();
+                    SDL_Rect inter;
+                    if (SDL_IntersectRect(&pRect, &eRect, &inter)) {
+                        enemyPtr->takeDamage(projPtr->getDamage());
+                        projPtr->deactivate();
+                        break;
+                    }
+                }
+            }
+
+            // 1b) Player melee vs enemies (once per swing during active frames)
+            if (player->isMeleeAttacking()) {
+                SDL_Rect hitbox = player->getMeleeHitbox();
+                if (player->isMeleeHitActive()) {
+                    for (auto& enemyPtr : enemies) {
+                        if (!enemyPtr || enemyPtr->isDead()) continue;
+                        SDL_Rect eRect = enemyPtr->getCollisionRect();
+                        SDL_Rect inter;
+                        if (SDL_IntersectRect(&hitbox, &eRect, &inter)) {
+                            if (player->consumeMeleeHitIfActive()) {
+                                enemyPtr->takeDamage(player->getMeleeDamage());
+                            }
+                            // do not break: allow hitting first valid enemy; keep break to single
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // 2) Enemy contact damage to player (simple melee)
+            for (auto& enemyPtr : enemies) {
+                if (!enemyPtr || enemyPtr->isDead()) continue;
+                SDL_Rect eRect = enemyPtr->getCollisionRect();
+                SDL_Rect playerRect{static_cast<int>(player->getX()), static_cast<int>(player->getY()), player->getWidth(), player->getHeight()};
+                SDL_Rect inter;
+                if (SDL_IntersectRect(&playerRect, &eRect, &inter)) {
+                    if (enemyPtr->isAttackReady()) {
+                        player->takeDamage(enemyPtr->getContactDamage());
+                        enemyPtr->consumeAttackCooldown();
+                        if (player->isDead()) {
+                            // Reset enemies to idle spawn when player dies
+                            for (auto& e2 : enemies) {
+                                if (e2) e2->resetToSpawn();
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
+
+    // Allow respawn via UI popup if player is dead (handled in render)
     
     // Update UI
     if (uiSystem) {
@@ -194,6 +261,65 @@ void Game::render() {
         // Render FPS counter
         uiSystem->renderFPSCounter(currentFPS, averageFPS, frameTime);
         
+        // Render death popup with respawn button if dead
+        if (player && player->isDead()) {
+            // Wait for death animation to finish, then fade in popup
+            static float deathPopupFade = 0.0f;
+            if (player->isDeathAnimationFinished()) {
+                deathPopupFade = std::min(1.0f, deathPopupFade + 0.05f);
+            } else {
+                deathPopupFade = 0.0f;
+            }
+            bool clickedRespawn = false;
+            uiSystem->renderDeathPopup(clickedRespawn, deathPopupFade);
+            if (clickedRespawn) {
+                // Reset world enemies and player
+                if (world) {
+                    auto& enemies = world->getEnemies();
+                    for (auto& e : enemies) {
+                        if (e) e->resetToSpawn();
+                    }
+                }
+                player->respawn(player->getSpawnX(), player->getSpawnY());
+                deathPopupFade = 0.0f;
+            }
+        }
+
+        // Boss health bar while engaged
+        if (world && player) {
+            auto& enemies = world->getEnemies();
+            // For now: show the first enemy as Demon Boss if aggroed or in range
+            if (!enemies.empty() && enemies[0]) {
+                Enemy* boss = enemies[0].get();
+                // Consider engaged if boss is aggroed or player within attack range
+                bool engaged = boss->getIsAggroed() || boss->isWithinAttackRange(player->getX(), player->getY());
+                if (!boss->isDead() && engaged) {
+                    int outW = 0, outH = 0;
+                    SDL_GetRendererOutputSize(sdlRenderer, &outW, &outH);
+                    uiSystem->renderBossHealthBar("Demon", boss->getHealth(), boss->getMaxHealth(), (outW > 0 ? outW : WINDOW_WIDTH));
+                }
+            }
+        }
+
+        // Debug draw melee and enemy hitboxes (F3 toggle)
+        if (getDebugHitboxes() && player) {
+            SDL_SetRenderDrawBlendMode(sdlRenderer, SDL_BLENDMODE_BLEND);
+            // Player melee hitbox
+            SDL_Rect melee = player->getMeleeHitbox();
+            SDL_SetRenderDrawColor(sdlRenderer, 0, 255, 0, 160);
+            if (melee.w > 0 && melee.h > 0) SDL_RenderDrawRect(sdlRenderer, &melee);
+            // Enemy hitboxes
+            if (world) {
+                auto& enemies = world->getEnemies();
+                for (auto& e : enemies) {
+                    if (!e) continue;
+                    SDL_Rect er = e->getCollisionRect();
+                    SDL_SetRenderDrawColor(sdlRenderer, 255, 0, 0, 160);
+                    SDL_RenderDrawRect(sdlRenderer, &er);
+                }
+            }
+        }
+        
         // Render interaction prompt if player is near an interactable object
         if (player) {
             std::string interactionPrompt = player->getCurrentInteractionPrompt();
@@ -243,6 +369,8 @@ void Game::handleEvents() {
                     isPaused = !isPaused;
                 } else if (event.key.keysym.sym == SDLK_F1) {
                     demoMode = !demoMode;
+                } else if (event.key.keysym.sym == SDLK_F3) {
+                    setDebugHitboxes(!getDebugHitboxes());
                 }
                 inputManager->handleKeyDown(event.key);
                 break;

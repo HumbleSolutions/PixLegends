@@ -27,7 +27,7 @@ struct ProjectileDirection {
 
 class Projectile {
 public:
-    Projectile(float x, float y, ProjectileDirection direction, AssetManager* assetManager);
+    Projectile(float x, float y, ProjectileDirection direction, AssetManager* assetManager, int damage);
     ~Projectile() = default;
 
     // Core update and render
@@ -40,6 +40,9 @@ public:
     int getWidth() const { return width; }
     int getHeight() const { return height; }
     bool isActive() const { return active; }
+    int getDamage() const { return damage; }
+    void deactivate() { active = false; }
+    SDL_Rect getCollisionRect() const;
     
     // Animation
     void updateAnimation(float deltaTime);
@@ -63,6 +66,7 @@ private:
     bool active;
     float lifetime;
     float maxLifetime;
+    int damage;
     
     // Constants
     static constexpr float PROJECTILE_SPEED = 300.0f;

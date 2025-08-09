@@ -23,6 +23,7 @@ public:
     void renderHealthBar(int x, int y, int width, int height, int current, int max);
     void renderManaBar(int x, int y, int width, int height, int current, int max);
     void renderExperienceBar(int x, int y, int width, int height, int current, int max);
+    void renderBossHealthBar(const std::string& name, int current, int max, int screenW);
     void renderGoldDisplay(int x, int y, int gold);
     void renderPlayerStats(const Player* player);
     void renderDebugInfo(const Player* player);
@@ -34,6 +35,8 @@ public:
     void renderInteractionPrompt(const std::string& prompt, int x, int y);
     void renderLootNotification(const std::string& lootText, int x, int y);
     void renderFPSCounter(float currentFPS, float averageFPS, Uint32 frameTime);
+    // Death popup
+    void renderDeathPopup(bool& outClickedRespawn, float fadeAlpha01);
     
 private:
     SDL_Renderer* renderer;

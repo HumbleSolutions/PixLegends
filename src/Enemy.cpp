@@ -1,9 +1,10 @@
 #include "Enemy.h"
 #include "AssetManager.h"
 #include "Renderer.h"
+#include <algorithm>
 
-Enemy::Enemy(float spawnX, float spawnY, AssetManager* assetManager)
-    : x(spawnX), y(spawnY), width(128), height(128), moveSpeed(70.0f), health(200),
+Enemy::Enemy(float spawnX_, float spawnY_, AssetManager* assetManager)
+    : x(spawnX_), y(spawnY_), width(128), height(128), moveSpeed(70.0f), health(200), maxHealth(200),
       currentState(EnemyState::IDLE), currentDirection(EnemyDirection::RIGHT),
       currentSpriteSheet(nullptr), currentFrame(0), frameTimer(0.0f), frameDuration(0.12f),
       currentSpriteSheetFrameWidth(0), currentSpriteSheetFrameHeight(0),
@@ -12,7 +13,9 @@ Enemy::Enemy(float spawnX, float spawnY, AssetManager* assetManager)
       attackLeftSpriteSheet(nullptr), attackRightSpriteSheet(nullptr),
       hurtLeftSpriteSheet(nullptr), hurtRightSpriteSheet(nullptr),
       deathSpriteSheet(nullptr),
-      aggroRadius(180.0f), attackRange(140.0f), isAggroed(false) {
+      aggroRadius(180.0f), attackRange(140.0f), isAggroed(false),
+      attackCooldownSeconds(0.8f), attackCooldownTimer(0.0f), contactDamage(10),
+      spawnX(spawnX_), spawnY(spawnY_) {
     loadSprites(assetManager);
     setState(EnemyState::IDLE);
 }
@@ -35,6 +38,48 @@ void Enemy::loadSprites(AssetManager* assetManager) {
     hurtRightSpriteSheet = assetManager->loadSpriteSheetAuto(base + "HURT_RIGHT.png",3, 3);
 
     deathSpriteSheet = assetManager->loadSpriteSheetAuto(base + "DEATH.png", 10, 10);
+}
+
+void Enemy::takeDamage(int amount) {
+    if (currentState == EnemyState::DEAD) return;
+    health -= std::max(0, amount);
+    if (health <= 0) {
+        health = 0;
+        setState(EnemyState::DEAD);
+    } else {
+        setState(EnemyState::HURT);
+    }
+}
+
+SDL_Rect Enemy::getCollisionRect() const {
+    // Approximate collision from current visual size
+    int w = getWidth();
+    int h = getHeight();
+    // Slightly larger hitbox to ensure melee contact with big sprites
+    int hitW = std::max(80, static_cast<int>(w * 0.75f));
+    int hitH = std::max(80, static_cast<int>(h * 0.75f));
+    SDL_Rect r;
+    r.w = hitW;
+    r.h = hitH;
+    r.x = static_cast<int>(x) - hitW / 2;
+    r.y = static_cast<int>(y) - hitH / 2;
+    return r;
+}
+
+bool Enemy::isWithinAttackRange(float playerX, float playerY) const {
+    float dx = playerX - x;
+    float dy = playerY - y;
+    return (dx * dx + dy * dy) <= attackRange * attackRange;
+}
+
+void Enemy::resetToSpawn() {
+    x = spawnX;
+    y = spawnY;
+    health = maxHealth;
+    isAggroed = false;
+    attackCooldownTimer = 0.0f;
+    setDirection(EnemyDirection::RIGHT);
+    setState(EnemyState::IDLE);
 }
 
 void Enemy::setState(EnemyState newState) {
@@ -76,6 +121,9 @@ void Enemy::update(float deltaTime, float playerX, float playerY) {
         updateAnimation(deltaTime);
         return;
     }
+
+    // Cooldowns
+    if (attackCooldownTimer > 0.0f) attackCooldownTimer -= deltaTime;
 
     // Simple AI: face player, float towards player until within attack range
     float dx = playerX - x;

@@ -148,6 +148,7 @@ public:
     // Enemy management
     void addEnemy(std::unique_ptr<Enemy> enemy);
     const std::vector<std::unique_ptr<Enemy>>& getEnemies() const { return enemies; }
+    std::vector<std::unique_ptr<Enemy>>& getEnemies() { return enemies; }
 
     // Asset management
     void setAssetManager(AssetManager* assetManager) { this->assetManager = assetManager; }

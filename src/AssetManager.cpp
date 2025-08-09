@@ -349,8 +349,9 @@ void AssetManager::preloadAssets() {
     loadSpriteSheet(WIZARD_PATH + "RANGED ATTACK_LEFT.png", 128, 78, 10, 10);
     loadSpriteSheet(WIZARD_PATH + "RANGED ATTACK_RIGHT.png", 128, 78, 10, 10);
     loadSpriteSheet(WIZARD_PATH + "Projectile.png", 32, 32, 5, 5);
-    loadSpriteSheet(WIZARD_PATH + "HURT.png", 128, 78, 8, 8);
-    loadSpriteSheet(WIZARD_PATH + "DEATH.png", 128, 78, 12, 12);
+    loadSpriteSheet(WIZARD_PATH + "HURT_LEFT.png", 128, 78, 4, 4);
+    loadSpriteSheet(WIZARD_PATH + "HURT_RIGHT.png", 128, 78, 4, 4);
+    loadSpriteSheet(WIZARD_PATH + "DEATH.png", 128, 78, 6, 6);
     
     // Load tile textures (essential for rendering)
     std::cout << "Loading tile textures..." << std::endl;

@@ -7,6 +7,7 @@
 
 // Forward declarations
 class Projectile;
+class Enemy;
 
 // Forward declarations
 class Game;
@@ -43,6 +44,15 @@ public:
     // Projectile management
     void updateProjectiles(float deltaTime);
     void renderProjectiles(Renderer* renderer);
+    std::vector<std::unique_ptr<Projectile>>& getProjectiles() { return projectiles; }
+    const std::vector<std::unique_ptr<Projectile>>& getProjectiles() const { return projectiles; }
+
+    // Melee combat helpers
+    bool isMeleeAttacking() const { return currentState == PlayerState::ATTACKING_MELEE; }
+    int getMeleeDamage() const { return meleeDamage; }
+    SDL_Rect getMeleeHitbox() const; // returns {0,0,0,0} if not attacking
+    bool isMeleeHitActive() const;    // true only during the active frames window
+    bool consumeMeleeHitIfActive();   // returns true once per swing when entering active window
     
     // Movement
     void handleInput(const InputManager* inputManager);
@@ -52,6 +62,12 @@ public:
     void performMeleeAttack();
     void performRangedAttack();
     void takeDamage(int damage);
+    bool isDead() const { return currentState == PlayerState::DEAD; }
+    void respawn(float respawnX, float respawnY);
+    void setSpawnPoint(float sx, float sy) { spawnX = sx; spawnY = sy; }
+    float getSpawnX() const { return spawnX; }
+    float getSpawnY() const { return spawnY; }
+    bool isDeathAnimationFinished() const { return deathAnimationFinished; }
     
     // Interaction
     void interact();
@@ -107,6 +123,7 @@ private:
     
     // Position and size
     float x, y;
+    float spawnX, spawnY;
     int width, height;
     float moveSpeed;
     
@@ -119,6 +136,7 @@ private:
     int currentFrame;
     float frameTimer;
     float frameDuration;
+    bool deathAnimationFinished = false;
     
     // Combat
     float meleeAttackCooldown;
@@ -152,7 +170,8 @@ private:
     SpriteSheet* meleeAttackRightSpriteSheet;
     SpriteSheet* rangedAttackLeftSpriteSheet;
     SpriteSheet* rangedAttackRightSpriteSheet;
-    SpriteSheet* hurtSpriteSheet;
+    SpriteSheet* hurtLeftSpriteSheet;
+    SpriteSheet* hurtRightSpriteSheet;
     SpriteSheet* deathSpriteSheet;
     
     // Helper functions
@@ -177,4 +196,7 @@ private:
     static constexpr int POTION_MAX_CHARGES = 10;
     static constexpr int HEALTH_POTION_HEAL = 20;
     static constexpr int MANA_POTION_RESTORE = 20;
+
+    // Melee swing state
+    bool meleeHitConsumedThisSwing = false;
 };

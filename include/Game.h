@@ -45,6 +45,10 @@ public:
     static constexpr int TARGET_FPS = 60;
     static constexpr float TARGET_FRAME_TIME = 1.0f / TARGET_FPS;
 
+    // Debug toggles
+    void setDebugHitboxes(bool enabled) { debugHitboxes = enabled; }
+    bool getDebugHitboxes() const { return debugHitboxes; }
+
     // Performance monitoring
     float getCurrentFPS() const { return currentFPS; }
     float getAverageFPS() const { return averageFPS; }
@@ -78,6 +82,7 @@ private:
     float averageFPS;
     std::deque<float> fpsHistory;
     static constexpr size_t FPS_HISTORY_SIZE = 60; // Store 1 second of FPS data at 60 FPS
+    bool debugHitboxes = false;
     
     // Initialize systems
     void initializeSystems();

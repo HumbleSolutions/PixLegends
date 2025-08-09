@@ -6,14 +6,16 @@
 #include "Projectile.h"
 #include "Object.h"
 #include "World.h"
+#include "Enemy.h"
 #include <iostream>
 #include <algorithm>
 #include <cmath>
 
 Player::Player(Game* game) : game(game), x(Game::WINDOW_WIDTH / 2.0f - 32.0f), y(Game::WINDOW_HEIGHT / 2.0f - 32.0f), width(64), height(64),
+                            spawnX(x), spawnY(y),
                             moveSpeed(DEFAULT_MOVE_SPEED), currentState(PlayerState::IDLE),
                             currentDirection(Direction::DOWN), currentSpriteSheet(nullptr),
-                            currentFrame(0), frameTimer(0.0f), frameDuration(FRAME_DURATION),
+                            currentFrame(0), frameTimer(0.0f), frameDuration(FRAME_DURATION), deathAnimationFinished(false),
                             meleeAttackCooldown(MELEE_ATTACK_COOLDOWN), rangedAttackCooldown(RANGED_ATTACK_COOLDOWN),
                             meleeAttackTimer(0.0f), rangedAttackTimer(0.0f), meleeDamage(20), rangedDamage(15),
                             health(BASE_HEALTH), maxHealth(BASE_HEALTH), mana(BASE_MANA), maxMana(BASE_MANA),
@@ -21,7 +23,7 @@ Player::Player(Game* game) : game(game), x(Game::WINDOW_WIDTH / 2.0f - 32.0f), y
                             gold(0),
                             healthPotionCharges(POTION_MAX_CHARGES), manaPotionCharges(POTION_MAX_CHARGES),
                             idleLeftSpriteSheet(nullptr), idleRightSpriteSheet(nullptr), walkLeftSpriteSheet(nullptr), walkRightSpriteSheet(nullptr), meleeAttackLeftSpriteSheet(nullptr), meleeAttackRightSpriteSheet(nullptr),
-                             rangedAttackLeftSpriteSheet(nullptr), rangedAttackRightSpriteSheet(nullptr), hurtSpriteSheet(nullptr), deathSpriteSheet(nullptr) {
+                             rangedAttackLeftSpriteSheet(nullptr), rangedAttackRightSpriteSheet(nullptr), hurtLeftSpriteSheet(nullptr), hurtRightSpriteSheet(nullptr), deathSpriteSheet(nullptr) {
     
     loadSprites();
     calculateExperienceToNext();
@@ -45,7 +47,8 @@ void Player::loadSprites() {
     meleeAttackRightSpriteSheet = assetManager->getSpriteSheet(AssetManager::WIZARD_PATH + "MELEE ATTACK_RIGHT.png");
     rangedAttackLeftSpriteSheet = assetManager->getSpriteSheet(AssetManager::WIZARD_PATH + "RANGED ATTACK_LEFT.png");
     rangedAttackRightSpriteSheet = assetManager->getSpriteSheet(AssetManager::WIZARD_PATH + "RANGED ATTACK_RIGHT.png");
-    hurtSpriteSheet = assetManager->getSpriteSheet(AssetManager::WIZARD_PATH + "HURT.png");
+    hurtLeftSpriteSheet = assetManager->getSpriteSheet(AssetManager::WIZARD_PATH + "HURT_LEFT.png");
+    hurtRightSpriteSheet = assetManager->getSpriteSheet(AssetManager::WIZARD_PATH + "HURT_RIGHT.png");
     deathSpriteSheet = assetManager->getSpriteSheet(AssetManager::WIZARD_PATH + "DEATH.png");
     
     // Set initial sprite sheet
@@ -138,7 +141,7 @@ void Player::handleInput(const InputManager* inputManager) {
 }
 
 void Player::move(float deltaTime) {
-    if (currentState == PlayerState::ATTACKING_MELEE || currentState == PlayerState::ATTACKING_RANGED) {
+    if (currentState == PlayerState::DEAD || currentState == PlayerState::ATTACKING_MELEE || currentState == PlayerState::ATTACKING_RANGED) {
         return; // Can't move while attacking
     }
     
@@ -157,13 +160,50 @@ void Player::performMeleeAttack() {
     if (meleeAttackTimer > 0.0f) {
         return; // Still on cooldown
     }
-    
+
     setState(PlayerState::ATTACKING_MELEE);
     meleeAttackTimer = meleeAttackCooldown;
     currentFrame = 0;
     frameTimer = 0.0f;
+    meleeHitConsumedThisSwing = false;
     
     std::cout << "Melee attack! Damage: " << meleeDamage << std::endl;
+}
+
+bool Player::isMeleeHitActive() const {
+    if (currentState != PlayerState::ATTACKING_MELEE || !currentSpriteSheet) return false;
+    // Consider most of the swing as active to ensure responsiveness
+    int total = currentSpriteSheet->getTotalFrames();
+    if (total <= 0) return false;
+    int start = static_cast<int>(total * 0.15f);
+    int end = static_cast<int>(total * 0.95f);
+    return currentFrame >= start && currentFrame <= end;
+}
+
+SDL_Rect Player::getMeleeHitbox() const {
+    if (currentState != PlayerState::ATTACKING_MELEE) return SDL_Rect{0,0,0,0};
+    // Omnidirectional melee: centered square around player
+    const int size = 160; // affects reach in all directions
+    SDL_Rect r;
+    r.w = size;
+    r.h = size;
+    int cx = static_cast<int>(x + width / 2.0f);
+    int cy = static_cast<int>(y + height / 2.0f);
+    r.x = cx - size / 2;
+    r.y = cy - size / 2;
+    return r;
+}
+
+bool Player::consumeMeleeHitIfActive() {
+    // Reset when not melee attacking
+    if (currentState != PlayerState::ATTACKING_MELEE) {
+        meleeHitConsumedThisSwing = false;
+        return false;
+    }
+    if (!isMeleeHitActive()) return false;
+    if (meleeHitConsumedThisSwing) return false;
+    meleeHitConsumedThisSwing = true;
+    return true;
 }
 
 void Player::performRangedAttack() {
@@ -197,7 +237,7 @@ void Player::performRangedAttack() {
     direction.normalize();
     
     projectiles.push_back(std::make_unique<Projectile>(
-        projectileX, projectileY, direction, game->getAssetManager()));
+        projectileX, projectileY, direction, game->getAssetManager(), static_cast<int>(rangedDamage)));
 }
 
 void Player::takeDamage(int damage) {
@@ -209,11 +249,24 @@ void Player::takeDamage(int damage) {
     if (health <= 0) {
         health = 0;
         setState(PlayerState::DEAD);
+        deathAnimationFinished = false;
         std::cout << "Player died!" << std::endl;
     } else {
         setState(PlayerState::HURT);
         std::cout << "Player took " << damage << " damage! Health: " << health << "/" << maxHealth << std::endl;
     }
+}
+
+void Player::respawn(float respawnX, float respawnY) {
+    x = respawnX;
+    y = respawnY;
+    health = maxHealth;
+    mana = maxMana;
+    meleeAttackTimer = 0.0f;
+    rangedAttackTimer = 0.0f;
+    projectiles.clear();
+    setDirection(Direction::DOWN);
+    setState(PlayerState::IDLE);
 }
 
 void Player::interact() {
@@ -357,9 +410,15 @@ void Player::updateAnimation(float deltaTime) {
                 currentState == PlayerState::ATTACKING_RANGED) {
                 // End attack animation
                 setState(PlayerState::IDLE);
+                meleeHitConsumedThisSwing = false;
             } else if (currentState == PlayerState::HURT) {
                 // End hurt animation
                 setState(PlayerState::IDLE);
+            } else if (currentState == PlayerState::DEAD) {
+                // Hold the last frame and mark finished
+                currentFrame = currentSpriteSheet->getTotalFrames() - 1;
+                deathAnimationFinished = true;
+                return;
             } else {
                 // Loop other animations
                 currentFrame = 0;
@@ -555,7 +614,7 @@ SpriteSheet* Player::getSpriteSheetForState(PlayerState state) {
                 return rangedAttackLeftSpriteSheet;
             }
         case PlayerState::HURT:
-            return hurtSpriteSheet;
+            return currentDirection == Direction::LEFT ? hurtLeftSpriteSheet : hurtRightSpriteSheet;
         case PlayerState::DEAD:
             return deathSpriteSheet;
         default:

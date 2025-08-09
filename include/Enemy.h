@@ -35,6 +35,24 @@ public:
 
     bool isDead() const { return currentState == EnemyState::DEAD; }
 
+    // Combat
+    void takeDamage(int amount);
+    int getHealth() const { return health; }
+    int getMaxHealth() const { return maxHealth; }
+    SDL_Rect getCollisionRect() const;
+    bool isWithinAttackRange(float playerX, float playerY) const;
+    bool isAttackReady() const { return attackCooldownTimer <= 0.0f; }
+    void consumeAttackCooldown() { attackCooldownTimer = attackCooldownSeconds; }
+    int getContactDamage() const { return contactDamage; }
+    bool getIsAggroed() const { return isAggroed; }
+
+    // Expose basic dimension for simple collision if needed
+    int getRawWidth() const { return width; }
+    int getRawHeight() const { return height; }
+
+    // Spawn/reset
+    void resetToSpawn();
+
 private:
     // Core
     float x;
@@ -43,6 +61,7 @@ private:
     int height;
     float moveSpeed;
     int health;
+    int maxHealth;
 
     // State
     EnemyState currentState;
@@ -78,6 +97,15 @@ private:
     float aggroRadius;   // pixels
     float attackRange;   // pixels
     bool isAggroed = false;
+
+    // Attack control
+    float attackCooldownSeconds;
+    float attackCooldownTimer;
+    int contactDamage;
+
+    // Spawn position
+    float spawnX;
+    float spawnY;
 };
 
 

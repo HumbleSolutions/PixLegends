@@ -3,10 +3,10 @@
 #include "AssetManager.h"
 #include <iostream>
 
-Projectile::Projectile(float x, float y, ProjectileDirection direction, AssetManager* assetManager)
+Projectile::Projectile(float x, float y, ProjectileDirection direction, AssetManager* assetManager, int damage)
     : x(x), y(y), width(32), height(32), speed(PROJECTILE_SPEED), direction(direction),
       currentFrame(0), frameTimer(0.0f), frameDuration(FRAME_DURATION),
-      active(true), lifetime(0.0f), maxLifetime(MAX_LIFETIME) {
+      active(true), lifetime(0.0f), maxLifetime(MAX_LIFETIME), damage(damage) {
     
     // Load the projectile sprite sheet
     spriteSheet = assetManager->getSpriteSheet(AssetManager::WIZARD_PATH + "Projectile.png");
@@ -72,4 +72,13 @@ void Projectile::updateAnimation(float deltaTime) {
             currentFrame = 0;
         }
     }
+}
+
+SDL_Rect Projectile::getCollisionRect() const {
+    SDL_Rect r;
+    r.x = static_cast<int>(x);
+    r.y = static_cast<int>(y);
+    r.w = width;
+    r.h = height;
+    return r;
 }
