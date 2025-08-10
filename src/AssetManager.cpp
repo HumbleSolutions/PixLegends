@@ -436,6 +436,13 @@ void AssetManager::preloadAssets() {
     loadFont("assets/Fonts/retganon.ttf", 16);
     loadFont("assets/Fonts/retganon.ttf", 12);
     loadFont("assets/Fonts/retganon.ttf", 24);
+
+  // UI textures (HP/MP/EXP bars)
+  loadTexture(UI_PATH + "hp_bar.png");
+  loadTexture(UI_PATH + "mana_bar.png");
+  loadTexture(UI_PATH + "exp_bar.png");
+  // Optional: full composite UI sheet if we want to use it later
+  loadTexture(UI_PATH + "hp_mana_bar_ui.png");
     
     std::cout << "Asset preloading complete! Loaded " << textureCache.size() << " textures and " << spriteSheetCache.size() << " sprite sheets." << std::endl;
 }

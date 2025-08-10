@@ -4,6 +4,7 @@
 #include "AssetManager.h"
 #include <iostream>
 #include <sstream>
+#include <algorithm>
 
 UISystem::UISystem(SDL_Renderer* renderer) : renderer(renderer), defaultFont(nullptr), smallFont(nullptr) {
     initializeFonts();
@@ -69,44 +70,105 @@ void UISystem::render() {
     // Main UI rendering - this will be called by the game
 }
 
+void UISystem::renderTexturedBar(const char* texturePath,
+                           int x, int y,
+                           int width, int height,
+                           float progress) {
+    if (!assetManager || !texturePath) return;
+    Texture* barTex = assetManager->getTexture(texturePath);
+    if (!barTex) return;
+
+    progress = std::max(0.0f, std::min(1.0f, progress));
+
+    // Only render the filled section of the bar (no background track)
+    SDL_Texture* sdlTex = barTex->getTexture();
+    int tw = barTex->getWidth();
+    int th = barTex->getHeight();
+    if (tw <= 0 || th <= 0) return;
+    // If width/height are not specified, render at native size (no scaling)
+    if (width <= 0) width = tw;
+    if (height <= 0) height = th;
+
+    // Render the foreground filled section using the texture, clipped by progress.
+    // Do NOT resize bars: use native texture size for both source and destination.
+    // Exclude the decorative tip for partial fills by clipping to body width; draw full texture only at 100%.
+    const int srcTip = static_cast<int>(std::round(tw * 0.12f)); // approximate tip width in source
+    const int bodySrc = std::max(0, tw - srcTip);
+    const int bodyDst = bodySrc; // no scaling
+
+    int filledDstW = 0;
+    int filledSrcW = 0;
+    if (progress >= 0.999f) {
+        filledDstW = tw;
+        filledSrcW = tw;
+    } else {
+        filledDstW = static_cast<int>(std::round(bodyDst * progress));
+        filledSrcW = static_cast<int>(std::round(bodySrc * progress));
+    }
+    if (filledDstW > 0 && filledSrcW > 0) {
+        SDL_Rect srcFG{0, 0, filledSrcW, th};
+        SDL_Rect dstFG{ x, y, filledDstW, th };
+        SDL_RenderCopy(renderer, sdlTex, &srcFG, &dstFG);
+    }
+}
+
 void UISystem::renderHealthBar(int x, int y, int width, int height, int current, int max) {
     if (max <= 0) return;
     
     float progress = static_cast<float>(current) / static_cast<float>(max);
+    // Textured version using new HP bar asset
+    renderTexturedBar("assets/Textures/UI/hp_bar.png", x, y, width, height, progress);
     
-    // Create a simple renderer wrapper for this UI system
-    Renderer rendererWrapper(renderer);
-    rendererWrapper.renderProgressBar(x, y, width, height, progress, backgroundColor, healthColor);
-    
+    // Compute actual drawn size for text centering
+    int usedW = width;
+    int usedH = height;
+    if ((usedW <= 0 || usedH <= 0) && assetManager) {
+        if (Texture* t = assetManager->getTexture("assets/Textures/UI/hp_bar.png")) {
+            usedW = t->getWidth();
+            usedH = t->getHeight();
+        }
+    }
     // Render text
     std::string text = std::to_string(current) + "/" + std::to_string(max);
-    renderTextCentered(text, x + width/2, y + height/2, textColor);
+    renderTextCentered(text, x + usedW/2, y + usedH/2, textColor);
 }
 
 void UISystem::renderManaBar(int x, int y, int width, int height, int current, int max) {
     if (max <= 0) return;
     
     float progress = static_cast<float>(current) / static_cast<float>(max);
+    renderTexturedBar("assets/Textures/UI/mana_bar.png", x, y, width, height, progress);
     
-    Renderer rendererWrapper(renderer);
-    rendererWrapper.renderProgressBar(x, y, width, height, progress, backgroundColor, manaColor);
-    
+    int usedW = width;
+    int usedH = height;
+    if ((usedW <= 0 || usedH <= 0) && assetManager) {
+        if (Texture* t = assetManager->getTexture("assets/Textures/UI/mana_bar.png")) {
+            usedW = t->getWidth();
+            usedH = t->getHeight();
+        }
+    }
     // Render text
     std::string text = std::to_string(current) + "/" + std::to_string(max);
-    renderTextCentered(text, x + width/2, y + height/2, textColor);
+    renderTextCentered(text, x + usedW/2, y + usedH/2, textColor);
 }
 
 void UISystem::renderExperienceBar(int x, int y, int width, int height, int current, int max) {
     if (max <= 0) return;
     
     float progress = static_cast<float>(current) / static_cast<float>(max);
+    renderTexturedBar("assets/Textures/UI/exp_bar.png", x, y, width, height, progress);
     
-    Renderer rendererWrapper(renderer);
-    rendererWrapper.renderProgressBar(x, y, width, height, progress, backgroundColor, experienceColor);
-    
+    int usedW = width;
+    int usedH = height;
+    if ((usedW <= 0 || usedH <= 0) && assetManager) {
+        if (Texture* t = assetManager->getTexture("assets/Textures/UI/exp_bar.png")) {
+            usedW = t->getWidth();
+            usedH = t->getHeight();
+        }
+    }
     // Render text
     std::string text = "XP: " + std::to_string(current) + "/" + std::to_string(max);
-    renderTextCentered(text, x + width/2, y + height/2, textColor);
+    renderTextCentered(text, x + usedW/2, y + usedH/2, textColor);
 }
 
 void UISystem::renderBossHealthBar(const std::string& name, int current, int max, int screenW) {
@@ -172,34 +234,82 @@ void UISystem::renderGoldDisplay(int x, int y, int gold) {
 void UISystem::renderPlayerStats(const Player* player) {
     if (!player) return;
     
-    int startX = 10;
-    int startY = 10;
-    int barWidth = 200;
-    int barHeight = 20;
-    int spacing = 25;
-    
-    // Health bar
-    renderHealthBar(startX, startY, barWidth, barHeight, 
-                   player->getHealth(), player->getMaxHealth());
-    
-    // Mana bar
-    renderManaBar(startX, startY + spacing, barWidth, barHeight,
-                 player->getMana(), player->getMaxMana());
-    
-    // Experience bar
-    renderExperienceBar(startX, startY + spacing * 2, barWidth, barHeight,
-                       player->getExperience(), player->getExperienceToNext());
-    
-    // Gold display
-    renderGoldDisplay(startX, startY + spacing * 3, player->getGold());
-    
-    // Level and stats
-    int textX = startX + barWidth + 10;
-    int textY = startY;
-    
-    renderText("Level: " + std::to_string(player->getLevel()), textX, textY);
-    renderText("STR: " + std::to_string(player->getStrength()), textX, textY + 20);
-    renderText("INT: " + std::to_string(player->getIntelligence()), textX, textY + 40);
+    // Try to render the new composite HUD frame first
+    bool renderedFrame = false;
+    int frameX = 10;
+    int frameY = 10;
+    int barHeight = 14; // fits visual thickness of bars in the UI image
+    int barWidth = 260;
+    int spacingY = 18;
+    float scale = 1.0f;
+    if (assetManager) {
+        if (Texture* uiFrame = assetManager->getTexture("assets/Textures/UI/hp_mana_bar_ui.png")) {
+            int texW = uiFrame->getWidth();
+            int texH = uiFrame->getHeight();
+            // Fractions tuned to align native-sized bar textures inside the frame
+            // These values match the track positions in hp_mana_bar_ui.png so scaling keeps alignment.
+            // Note: These align with the provided Aseprite mockup so tips land within the track caps
+            const float BX_FRAC = 0.305f;      // bar start X as fraction of width
+            const float BW_FRAC = 0.665f;      // bar width fraction (trim slightly to sit inside tip)
+            const float BY_STEP_FRAC = 0.158f; // vertical spacing between bars
+            const float BH_FRAC = 0.083f;      // bar height fraction (unused when height=0)
+            // Start a little lower so bars sit within tracks
+            const float BY1_FRAC = 0.385f;
+
+            // Draw the frame at native size
+            SDL_Rect dst{ frameX, frameY, texW, texH };
+            SDL_RenderCopy(renderer, uiFrame->getTexture(), nullptr, &dst);
+
+            int bx = frameX + static_cast<int>(texW * BX_FRAC);
+            int by1 = frameY + static_cast<int>(texH * BY1_FRAC);
+            spacingY = static_cast<int>(texH * BY_STEP_FRAC);
+            int by2 = by1 + spacingY;
+            int by3 = by2 + spacingY;
+            barWidth = static_cast<int>(texW * BW_FRAC);
+            barHeight = static_cast<int>(texH * BH_FRAC);
+
+            // Render bars aligned to the frame top-to-bottom:
+            // 1) HP (red), 2) Mana (blue), 3) EXP (green)
+            // Add a tiny vertical inset so the thin native-height bars center in the track
+            int innerOffsetY = static_cast<int>(texH * 0.035f); // nudge bars slightly lower inside tracks
+            // Additional precise pixel nudges: HP +5, Mana +6, EXP +7
+            // Use native bar widths/heights (no scaling): pass width=0, height=0
+            renderHealthBar(bx, by1 + innerOffsetY + 7, 0, 0, player->getHealth(), player->getMaxHealth());
+            renderManaBar(bx, by2 + innerOffsetY + 8, 0, 0, player->getMana(), player->getMaxMana());
+            renderExperienceBar(bx, by3 + innerOffsetY + 9, 0, 0, player->getExperience(), player->getExperienceToNext());
+
+            // Move gold icon to the left gap under the circular portrait
+            int goldX = frameX + static_cast<int>(texW * 0.330f);
+            int goldY = by3 + barHeight + 6 + 10;
+            renderGoldDisplay(goldX, goldY, player->getGold());
+
+            // Level/Stats to the right of the bars
+            int textX = bx + barWidth + 10;
+            int textY = by1 - 4;
+            renderText("Level: " + std::to_string(player->getLevel()), textX, textY);
+            renderText("STR: " + std::to_string(player->getStrength()), textX, textY + 20);
+            renderText("INT: " + std::to_string(player->getIntelligence()), textX, textY + 40);
+            renderedFrame = true;
+        }
+    }
+
+    // Fallback: draw simple bars if frame is unavailable
+    if (!renderedFrame) {
+        int startX = 10;
+        int startY = 10;
+        barWidth = 260;
+        barHeight = 20;
+        int spacing = 28;
+        renderHealthBar(startX, startY, barWidth, barHeight, player->getHealth(), player->getMaxHealth());
+        renderManaBar(startX, startY + spacing, barWidth, barHeight, player->getMana(), player->getMaxMana());
+        renderExperienceBar(startX, startY + spacing * 2, barWidth, barHeight, player->getExperience(), player->getExperienceToNext());
+        renderGoldDisplay(startX, startY + spacing * 3, player->getGold());
+        int textX = startX + barWidth + 10;
+        int textY = startY;
+        renderText("Level: " + std::to_string(player->getLevel()), textX, textY);
+        renderText("STR: " + std::to_string(player->getStrength()), textX, textY + 20);
+        renderText("INT: " + std::to_string(player->getIntelligence()), textX, textY + 40);
+    }
 
     // Render potions HUD beneath stats
     renderPotions(player);

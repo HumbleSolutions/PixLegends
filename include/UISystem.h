@@ -84,6 +84,10 @@ private:
     void initializeFonts();
     void initializeColors();
     std::string formatStatText(const std::string& label, int value, int maxValue = 0);
+    void renderTexturedBar(const char* texturePath,
+                           int x, int y,
+                           int width, int height,
+                           float progress);
     // Dependency injection
 public:
     void setAssetManager(AssetManager* am) { assetManager = am; }
