@@ -51,6 +51,10 @@ public:
     void setDebugHitboxes(bool enabled) { debugHitboxes = enabled; }
     bool getDebugHitboxes() const { return debugHitboxes; }
 
+    // Testing/cheat: infinite potions toggle
+    void setInfinitePotions(bool enabled) { infinitePotions = enabled; }
+    bool getInfinitePotions() const { return infinitePotions; }
+
     // Performance monitoring
     float getCurrentFPS() const { return currentFPS; }
     float getAverageFPS() const { return averageFPS; }
@@ -102,6 +106,7 @@ private:
     std::deque<float> fpsHistory;
     static constexpr size_t FPS_HISTORY_SIZE = 60; // Store 1 second of FPS data at 60 FPS
     bool debugHitboxes = false;
+    bool infinitePotions = false;
     
     // Initialize systems
     void initializeSystems();

@@ -61,17 +61,38 @@ void Enemy::takeDamage(int amount) {
 }
 
 SDL_Rect Enemy::getCollisionRect() const {
-    // Approximate collision from current visual size
-    int w = getWidth();
-    int h = getHeight();
-    // Slightly larger hitbox to ensure melee contact with big sprites
-    int hitW = std::max(80, static_cast<int>(w * 0.75f));
-    int hitH = std::max(80, static_cast<int>(h * 0.75f));
+    // Approximate tight body hitbox based on visual sprite (ignore large transparent frame margins)
+    // Start from the rendered destination footprint, then shrink by tuned factors per enemy kind.
+    const int frameW = getWidth();
+    const int frameH = getHeight();
+    const float renderScale = 2.0f; // matches Enemy::render scale
+    const int scaledW = static_cast<int>(frameW * renderScale);
+    const int scaledH = static_cast<int>(frameH * renderScale);
+
+    // Tuned scales to match visible body portion (smaller than the full frame)
+    float widthScale = 0.55f;
+    float heightScale = 0.70f;
+    float yOffsetScale = 0.05f; // nudge down slightly towards feet
+    if (kind == EnemyKind::Demon) {
+        widthScale = 0.50f;
+        heightScale = 0.65f;
+        yOffsetScale = 0.08f;
+    } else if (kind == EnemyKind::Wizard) {
+        widthScale = 0.50f;
+        heightScale = 0.72f;
+        yOffsetScale = 0.04f;
+    }
+
+    const int bodyW = std::max(1, static_cast<int>(scaledW * widthScale));
+    const int bodyH = std::max(1, static_cast<int>(scaledH * heightScale));
+    const int centerX = static_cast<int>(x);
+    const int centerY = static_cast<int>(y + scaledH * yOffsetScale);
+
     SDL_Rect r;
-    r.w = hitW;
-    r.h = hitH;
-    r.x = static_cast<int>(x) - hitW / 2;
-    r.y = static_cast<int>(y) - hitH / 2;
+    r.w = bodyW;
+    r.h = bodyH;
+    r.x = centerX - bodyW / 2;
+    r.y = centerY - bodyH / 2;
     return r;
 }
 
@@ -207,20 +228,32 @@ void Enemy::updateAnimation(float deltaTime) {
     }
 }
 
-void Enemy::render(SDL_Renderer* sdlRenderer, int cameraX, int cameraY) const {
-    if (!currentSpriteSheet || !currentSpriteSheet->getTexture() || !currentSpriteSheet->getTexture()->getTexture()) return;
+void Enemy::render(Renderer* renderer) const {
+    if (!renderer || !currentSpriteSheet || !currentSpriteSheet->getTexture() || !currentSpriteSheet->getTexture()->getTexture()) return;
 
     SDL_Rect src = currentSpriteSheet->getFrameRect(currentFrame);
 
-    // Scale with a conservative factor to avoid clipping when frame sizes vary
+    // Destination in screen space with zoom support
     int scale = 2;
+    int camX = 0, camY = 0; renderer->getCamera(camX, camY);
+    float z = renderer->getZoom();
     SDL_Rect dst;
-    dst.w = src.w * scale;
-    dst.h = src.h * scale;
-    dst.x = static_cast<int>(x) - cameraX - dst.w / 2;
-    dst.y = static_cast<int>(y) - cameraY - dst.h / 2;
+    // Use top-left and bottom-right scaling to avoid subpixel gaps
+    auto scaledEdge = [camX, camY, z](int wx, int wy) -> SDL_Point {
+        float sx = (static_cast<float>(wx - camX)) * z;
+        float sy = (static_cast<float>(wy - camY)) * z;
+        return SDL_Point{ static_cast<int>(std::floor(sx)), static_cast<int>(std::floor(sy)) };
+    };
+    int halfW = src.w * scale / 2;
+    int halfH = src.h * scale / 2;
+    SDL_Point tl = scaledEdge(static_cast<int>(x) - halfW, static_cast<int>(y) - halfH);
+    SDL_Point br = scaledEdge(static_cast<int>(x) + halfW, static_cast<int>(y) + halfH);
+    dst.x = tl.x;
+    dst.y = tl.y;
+    dst.w = std::max(1, br.x - tl.x);
+    dst.h = std::max(1, br.y - tl.y);
 
-    SDL_RenderCopy(sdlRenderer, currentSpriteSheet->getTexture()->getTexture(), &src, &dst);
+    SDL_RenderCopy(renderer->getSDLRenderer(), currentSpriteSheet->getTexture()->getTexture(), &src, &dst);
 }
 
 void Enemy::renderProjectiles(Renderer* renderer) const {

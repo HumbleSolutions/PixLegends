@@ -39,6 +39,7 @@ public:
     void renderDeathPopup(bool& outClickedRespawn, float fadeAlpha01);
 
     // Options menu (simple keyboard-driven UI). selectedIndex highlights current row.
+    enum class OptionsTab { Main = 0, Sound = 1, Video = 2 };
     struct MenuHitResult {
         bool clickedResume = false;
         bool clickedFullscreen = false;
@@ -50,11 +51,13 @@ public:
         int newMaster = 0;
         int newMusic = 0;
         int newSound = 0;
+        int newTabIndex = -1; // -1 means unchanged
     };
 
     void renderOptionsMenu(int selectedIndex,
                            int masterVolume, int musicVolume, int soundVolume,
                            bool fullscreenEnabled, bool vsyncEnabled,
+                           OptionsTab activeTab,
                            // mouse for hit testing
                            int mouseX, int mouseY, bool mouseDown,
                            // output

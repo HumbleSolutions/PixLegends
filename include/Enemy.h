@@ -35,7 +35,7 @@ public:
     ~Enemy() = default;
 
     void update(float deltaTime, float playerX, float playerY);
-    void render(SDL_Renderer* sdlRenderer, int cameraX, int cameraY) const;
+    void render(Renderer* renderer) const;
     void renderProjectiles(Renderer* renderer) const;
 
     float getX() const { return x; }

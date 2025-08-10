@@ -24,12 +24,16 @@ Game::~Game() {
 }
 
 void Game::initializeSystems() {
-    // Create window
+    // Create window (start in borderless fullscreen for best compatibility)
+    Uint32 windowFlags = SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_FULLSCREEN_DESKTOP;
+#ifdef SDL_WINDOW_ALLOW_HIGHDPI
+    windowFlags |= SDL_WINDOW_ALLOW_HIGHDPI;
+#endif
     window = SDL_CreateWindow(
         "PixLegends - 2D Action Adventure",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         WINDOW_WIDTH, WINDOW_HEIGHT,
-        SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE
+        windowFlags
     );
     
     if (!window) {
@@ -39,6 +43,8 @@ void Game::initializeSystems() {
     // Create renderer
     sdlRenderer = SDL_CreateRenderer(window, -1, 
         SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    // Ensure fullscreen is applied (some platforms ignore flag at creation)
+    SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
     
     if (!sdlRenderer) {
         throw std::runtime_error("Failed to create renderer: " + std::string(SDL_GetError()));
@@ -57,7 +63,7 @@ void Game::initializeSystems() {
         }
     }
     renderer = std::make_unique<Renderer>(sdlRenderer);
-    // Zoom in a bit more on the main character
+    // Enable zoom; all renderers now respect zoom consistently
     renderer->setZoom(1.8f);
     inputManager = std::make_unique<InputManager>();
     assetManager = std::make_unique<AssetManager>(sdlRenderer);
@@ -211,7 +217,10 @@ void Game::update(float deltaTime) {
             world->updateVisibleChunks(player->getX(), player->getY());
             world->updateVisibility(player->getX(), player->getY());
             // Update enemies with player tracking
-            world->updateEnemies(deltaTime, player->getX(), player->getY());
+            // Use player center for enemy AI distance checks
+            float playerCenterX = player->getX() + player->getWidth() * 0.5f;
+            float playerCenterY = player->getY() + player->getHeight() * 0.5f;
+            world->updateEnemies(deltaTime, playerCenterX, playerCenterY);
             // Handle combat interactions after updates
             // 1) Player projectiles vs enemies
             auto& enemies = const_cast<std::vector<std::unique_ptr<Enemy>>&>(world->getEnemies());
@@ -254,7 +263,7 @@ void Game::update(float deltaTime) {
             for (auto& enemyPtr : enemies) {
                 if (!enemyPtr || enemyPtr->isDead()) continue;
                 SDL_Rect eRect = enemyPtr->getCollisionRect();
-                SDL_Rect playerRect{static_cast<int>(player->getX()), static_cast<int>(player->getY()), player->getWidth(), player->getHeight()};
+                SDL_Rect playerRect = player->getCollisionRect();
                 SDL_Rect inter;
                 if (SDL_IntersectRect(&playerRect, &eRect, &inter)) {
                     if (enemyPtr->isAttackReady()) {
@@ -392,7 +401,7 @@ void Game::render() {
         return;
     }
 
-    // Render world or autotile demo
+        // Render world or autotile demo
     if (demoMode) {
         autotileDemo->render(renderer.get());
     } else if (world) {
@@ -454,7 +463,10 @@ void Game::render() {
             Enemy* engagedEnemy = nullptr;
             for (auto& e : enemies) {
                 if (!e || e->isDead()) continue;
-                bool engaged = e->getIsAggroed() || e->isWithinAttackRange(player->getX(), player->getY());
+                // Use player center for engagement check to match enemy AI distance math
+                float pcx = player->getX() + player->getWidth() * 0.5f;
+                float pcy = player->getY() + player->getHeight() * 0.5f;
+                bool engaged = e->getIsAggroed() || e->isWithinAttackRange(pcx, pcy);
                 if (!engaged) continue;
                 engagedEnemy = e.get();
                 if (std::string(engagedEnemy->getDisplayName()) == "Demon") break;
@@ -510,23 +522,48 @@ void Game::render() {
             }
         }
 
-        // Debug draw melee and enemy hitboxes (F3 toggle)
+        // Debug draw melee, enemy, and player hitboxes (F3 toggle)
         if (getDebugHitboxes() && player) {
             SDL_SetRenderDrawBlendMode(sdlRenderer, SDL_BLENDMODE_BLEND);
-            // Player melee hitbox
-            SDL_Rect melee = player->getMeleeHitbox();
+            int camX = 0, camY = 0; renderer->getCamera(camX, camY);
+            float z = renderer->getZoom();
+
+            // Player melee hitbox (world -> screen). World/enemy rendering is not zoom-scaled,
+            // so keep debug overlays in the same coordinate space (subtract camera only).
+            SDL_Rect meleeW = player->getMeleeHitbox();
+            auto scaleRect = [camX, camY, z](const SDL_Rect& r) -> SDL_Rect {
+                float x1 = (r.x - camX) * z;
+                float y1 = (r.y - camY) * z;
+                float x2 = (r.x + r.w - camX) * z;
+                float y2 = (r.y + r.h - camY) * z;
+                int ix1 = static_cast<int>(std::floor(x1));
+                int iy1 = static_cast<int>(std::floor(y1));
+                int ix2 = static_cast<int>(std::floor(x2));
+                int iy2 = static_cast<int>(std::floor(y2));
+                SDL_Rect out{ ix1, iy1, std::max(1, ix2 - ix1), std::max(1, iy2 - iy1) };
+                return out;
+            };
+            SDL_Rect melee = scaleRect(meleeW);
             SDL_SetRenderDrawColor(sdlRenderer, 0, 255, 0, 160);
             if (melee.w > 0 && melee.h > 0) SDL_RenderDrawRect(sdlRenderer, &melee);
+
             // Enemy hitboxes
             if (world) {
                 auto& enemies = world->getEnemies();
                 for (auto& e : enemies) {
                     if (!e) continue;
-                    SDL_Rect er = e->getCollisionRect();
+                    SDL_Rect erW = e->getCollisionRect();
+                    SDL_Rect er = scaleRect(erW);
                     SDL_SetRenderDrawColor(sdlRenderer, 255, 0, 0, 160);
                     SDL_RenderDrawRect(sdlRenderer, &er);
                 }
             }
+
+            // Player collision rect (world -> screen)
+            SDL_Rect prW = player->getCollisionRect();
+            SDL_Rect pr = scaleRect(prW);
+            SDL_SetRenderDrawColor(sdlRenderer, 0, 200, 255, 160);
+            SDL_RenderDrawRect(sdlRenderer, &pr);
         }
         
         // Render interaction prompt if player is near an interactable object
@@ -644,6 +681,9 @@ void Game::handleEvents() {
                     demoMode = !demoMode;
                 } else if (!optionsOpen && event.key.keysym.sym == SDLK_F3) {
                     setDebugHitboxes(!getDebugHitboxes());
+                } else if (!optionsOpen && event.key.keysym.sym == SDLK_F5) {
+                    setInfinitePotions(!getInfinitePotions());
+                    std::cout << "Infinite potions: " << (getInfinitePotions() ? "ON" : "OFF") << std::endl;
                 }
                 // Only forward to game input when not on login screen
                 if (!optionsOpen && !loginScreenActive) inputManager->handleKeyDown(event.key);
@@ -744,7 +784,11 @@ void Game::renderOptionsMenuOverlay() {
     int mx, my; Uint32 mouse = SDL_GetMouseState(&mx, &my);
     bool mouseDown = (mouse & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
     UISystem::MenuHitResult hit;
-    uiSystem->renderOptionsMenu(optionsSelectedIndex, master, music, sound, fullscreen, vsync, mx, my, mouseDown, hit);
+    static UISystem::OptionsTab activeTab = UISystem::OptionsTab::Main;
+    uiSystem->renderOptionsMenu(optionsSelectedIndex, master, music, sound, fullscreen, vsync, activeTab, mx, my, mouseDown, hit);
+    if (hit.newTabIndex >= 0 && hit.newTabIndex <= 2) {
+        activeTab = static_cast<UISystem::OptionsTab>(hit.newTabIndex);
+    }
     if (audioManager) {
         if (hit.changedMaster) audioManager->setMasterVolume(hit.newMaster);
         if (hit.changedMusic)  audioManager->setMusicVolume(hit.newMusic);

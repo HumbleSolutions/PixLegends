@@ -291,8 +291,8 @@ void UISystem::renderPotions(const Player* player) {
         renderText("x" + std::to_string(charges), x + iconSize + 6, y + 18, textColor);
     };
     
-    renderPotion(true, startX, startY, "[1] HP", player->getHealthPotionCharges(), player->getMaxPotionCharges());
-    renderPotion(false, startX + 160, startY, "[2] MP", player->getManaPotionCharges(), player->getMaxPotionCharges());
+    renderPotion(true, startX, startY, "[1] HP", player->getEffectiveHealthPotionCharges(), player->getMaxPotionCharges());
+    renderPotion(false, startX + 160, startY, "[2] MP", player->getEffectiveManaPotionCharges(), player->getMaxPotionCharges());
 }
 
 void UISystem::renderText(const std::string& text, int x, int y, SDL_Color color) {
@@ -404,6 +404,7 @@ void UISystem::renderFPSCounter(float currentFPS, float averageFPS, Uint32 frame
 void UISystem::renderOptionsMenu(int selectedIndex,
                            int masterVolume, int musicVolume, int soundVolume,
                            bool fullscreenEnabled, bool vsyncEnabled,
+                           OptionsTab activeTab,
                            int mouseX, int mouseY, bool mouseDown,
                            MenuHitResult& outResult) {
     if (!defaultFont) return;
@@ -428,31 +429,72 @@ void UISystem::renderOptionsMenu(int selectedIndex,
     // Title
     renderTextCentered("Options", outW/2, panel.y + 30, SDL_Color{255,255,255,255});
 
-    // Entries
-    struct Row { std::string label; std::string value; };
-    Row rows[] = {
-        {"Master Volume", std::to_string(masterVolume)},
-        {"Music Volume",  std::to_string(musicVolume)},
-        {"Sound Volume",  std::to_string(soundVolume)},
-        {"Fullscreen",    fullscreenEnabled ? "On" : "Off"},
-        {"VSync",         vsyncEnabled ? "On" : "Off"},
-        {"Resume",        ""},
-        {"Reset Game",    ""}
-    };
-
-    const int startY = panel.y + 80;
-    const int rowH = 44;
-    for (int i = 0; i < 8; ++i) {
-        SDL_Rect rowRect{ panel.x + 30, startY + i * rowH, panelW - 60, rowH - 6 };
-        bool selected = (mouseX >= rowRect.x && mouseX <= rowRect.x + rowRect.w && mouseY >= rowRect.y && mouseY <= rowRect.y + rowRect.h);
-        SDL_SetRenderDrawColor(renderer, selected ? 70 : 50, selected ? 120 : 50, selected ? 180 : 70, 200);
-        SDL_RenderFillRect(renderer, &rowRect);
+    // Tabs: Main | Sound | Video
+    const int tabsY = panel.y + 58;
+    const int tabW = 110, tabH = 24;
+    const char* tabNames[3] = { "Main", "Sound", "Video" };
+    for (int t = 0; t < 3; ++t) {
+        SDL_Rect tr{ panel.x + 20 + t * (tabW + 8), tabsY, tabW, tabH };
+        bool hovered = (mouseX >= tr.x && mouseX <= tr.x + tr.w && mouseY >= tr.y && mouseY <= tr.y + tr.h);
+        bool active = (static_cast<int>(activeTab) == t);
+        SDL_SetRenderDrawColor(renderer, active ? 80 : 50, active ? 140 : 70, active ? 200 : 90, 230);
+        SDL_RenderFillRect(renderer, &tr);
         SDL_SetRenderDrawColor(renderer, 220,220,220,255);
-        SDL_RenderDrawRect(renderer, &rowRect);
-        if (i < 6) renderText(rows[i].label, rowRect.x + 10, rowRect.y + 12, SDL_Color{255,255,255,255});
-        // Value or slider/action area on right
-        SDL_Rect valueArea{ rowRect.x + rowRect.w - 220, rowRect.y + 8, 200, rowRect.h - 16 };
-        if (i <= 2) {
+        SDL_RenderDrawRect(renderer, &tr);
+        renderTextCentered(tabNames[t], tr.x + tr.w/2, tr.y + tr.h/2, SDL_Color{255,255,255,255});
+        if (hovered && mouseDown && !active) outResult.newTabIndex = t;
+    }
+
+    const int startY = panel.y + 100;
+    const int rowH = 44;
+    if (activeTab == OptionsTab::Main) {
+        // Main: Resume, Reset, Logout
+        for (int i = 0; i < 3; ++i) {
+            SDL_Rect rowRect{ panel.x + 30, startY + i * rowH, panelW - 60, rowH - 6 };
+            bool selected = (mouseX >= rowRect.x && mouseX <= rowRect.x + rowRect.w && mouseY >= rowRect.y && mouseY <= rowRect.y + rowRect.h);
+            SDL_SetRenderDrawColor(renderer, selected ? 70 : 50, selected ? 120 : 50, selected ? 180 : 70, 200);
+            SDL_RenderFillRect(renderer, &rowRect);
+            SDL_SetRenderDrawColor(renderer, 220,220,220,255);
+            SDL_RenderDrawRect(renderer, &rowRect);
+            SDL_Rect action{ rowRect.x + rowRect.w - 220, rowRect.y + 8, 200, rowRect.h - 16 };
+            if (i == 0) {
+                renderText("Resume", rowRect.x + 10, rowRect.y + 12, SDL_Color{255,255,255,255});
+                SDL_SetRenderDrawColor(renderer, 90, 160, 90, 255);
+                SDL_RenderFillRect(renderer, &action);
+                SDL_SetRenderDrawColor(renderer, 255,255,255,255);
+                SDL_RenderDrawRect(renderer, &action);
+                renderText("Resume", action.x + 12, action.y + 8, SDL_Color{255,255,255,255});
+                if (mouseDown && mouseX >= action.x && mouseX <= action.x + action.w && mouseY >= action.y && mouseY <= action.y + action.h) outResult.clickedResume = true;
+            } else if (i == 1) {
+                renderText("Reset", rowRect.x + 10, rowRect.y + 12, SDL_Color{255,255,255,255});
+                SDL_SetRenderDrawColor(renderer, 200, 140, 60, 255);
+                SDL_RenderFillRect(renderer, &action);
+                SDL_SetRenderDrawColor(renderer, 255,255,255,255);
+                SDL_RenderDrawRect(renderer, &action);
+                renderText("Reset", action.x + 12, action.y + 8, SDL_Color{255,255,255,255});
+                if (mouseDown && mouseX >= action.x && mouseX <= action.x + action.w && mouseY >= action.y && mouseY <= action.y + action.h) outResult.clickedReset = true;
+            } else {
+                renderText("Logout", rowRect.x + 10, rowRect.y + 12, SDL_Color{255,255,255,255});
+                SDL_SetRenderDrawColor(renderer, 170, 70, 70, 255);
+                SDL_RenderFillRect(renderer, &action);
+                SDL_SetRenderDrawColor(renderer, 255,255,255,255);
+                SDL_RenderDrawRect(renderer, &action);
+                renderText("Logout", action.x + 12, action.y + 8, SDL_Color{255,255,255,255});
+                if (mouseDown && mouseX >= action.x && mouseX <= action.x + action.w && mouseY >= action.y && mouseY <= action.y + action.h) outResult.clickedLogout = true;
+            }
+        }
+    } else if (activeTab == OptionsTab::Sound) {
+        // Sound: Master, Music, Sound sliders
+        for (int i = 0; i < 3; ++i) {
+            SDL_Rect rowRect{ panel.x + 30, startY + i * rowH, panelW - 60, rowH - 6 };
+            bool selected = (mouseX >= rowRect.x && mouseX <= rowRect.x + rowRect.w && mouseY >= rowRect.y && mouseY <= rowRect.y + rowRect.h);
+            SDL_SetRenderDrawColor(renderer, selected ? 70 : 50, selected ? 120 : 50, selected ? 180 : 70, 200);
+            SDL_RenderFillRect(renderer, &rowRect);
+            SDL_SetRenderDrawColor(renderer, 220,220,220,255);
+            SDL_RenderDrawRect(renderer, &rowRect);
+            const char* labels[3] = { "Master Volume", "Music Volume", "Sound Volume" };
+            renderText(labels[i], rowRect.x + 10, rowRect.y + 12);
+            SDL_Rect valueArea{ rowRect.x + rowRect.w - 320, rowRect.y + 8, 300, rowRect.h - 16 };
             // Draw slider
             int v = (i == 0 ? masterVolume : (i == 1 ? musicVolume : soundVolume));
             v = std::max(0, std::min(100, v));
@@ -460,14 +502,12 @@ void UISystem::renderOptionsMenu(int selectedIndex,
             SDL_RenderFillRect(renderer, &valueArea);
             SDL_SetRenderDrawColor(renderer, 120, 120, 120, 255);
             SDL_RenderDrawRect(renderer, &valueArea);
-            // Knob position
             int knobW = 12;
             float t = v / 100.0f;
             int knobX = valueArea.x + static_cast<int>(t * (valueArea.w - knobW));
             SDL_Rect knob{ knobX, valueArea.y, knobW, valueArea.h };
             SDL_SetRenderDrawColor(renderer, 200, 200, 240, 255);
             SDL_RenderFillRect(renderer, &knob);
-            // Mouse interaction
             bool hovering = (mouseX >= valueArea.x && mouseX <= valueArea.x + valueArea.w && mouseY >= valueArea.y && mouseY <= valueArea.y + valueArea.h);
             if (hovering && mouseDown) {
                 float rel = (mouseX - valueArea.x) / static_cast<float>(valueArea.w - knobW);
@@ -476,54 +516,33 @@ void UISystem::renderOptionsMenu(int selectedIndex,
                 if (i == 1) { outResult.changedMusic = true;  outResult.newMusic  = newVal; }
                 if (i == 2) { outResult.changedSound = true;  outResult.newSound  = newVal; }
             }
-        } else if (i == 3) {
-            // Fullscreen toggle button
+        }
+    } else if (activeTab == OptionsTab::Video) {
+        // Video: Fullscreen and VSync toggles
+        const int rows = 2;
+        for (int i = 0; i < rows; ++i) {
+            SDL_Rect rowRect{ panel.x + 30, startY + i * rowH, panelW - 60, rowH - 6 };
+            bool selected = (mouseX >= rowRect.x && mouseX <= rowRect.x + rowRect.w && mouseY >= rowRect.y && mouseY <= rowRect.y + rowRect.h);
+            SDL_SetRenderDrawColor(renderer, selected ? 70 : 50, selected ? 120 : 50, selected ? 180 : 70, 200);
+            SDL_RenderFillRect(renderer, &rowRect);
+            SDL_SetRenderDrawColor(renderer, 220,220,220,255);
+            SDL_RenderDrawRect(renderer, &rowRect);
+            const char* labels[2] = { "Fullscreen", "VSync" };
+            renderText(labels[i], rowRect.x + 10, rowRect.y + 12);
+            SDL_Rect valueArea{ rowRect.x + rowRect.w - 220, rowRect.y + 8, 200, rowRect.h - 16 };
             SDL_SetRenderDrawColor(renderer, 80, 120, 160, 255);
             SDL_RenderFillRect(renderer, &valueArea);
             SDL_SetRenderDrawColor(renderer, 255,255,255,255);
             SDL_RenderDrawRect(renderer, &valueArea);
-            renderText(fullscreenEnabled ? "On" : "Off", valueArea.x + 12, valueArea.y + 8, SDL_Color{255,255,255,255});
+            renderText((i == 0 ? (fullscreenEnabled ? "On" : "Off") : (vsyncEnabled ? "On" : "Off")), valueArea.x + 12, valueArea.y + 8);
             if (mouseDown && mouseX >= valueArea.x && mouseX <= valueArea.x + valueArea.w && mouseY >= valueArea.y && mouseY <= valueArea.y + valueArea.h) {
-                outResult.clickedFullscreen = true;
-            }
-        } else if (i == 5) {
-            // Resume button
-            SDL_SetRenderDrawColor(renderer, 90, 160, 90, 255);
-            SDL_RenderFillRect(renderer, &valueArea);
-            SDL_SetRenderDrawColor(renderer, 255,255,255,255);
-            SDL_RenderDrawRect(renderer, &valueArea);
-            renderText("Resume", valueArea.x + 12, valueArea.y + 8, SDL_Color{255,255,255,255});
-            if (mouseDown && mouseX >= valueArea.x && mouseX <= valueArea.x + valueArea.w && mouseY >= valueArea.y && mouseY <= valueArea.y + valueArea.h) {
-                outResult.clickedResume = true;
-            }
-        } else if (i == 6) {
-            // Reset game button
-            SDL_SetRenderDrawColor(renderer, 200, 140, 60, 255);
-            SDL_RenderFillRect(renderer, &valueArea);
-            SDL_SetRenderDrawColor(renderer, 255,255,255,255);
-            SDL_RenderDrawRect(renderer, &valueArea);
-            renderText("Reset", valueArea.x + 12, valueArea.y + 8, SDL_Color{255,255,255,255});
-            if (mouseDown && mouseX >= valueArea.x && mouseX <= valueArea.x + valueArea.w && mouseY >= valueArea.y && mouseY <= valueArea.y + valueArea.h) {
-                outResult.clickedReset = true;
-            }
-        } else if (i == 7) {
-            // Logout button
-            SDL_SetRenderDrawColor(renderer, 170, 70, 70, 255);
-            SDL_RenderFillRect(renderer, &valueArea);
-            SDL_SetRenderDrawColor(renderer, 255,255,255,255);
-            SDL_RenderDrawRect(renderer, &valueArea);
-            renderText("Logout", valueArea.x + 12, valueArea.y + 8, SDL_Color{255,255,255,255});
-            if (mouseDown && mouseX >= valueArea.x && mouseX <= valueArea.x + valueArea.w && mouseY >= valueArea.y && mouseY <= valueArea.y + valueArea.h) {
-                outResult.clickedLogout = true;
-            }
-        } else {
-            if (!rows[i].value.empty()) {
-                renderText(rows[i].value, rowRect.x + rowRect.w - 80, rowRect.y + 12, SDL_Color{200,200,200,255});
+                if (i == 0) outResult.clickedFullscreen = true;
+                // VSync is fixed at creation with present vsync, so no toggle here for now
             }
         }
     }
 
-    // Place helper text near the bottom, below the last row (avoid overlap with Logout button)
+    // Place helper text near the bottom, below the last row
     renderTextCentered("Use mouse to drag sliders and click buttons. Press Esc to close.",
                        outW/2, panel.y + panelH - 12, SDL_Color{200,200,200,255});
 }

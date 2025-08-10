@@ -45,7 +45,7 @@ public:
 
     // Core functions
     void update(float deltaTime);
-    void render(SDL_Renderer* renderer, int cameraX, int cameraY, int tileSize);
+    void render(SDL_Renderer* renderer, int cameraX, int cameraY, int tileSize, float zoom);
     
     // Getters
     int getX() const { return x; }

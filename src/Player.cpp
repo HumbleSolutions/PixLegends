@@ -266,8 +266,8 @@ bool Player::isMeleeHitActive() const {
 
 SDL_Rect Player::getMeleeHitbox() const {
     if (currentState != PlayerState::ATTACKING_MELEE) return SDL_Rect{0,0,0,0};
-    // Omnidirectional melee: centered square around player
-    const int size = 160; // affects reach in all directions
+    // Omnidirectional melee: centered square around player (reduced by half)
+    const int size = 80; // affects reach in all directions
     SDL_Rect r;
     r.w = size;
     r.h = size;
@@ -275,6 +275,20 @@ SDL_Rect Player::getMeleeHitbox() const {
     int cy = static_cast<int>(y + height / 2.0f);
     r.x = cx - size / 2;
     r.y = cy - size / 2;
+    return r;
+}
+
+SDL_Rect Player::getCollisionRect() const {
+    // Focus on the lower portion (feet/body) roughly matching visual stance
+    int bodyWidth = static_cast<int>(width * 0.6f);
+    int bodyHeight = static_cast<int>(height * 0.55f);
+    int offsetX = (width - bodyWidth) / 2;
+    int offsetY = static_cast<int>(height * 0.45f);
+    SDL_Rect r;
+    r.x = static_cast<int>(x) + offsetX;
+    r.y = static_cast<int>(y) + offsetY;
+    r.w = bodyWidth;
+    r.h = bodyHeight;
     return r;
 }
 
@@ -376,8 +390,13 @@ void Player::interact() {
     for (const auto& object : game->getWorld()->getObjects()) {
         std::cout << "DEBUG: Object at tile(" << object->getX() << ", " << object->getY() << ") - interactable: " << (object->isInteractable() ? "yes" : "no") << std::endl;
         if (object->isInteractable()) {
-            bool inRange = object->isInInteractionRange(static_cast<int>(x), static_cast<int>(y), tileSize);
-            std::cout << "DEBUG: Object at tile(" << object->getX() << ", " << object->getY() << ") - in range: " << (inRange ? "yes" : "no") << std::endl;
+            // Rect-intersection check using player's collision rect for robustness
+            SDL_Rect playerRect = getCollisionRect();
+            SDL_Rect objRect{ object->getX() * tileSize, object->getY() * tileSize, tileSize, tileSize };
+            // Slightly expand object rect to make interaction forgiving
+            objRect.x -= 6; objRect.y -= 6; objRect.w += 12; objRect.h += 12;
+            bool inter = SDL_HasIntersection(&playerRect, &objRect);
+            std::cout << "DEBUG: intersection-based in range: " << (inter ? "yes" : "no") << std::endl;
         }
     }
     
@@ -431,17 +450,31 @@ Object* Player::getNearbyInteractableObject() const {
     }
     
     int tileSize = game->getWorld()->getTileSize();
-    int playerTileX = static_cast<int>(x / tileSize);
-    int playerTileY = static_cast<int>(y / tileSize);
+    int playerTileX = static_cast<int>((x + width * 0.5f) / tileSize);
+    int playerTileY = static_cast<int>((y + height * 0.9f) / tileSize);
     
     // Check all objects in the world
     for (const auto& object : game->getWorld()->getObjects()) {
-        if (object->isInteractable()) {
-            bool inRange = object->isInInteractionRange(static_cast<int>(x), static_cast<int>(y), tileSize);
-            
-            if (inRange) {
-                return object.get();
-            }
+        if (!object->isInteractable()) continue;
+        // Primary check: player's collision rect vs expanded object tile rect
+        SDL_Rect playerRect = getCollisionRect();
+        SDL_Rect objRect{ object->getX() * tileSize, object->getY() * tileSize, tileSize, tileSize };
+        objRect.x -= 6; objRect.y -= 6; objRect.w += 12; objRect.h += 12;
+        if (SDL_HasIntersection(&playerRect, &objRect)) {
+            return object.get();
+        }
+
+        // Fallback check: distance from player's feet center to object center
+        int playerFeetX = static_cast<int>(x + width * 0.5f);
+        int playerFeetY = static_cast<int>(y + height * 0.9f);
+        int objCenterX = object->getX() * tileSize + tileSize / 2;
+        int objCenterY = object->getY() * tileSize + tileSize / 2;
+        int dx = playerFeetX - objCenterX;
+        int dy = playerFeetY - objCenterY;
+        int distSq = dx * dx + dy * dy;
+        int maxDist = static_cast<int>(tileSize * 0.9f); // just under one tile radius
+        if (distSq <= maxDist * maxDist) {
+            return object.get();
         }
     }
     
@@ -573,15 +606,19 @@ void Player::render(Renderer* renderer) {
     int dstH = static_cast<int>(std::round(dstW * (static_cast<float>(frameHeight) / std::max(1, frameWidth))));
     int spriteOffsetY = std::max(0, (dstH - height) / 2);
 
-    SDL_Rect dstRect = {
-        static_cast<int>(x),
-        static_cast<int>(y - spriteOffsetY),
-        dstW,
-        dstH
+    int camX = 0, camY = 0; renderer->getCamera(camX, camY);
+    float z = renderer->getZoom();
+    auto scaledEdge = [camX, camY, z](int wx, int wy) -> SDL_Point {
+        float sx = (static_cast<float>(wx - camX)) * z;
+        float sy = (static_cast<float>(wy - camY)) * z;
+        return SDL_Point{ static_cast<int>(std::floor(sx)), static_cast<int>(std::floor(sy)) };
     };
+    SDL_Point tl = scaledEdge(static_cast<int>(x), static_cast<int>(y - spriteOffsetY));
+    SDL_Point br = scaledEdge(static_cast<int>(x + dstW), static_cast<int>(y - spriteOffsetY + dstH));
+    SDL_Rect dstRect = { tl.x, tl.y, std::max(1, br.x - tl.x), std::max(1, br.y - tl.y) };
     
     // Render the sprite
-    renderer->renderTexture(currentSpriteSheet->getTexture()->getTexture(), &srcRect, &dstRect);
+    SDL_RenderCopy(renderer->getSDLRenderer(), currentSpriteSheet->getTexture()->getTexture(), &srcRect, &dstRect);
 }
 
 void Player::gainExperience(int xp) {
@@ -666,25 +703,41 @@ PlayerSave Player::makeSaveState() const {
 }
 
 bool Player::consumeHealthPotion() {
-    if (healthPotionCooldown > 0.0f || healthPotionCharges <= 0 || health >= maxHealth) {
+    bool infinite = game && game->getInfinitePotions();
+    if (healthPotionCooldown > 0.0f || (!infinite && healthPotionCharges <= 0) || health >= maxHealth) {
         return false;
     }
     heal(HEALTH_POTION_HEAL);
-    healthPotionCharges--;
+    if (!infinite) {
+        healthPotionCharges--;
+    }
     healthPotionCooldown = POTION_COOLDOWN_SECONDS;
     if (game && game->getAudioManager()) game->getAudioManager()->playSound("potion_drink");
     return true;
 }
 
 bool Player::consumeManaPotion() {
-    if (manaPotionCooldown > 0.0f || manaPotionCharges <= 0 || mana >= maxMana) {
+    bool infinite = game && game->getInfinitePotions();
+    if (manaPotionCooldown > 0.0f || (!infinite && manaPotionCharges <= 0) || mana >= maxMana) {
         return false;
     }
     mana = std::min(mana + MANA_POTION_RESTORE, maxMana);
-    manaPotionCharges--;
+    if (!infinite) {
+        manaPotionCharges--;
+    }
     manaPotionCooldown = POTION_COOLDOWN_SECONDS;
     if (game && game->getAudioManager()) game->getAudioManager()->playSound("potion_drink");
     return true;
+}
+
+int Player::getEffectiveHealthPotionCharges() const {
+    if (game && game->getInfinitePotions()) return POTION_MAX_CHARGES;
+    return healthPotionCharges;
+}
+
+int Player::getEffectiveManaPotionCharges() const {
+    if (game && game->getInfinitePotions()) return POTION_MAX_CHARGES;
+    return manaPotionCharges;
 }
 
 void Player::addHealthPotionCharges(int charges) {

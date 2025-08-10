@@ -61,14 +61,22 @@ void Object::update(float deltaTime) {
     }
 }
 
-void Object::render(SDL_Renderer* renderer, int cameraX, int cameraY, int tileSize) {
+void Object::render(SDL_Renderer* renderer, int cameraX, int cameraY, int tileSize, float zoom) {
     if (!visible) {
         return;
     }
     
     // Calculate screen position
-    int screenX = (x * tileSize) - cameraX;
-    int screenY = (y * tileSize) - cameraY;
+    // Use edge-difference scaling to avoid cracks between zoomed tiles/objects
+    auto scaledEdge = [cameraX, cameraY, zoom](int wx, int wy) -> SDL_Point {
+        float sx = (static_cast<float>(wx - cameraX)) * zoom;
+        float sy = (static_cast<float>(wy - cameraY)) * zoom;
+        return SDL_Point{ static_cast<int>(std::floor(sx)), static_cast<int>(std::floor(sy)) };
+    };
+    SDL_Point tl = scaledEdge(x * tileSize, y * tileSize);
+    SDL_Point br = scaledEdge(x * tileSize + tileSize, y * tileSize + tileSize);
+    int screenX = tl.x;
+    int screenY = tl.y;
     
     SDL_Rect srcRect = {0, 0, 0, 0};
     SDL_Texture* sdlTexture = nullptr;
@@ -97,21 +105,11 @@ void Object::render(SDL_Renderer* renderer, int cameraX, int cameraY, int tileSi
         // Destination rectangle - use actual frame dimensions for spritesheets
         SDL_Rect dstRect;
         if (spriteSheet) {
-            // Use actual frame dimensions for spritesheets
-            dstRect = {
-                screenX,
-                screenY,
-                spriteSheet->getFrameWidth(),
-                spriteSheet->getFrameHeight()
-            };
+            // Scale to cell via edges for grid alignment
+            dstRect = { screenX, screenY, std::max(1, br.x - tl.x), std::max(1, br.y - tl.y) };
         } else {
-            // Use tile size for regular textures
-            dstRect = {
-                screenX,
-                screenY,
-                tileSize,
-                tileSize
-            };
+            // Regular textures sized to cell
+            dstRect = { screenX, screenY, std::max(1, br.x - tl.x), std::max(1, br.y - tl.y) };
         }
         
         // Render the texture
@@ -211,17 +209,23 @@ void Object::clearLoot() {
 }
 
 bool Object::isInInteractionRange(int playerX, int playerY, int tileSize) const {
-    // Convert player position to tile coordinates using integer division
+    // Player feet world-pixel -> tile conversion
     int playerTileX = playerX / tileSize;
     int playerTileY = playerY / tileSize;
-    
-    // Check if object is within 1 tile distance (adjacent or same tile)
-    int distanceX = abs(playerTileX - x);
-    int distanceY = abs(playerTileY - y);
-    
-    bool inRange = distanceX <= 1 && distanceY <= 1;
-    
-    return inRange;
+
+    // Quick coarse filter: within 1 tile in both axes
+    int distanceX = std::abs(playerTileX - x);
+    int distanceY = std::abs(playerTileY - y);
+    if (distanceX > 1 || distanceY > 1) return false;
+
+    // Precise check in world pixels to avoid false positives from rounding
+    int objCenterX = x * tileSize + tileSize / 2;
+    int objCenterY = y * tileSize + tileSize / 2;
+    int dx = playerX - objCenterX;
+    int dy = playerY - objCenterY;
+    int distSq = dx * dx + dy * dy;
+    int maxDist = static_cast<int>(tileSize * 1.2f); // ~one tile radius
+    return distSq <= maxDist * maxDist;
 }
 
 void Object::changeTexture(const std::string& newTexturePath) {

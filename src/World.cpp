@@ -151,9 +151,18 @@ void World::render(Renderer* renderer) {
                 int worldPosX = worldX * tileSize;
                 int worldPosY = worldY * tileSize;
                 
-                // Calculate screen position (with camera offset)
-                int screenX = worldPosX - cameraX;
-                int screenY = worldPosY - cameraY;
+                // Calculate screen position (with camera offset and zoom)
+                float z = renderer->getZoom();
+                // Use edge-difference scaling to avoid per-tile rounding gaps
+                auto scaledEdge = [cameraX, cameraY, z](int wx, int wy) -> SDL_Point {
+                    float sx = (static_cast<float>(wx - cameraX)) * z;
+                    float sy = (static_cast<float>(wy - cameraY)) * z;
+                    return SDL_Point{ static_cast<int>(std::floor(sx)), static_cast<int>(std::floor(sy)) };
+                };
+                SDL_Point tl = scaledEdge(worldPosX, worldPosY);
+                SDL_Point br = scaledEdge(worldPosX + tileSize, worldPosY + tileSize);
+                int screenX = tl.x;
+                int screenY = tl.y;
                 
                 // Check if the tile is visible on screen (with generous margin to prevent black areas)
                 if (screenX + tileSize > -200 && screenX < 1920 + 200 && 
@@ -165,7 +174,7 @@ void World::render(Renderer* renderer) {
                     }
                     
                     // Variant-based rendering per material type
-                    SDL_Rect destRect = { screenX, screenY, tileSize, tileSize };
+                    SDL_Rect destRect = { screenX, screenY, std::max(1, br.x - tl.x), std::max(1, br.y - tl.y) };
 
                     // Special-cases: animated sprite sheets for deep water and lava
                     if (tileId == TILE_WATER_DEEP && deepWaterSpriteSheet && deepWaterSpriteSheet->getTexture()) {
@@ -237,18 +246,21 @@ void World::render(Renderer* renderer) {
         // Check if object is visible on screen (with generous margin)
         if (objScreenX + tileSize > -200 && objScreenX < 1920 + 200 && 
             objScreenY + tileSize > -200 && objScreenY < 1080 + 200) {
-            object->render(renderer->getSDLRenderer(), cameraX, cameraY, tileSize);
+            object->render(renderer->getSDLRenderer(), cameraX, cameraY, tileSize, renderer->getZoom());
         }
     }
 
     // Render enemies (screen-space culling)
     for (auto& enemy : enemies) {
         if (!enemy) continue;
-        int screenX = static_cast<int>(enemy->getX()) - cameraX;
-        int screenY = static_cast<int>(enemy->getY()) - cameraY;
-        if (screenX + 512 > -200 && screenX < 1920 + 200 &&
-            screenY + 512 > -200 && screenY < 1080 + 200) {
-            enemy->render(renderer->getSDLRenderer(), cameraX, cameraY);
+        float z = renderer->getZoom();
+        int screenX = static_cast<int>((static_cast<int>(enemy->getX()) - cameraX) * z);
+        int screenY = static_cast<int>((static_cast<int>(enemy->getY()) - cameraY) * z);
+        int cullW = static_cast<int>(512 * z);
+        int cullH = static_cast<int>(512 * z);
+        if (screenX + cullW > -200 && screenX < 1920 + 200 &&
+            screenY + cullH > -200 && screenY < 1080 + 200) {
+            enemy->render(renderer);
             enemy->renderProjectiles(renderer);
         }
     }

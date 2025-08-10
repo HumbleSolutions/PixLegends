@@ -102,6 +102,9 @@ public:
     int getHealthPotionCharges() const { return healthPotionCharges; }
     int getManaPotionCharges() const { return manaPotionCharges; }
     int getMaxPotionCharges() const { return POTION_MAX_CHARGES; }
+    // Effective charges for UI when cheats are enabled
+    int getEffectiveHealthPotionCharges() const;
+    int getEffectiveManaPotionCharges() const;
     
     // Getters
     float getX() const { return x; }
@@ -122,6 +125,9 @@ public:
     int getStrength() const { return strength; }
     int getIntelligence() const { return intelligence; }
     int getGold() const { return gold; }
+
+    // Collision
+    SDL_Rect getCollisionRect() const;
 
 private:
     Game* game;
