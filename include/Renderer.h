@@ -37,6 +37,9 @@ public:
     // Camera/viewport
     void setCamera(int x, int y);
     void getCamera(int& x, int& y) const;
+    // Zoom factor applied to world rendering (tiles/objects/enemies can use this if needed)
+    void setZoom(float z) { zoom = (z <= 0.1f ? 0.1f : z); }
+    float getZoom() const { return zoom; }
     void worldToScreen(int worldX, int worldY, int& screenX, int& screenY) const;
     void screenToWorld(int screenX, int screenY, int& worldX, int& worldY) const;
     
@@ -46,6 +49,7 @@ public:
 private:
     SDL_Renderer* renderer;
     int cameraX, cameraY;
+    float zoom = 1.0f;
     
     // Helper functions
     void drawCirclePoints(int centerX, int centerY, int x, int y, SDL_Color color, bool filled);

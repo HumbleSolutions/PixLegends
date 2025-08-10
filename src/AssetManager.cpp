@@ -5,6 +5,8 @@
 // Static member initialization
 const std::string AssetManager::ASSETS_PATH = "assets/";
 const std::string AssetManager::WIZARD_PATH = ASSETS_PATH + "Wizard 2D Pixel Art v2.0/Sprites/without_outline/";
+// New main character root (top folder contains subfolders per action and direction)
+const std::string AssetManager::MAIN_CHAR_PATH = ASSETS_PATH + "Main Character/";
 const std::string AssetManager::TILESET_PATH = ASSETS_PATH + "Textures/Tiles/";
 const std::string AssetManager::UI_PATH = ASSETS_PATH + "UI/";
 const std::string AssetManager::OBJECTS_PATH = ASSETS_PATH + "Textures/Objects/";
@@ -338,8 +340,8 @@ void AssetManager::preloadAssets() {
     spriteSheetCache.clear();
     
     // OPTIMIZATION: Load assets in batches to improve performance
-    // Load wizard sprites (most frequently used)
-    std::cout << "Loading wizard sprites..." << std::endl;
+    // Load wizard sprites for enemy AI
+    std::cout << "Loading wizard sprites (enemy)..." << std::endl;
     loadSpriteSheet(WIZARD_PATH + "IDLE_LEFT.png", 128, 78, 6, 6);
     loadSpriteSheet(WIZARD_PATH + "IDLE_RIGHT.png", 128, 78, 6, 6);
     loadSpriteSheet(WIZARD_PATH + "WALK_LEFT.png", 128, 78, 4, 4);
@@ -352,6 +354,29 @@ void AssetManager::preloadAssets() {
     loadSpriteSheet(WIZARD_PATH + "HURT_LEFT.png", 128, 78, 4, 4);
     loadSpriteSheet(WIZARD_PATH + "HURT_RIGHT.png", 128, 78, 4, 4);
     loadSpriteSheet(WIZARD_PATH + "DEATH.png", 128, 78, 6, 6);
+
+    // Load new main character 8-frame directional sheets
+    // Files exist under assets/Main Character/{IDLE,RUN,ATTACK 1,ATTACK 2}/{idle_*.png, run_*.png, attack*.png}
+    std::cout << "Loading main character sprites (player)..." << std::endl;
+    // IDLE (8 frames each)
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "IDLE/idle_left.png", 8, 8);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "IDLE/idle_right.png", 8, 8);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "IDLE/idle_up.png", 8, 8);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "IDLE/idle_down.png", 8, 8);
+    // RUN (8 frames each)
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "RUN/run_left.png", 8, 8);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "RUN/run_right.png", 8, 8);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "RUN/run_up.png", 8, 8);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "RUN/run_down.png", 8, 8);
+    // ATTACK 1 (melee) and ATTACK 2 (alt) - use 8 frames
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "ATTACK 1/attack1_left.png", 8, 8);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "ATTACK 1/attack1_right.png", 8, 8);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "ATTACK 1/attack1_up.png", 8, 8);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "ATTACK 1/attack1_down.png", 8, 8);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "ATTACK 2/attack2_left.png", 8, 8);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "ATTACK 2/attack2_right.png", 8, 8);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "ATTACK 2/attack2_up.png", 8, 8);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "ATTACK 2/attack2_down.png", 8, 8);
     
     // Load new tile textures by folder groups (variants are loaded lazily by World)
     std::cout << "Loading tile textures..." << std::endl;
@@ -395,7 +420,8 @@ void AssetManager::preloadAssets() {
     // 8-frame sprite sheets for when potions have charges
     loadSpriteSheetAuto("assets/Textures/All Potions/HP potions/full_hp_potion.png", 8, 8);
     loadSpriteSheetAuto("assets/Textures/All Potions/HP potions/half_hp_potion.png", 8, 8);
-    loadSpriteSheetAuto("assets/Textures/All Potions/HP potions/low_hp_potion.png", 8, 8);
+    // Note: low_hp_potion has 9 frames
+    loadSpriteSheetAuto("assets/Textures/All Potions/HP potions/low_hp_potion.png", 9, 9);
     loadSpriteSheetAuto("assets/Textures/All Potions/Mana potion/full_mana_potion.png", 8, 8);
     loadSpriteSheetAuto("assets/Textures/All Potions/Mana potion/half_mana_potion.png", 8, 8);
     loadSpriteSheetAuto("assets/Textures/All Potions/Mana potion/low_mana_potion.png", 8, 8);

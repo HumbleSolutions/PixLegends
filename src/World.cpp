@@ -10,14 +10,14 @@
 #include <cstdio>
 #include <cstdlib> // Required for std::abs
 
-World::World() : width(1000), height(1000), tileSize(32), tilesetTexture(nullptr), assetManager(nullptr), rng(std::random_device{}()), visibilityRadius(50), fogOfWarEnabled(true) {
+World::World() : width(1000), height(1000), tileSize(32), tilesetTexture(nullptr), assetManager(nullptr), rng(std::random_device{}()), visibilityRadius(30), fogOfWarEnabled(true) {
     // Initialize default tile generation config
     tileGenConfig.worldWidth = width;
     tileGenConfig.worldHeight = height;
     initializeDefaultWorld();
 }
 
-World::World(AssetManager* assetManager) : width(1000), height(1000), tileSize(32), tilesetTexture(nullptr), assetManager(assetManager), rng(std::random_device{}()), visibilityRadius(50), fogOfWarEnabled(true) {
+World::World(AssetManager* assetManager) : width(1000), height(1000), tileSize(32), tilesetTexture(nullptr), assetManager(assetManager), rng(std::random_device{}()), visibilityRadius(30), fogOfWarEnabled(true) {
     // Initialize default tile generation config
     tileGenConfig.worldWidth = width;
     tileGenConfig.worldHeight = height;
@@ -249,7 +249,99 @@ void World::render(Renderer* renderer) {
         if (screenX + 512 > -200 && screenX < 1920 + 200 &&
             screenY + 512 > -200 && screenY < 1080 + 200) {
             enemy->render(renderer->getSDLRenderer(), cameraX, cameraY);
+            enemy->renderProjectiles(renderer);
         }
+    }
+}
+
+void World::renderMinimap(Renderer* renderer, int x, int y, int width, int height, float playerX, float playerY) const {
+    if (!renderer || width <= 0 || height <= 0) return;
+    SDL_Renderer* sdl = renderer->getSDLRenderer();
+    if (!sdl) return;
+
+    SDL_SetRenderDrawBlendMode(sdl, SDL_BLENDMODE_BLEND);
+    // Border first so content draws on top of any opaque center
+    Texture* borderTex = nullptr;
+    if (assetManager) borderTex = assetManager->getTexture("assets/Textures/Objects/mini_map_border.png");
+    // Inner drawing area (fit inside border)
+    const int margin = 8;
+    int ix = x + margin, iy = y + margin;
+    int iw = std::max(1, width - margin * 2);
+    int ih = std::max(1, height - margin * 2);
+    SDL_Rect inner{ ix, iy, iw, ih };
+    SDL_SetRenderDrawColor(sdl, 0, 0, 0, 200);
+    SDL_RenderFillRect(sdl, &inner);
+
+    // Center the view around the player
+    int centerTileX = static_cast<int>(playerX / tileSize);
+    int centerTileY = static_cast<int>(playerY / tileSize);
+    // Define a square region to sample that maps to minimap pixels
+    // Show a fixed span around the player for readable minimap
+    const float spanTilesX = 200.0f;
+    const float spanTilesY = 200.0f;
+    const float halfSpanX = spanTilesX * 0.5f;
+    const float halfSpanY = spanTilesY * 0.5f;
+
+    for (int py = 0; py < ih; ++py) {
+        for (int px = 0; px < iw; ++px) {
+            // World tile being sampled for this pixel, centered on player
+            float tfx = centerTileX - halfSpanX + (px + 0.5f) * (spanTilesX / iw);
+            float tfy = centerTileY - halfSpanY + (py + 0.5f) * (spanTilesY / ih);
+            int tx = std::max(0, std::min(this->width - 1, static_cast<int>(tfx)));
+            int ty = std::max(0, std::min(this->height - 1, static_cast<int>(tfy)));
+            tx = std::max(0, std::min(this->width - 1, tx));
+            ty = std::max(0, std::min(this->height - 1, ty));
+
+            // Undiscovered tiles: black
+            bool explored = (ty >= 0 && ty < static_cast<int>(exploredTiles.size()) && tx >= 0 && tx < static_cast<int>(exploredTiles[ty].size())) ? exploredTiles[ty][tx] : false;
+            if (!explored) {
+                SDL_SetRenderDrawColor(sdl, 0, 0, 0, 255);
+            } else {
+                int id = tiles[ty][tx].id;
+                World::TileColor c = getMinimapColor(id);
+                SDL_SetRenderDrawColor(sdl, c.r, c.g, c.b, c.a);
+            }
+            SDL_RenderDrawPoint(sdl, ix + px, iy + py);
+        }
+    }
+    
+    // Draw player dot at center
+    SDL_SetRenderDrawColor(sdl, 255, 0, 0, 255);
+    int cx = ix + iw / 2;
+    int cy = iy + ih / 2;
+    SDL_RenderDrawPoint(sdl, cx, cy);
+
+    // Draw border on top last
+    if (borderTex && borderTex->getTexture()) {
+        SDL_Rect dst{ x, y, width, height };
+        SDL_RenderCopy(sdl, borderTex->getTexture(), nullptr, &dst);
+    } else {
+        SDL_SetRenderDrawColor(sdl, 220, 220, 220, 255);
+        SDL_Rect outline{ x, y, width, height };
+        SDL_RenderDrawRect(sdl, &outline);
+    }
+}
+
+World::TileColor World::getMinimapColor(int tileId) const {
+    switch (tileId) {
+        case TILE_GRASS:          return TileColor(46, 160, 67, 255);  // brighter green
+        case TILE_DIRT:           return TileColor(139, 92, 40, 255);  // warm brown
+        case TILE_STONE:          return TileColor(170, 170, 170, 255); // light gray
+        case TILE_ASPHALT:        return TileColor(70, 70, 70, 255);
+        case TILE_CONCRETE:       return TileColor(180, 180, 180, 255);
+        case TILE_SAND:           return TileColor(230, 200, 120, 255);
+        case TILE_SNOW:           return TileColor(245, 250, 255, 255);
+        case TILE_GRASSY_ASPHALT: return TileColor(90, 140, 90, 255);
+        case TILE_GRASSY_CONCRETE:return TileColor(100, 160, 100, 255);
+        case TILE_SANDY_DIRT:     return TileColor(205, 170, 110, 255);
+        case TILE_SANDY_STONE:    return TileColor(205, 190, 150, 255);
+        case TILE_SNOWY_STONE:    return TileColor(230, 235, 245, 255);
+        case TILE_STONY_DIRT:     return TileColor(160, 130, 110, 255);
+        case TILE_WET_DIRT:       return TileColor(120, 90, 70, 255);
+        case TILE_WATER_SHALLOW:  return TileColor(80, 180, 255, 255);  // clear bright blue
+        case TILE_WATER_DEEP:     return TileColor(0, 120, 210, 255);   // deeper blue
+        case TILE_LAVA:           return TileColor(255, 90, 0, 255);
+        default:                  return TileColor(46, 160, 67, 255);
     }
 }
 

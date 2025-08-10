@@ -57,6 +57,8 @@ void Game::initializeSystems() {
         }
     }
     renderer = std::make_unique<Renderer>(sdlRenderer);
+    // Zoom in a bit more on the main character
+    renderer->setZoom(1.8f);
     inputManager = std::make_unique<InputManager>();
     assetManager = std::make_unique<AssetManager>(sdlRenderer);
     
@@ -122,12 +124,16 @@ void Game::initializeSystems() {
     demoMode = false;
     autotileDemo = std::make_unique<AutotileDemo>(assetManager.get(), 20, 12, 32);
 
-    // Spawn first enemy (Demon Boss) near player start
+    // Spawn enemies: Demon and Wizard
     if (world && assetManager) {
-        // Player starts roughly around tile (20,11) => pixels ~ (20*32, 11*32)
-        float bossSpawnX = 26.0f * world->getTileSize();
-        float bossSpawnY = 11.0f * world->getTileSize();
-        world->addEnemy(std::make_unique<Enemy>(bossSpawnX, bossSpawnY, assetManager.get()));
+        // Demon near start
+        float demonX = 26.0f * world->getTileSize();
+        float demonY = 11.0f * world->getTileSize();
+        world->addEnemy(std::make_unique<Enemy>(demonX, demonY, assetManager.get(), EnemyKind::Demon));
+        // Wizard nearby
+        float wizX = 30.0f * world->getTileSize();
+        float wizY = 14.0f * world->getTileSize();
+        world->addEnemy(std::make_unique<Enemy>(wizX, wizY, assetManager.get(), EnemyKind::Wizard));
     }
     
     // Set initial visibility and generate initial visible chunks around player starting position
@@ -244,7 +250,7 @@ void Game::update(float deltaTime) {
                 }
             }
 
-            // 2) Enemy contact damage to player (simple melee)
+            // 2) Enemy contact damage to player (simple melee) and wizard projectiles
             for (auto& enemyPtr : enemies) {
                 if (!enemyPtr || enemyPtr->isDead()) continue;
                 SDL_Rect eRect = enemyPtr->getCollisionRect();
@@ -264,6 +270,16 @@ void Game::update(float deltaTime) {
                                 if (e2) e2->resetToSpawn();
                             }
                         }
+                    }
+                }
+                // Wizard projectiles
+                for (const auto& proj : enemyPtr->getProjectiles()) {
+                    if (!proj || !proj->isActive()) continue;
+                    SDL_Rect pRect = proj->getCollisionRect();
+                    SDL_Rect inter2;
+                    if (SDL_IntersectRect(&pRect, &playerRect, &inter2)) {
+                        player->takeDamage(12);
+                        const_cast<Projectile*>(proj.get())->deactivate();
                     }
                 }
             }
@@ -304,19 +320,22 @@ void Game::render() {
     SDL_SetRenderDrawColor(sdlRenderer, 0, 0, 0, 255);
     SDL_RenderClear(sdlRenderer);
     
-    // Set camera
+    // Set camera (center on player using actual renderer output size and zoom)
     if (demoMode) {
         renderer->setCamera(0, 0);
     } else if (player) {
-        int playerX = static_cast<int>(player->getX()); // Player position is already in pixels
+        int playerX = static_cast<int>(player->getX());
         int playerY = static_cast<int>(player->getY());
-        
-        // Center camera on player
-        int cameraX = playerX - (WINDOW_WIDTH / 2);
-        int cameraY = playerY - (WINDOW_HEIGHT / 2);
-        
-        // Set camera position
+        int outW = 0, outH = 0; SDL_GetRendererOutputSize(sdlRenderer, &outW, &outH);
+        if (outW <= 0) { outW = WINDOW_WIDTH; outH = WINDOW_HEIGHT; }
+        float zoom = renderer->getZoom();
+        int cameraX = static_cast<int>(playerX - (outW / (2.0f * zoom)));
+        int cameraY = static_cast<int>(playerY - (outH / (2.0f * zoom)));
         renderer->setCamera(cameraX, cameraY);
+        if (world) {
+            world->updateVisibleChunks(player->getX(), player->getY());
+            world->updateVisibility(player->getX(), player->getY());
+        }
     }
     
     // Login screen overlay when active
@@ -393,6 +412,16 @@ void Game::render() {
         
         // Render FPS counter
         uiSystem->renderFPSCounter(currentFPS, averageFPS, frameTime);
+
+        // Minimap (top-right), 150x150 pixels, centered on player
+        if (world && player) {
+            int outW = 0, outH = 0; SDL_GetRendererOutputSize(sdlRenderer, &outW, &outH);
+            if (outW <= 0) { outW = WINDOW_WIDTH; outH = WINDOW_HEIGHT; }
+            int mmW = 150, mmH = 150;
+            int mmX = outW - mmW - 12;
+            int mmY = 12;
+            world->renderMinimap(renderer.get(), mmX, mmY, mmW, mmH, player->getX(), player->getY());
+        }
         
         // Render death popup with respawn button if dead
         if (player && player->isDead()) {
@@ -419,17 +448,21 @@ void Game::render() {
         }
 
         // Boss health bar while engaged
-    if (world && player) {
+        if (world && player) {
             auto& enemies = world->getEnemies();
-            // For now: show the first enemy as Demon Boss if aggroed or in range
-            if (!enemies.empty() && enemies[0]) {
-                Enemy* boss = enemies[0].get();
-                // Consider engaged if boss is aggroed or player within attack range
-                bool engaged = boss->getIsAggroed() || boss->isWithinAttackRange(player->getX(), player->getY());
-            if (!boss->isDead() && engaged) {
+            // Prefer to show Demon bar if a Demon is engaged; otherwise show first engaged enemy
+            Enemy* engagedEnemy = nullptr;
+            for (auto& e : enemies) {
+                if (!e || e->isDead()) continue;
+                bool engaged = e->getIsAggroed() || e->isWithinAttackRange(player->getX(), player->getY());
+                if (!engaged) continue;
+                engagedEnemy = e.get();
+                if (std::string(engagedEnemy->getDisplayName()) == "Demon") break;
+            }
+            if (engagedEnemy) {
                     int outW = 0, outH = 0;
                     SDL_GetRendererOutputSize(sdlRenderer, &outW, &outH);
-                    uiSystem->renderBossHealthBar("Demon", boss->getHealth(), boss->getMaxHealth(), (outW > 0 ? outW : WINDOW_WIDTH));
+                uiSystem->renderBossHealthBar(engagedEnemy->getDisplayName(), engagedEnemy->getHealth(), engagedEnemy->getMaxHealth(), (outW > 0 ? outW : WINDOW_WIDTH));
                 // Start boss music if available
                 if (audioManager && audioManager->hasMusic("boss_music") && currentMusicTrack != "boss_music") { 
                     audioManager->fadeToMusic("boss_music", 400, 300); 
@@ -440,7 +473,7 @@ void Game::render() {
                 bossFadeOutPending = false;
             } else {
                 // Boss died or disengaged: switch back to main theme if present; otherwise stop music
-                bool bossJustDied = boss->isDead() && !bossWasDead;
+                bool bossJustDied = bossWasDead; // simplified hold logic without specific enemy
                 if (bossJustDied) {
                     bossWasDead = true;
                     bossMusicHoldTimerSec = 3.0f; // hold boss music for 3 seconds
@@ -470,9 +503,8 @@ void Game::render() {
                             if (!currentMusicTrack.empty()) {
                                 audioManager->stopMusic();
                                 currentMusicTrack.clear();
-                            }
-                        }
-                    }
+            }
+        }
                 }
             }
             }
@@ -718,10 +750,48 @@ void Game::renderOptionsMenuOverlay() {
         if (hit.changedMusic)  audioManager->setMusicVolume(hit.newMusic);
         if (hit.changedSound)  audioManager->setSoundVolume(hit.newSound);
     }
+    if (hit.clickedReset) {
+        // Reset world and player to initial state
+        // Regenerate world visibility and reposition player at spawn
+        if (world && player) {
+            // Reset enemies
+            auto& enemies = world->getEnemies();
+            for (auto& e : enemies) {
+                if (e) e->resetToSpawn();
+            }
+            // Teleport player to spawn and clear projectiles
+            player->respawn(player->getSpawnX(), player->getSpawnY());
+            world->updateVisibility(player->getX(), player->getY());
+            world->updateVisibleChunks(player->getX(), player->getY());
+        }
+        // Also reset music to main theme
+        if (audioManager) {
+            if (audioManager->hasMusic("main_theme")) {
+                audioManager->fadeToMusic("main_theme", 400, 400);
+                currentMusicTrack = "main_theme";
+            }
+        }
+        optionsOpen = false;
+    }
     if (hit.clickedFullscreen) {
         Uint32 flags = SDL_GetWindowFlags(window);
         bool fs = (flags & SDL_WINDOW_FULLSCREEN) || (flags & SDL_WINDOW_FULLSCREEN_DESKTOP);
         SDL_SetWindowFullscreen(window, fs ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
+        // After toggling full screen, recenter camera on the player
+        if (player) {
+            int playerX = static_cast<int>(player->getX());
+            int playerY = static_cast<int>(player->getY());
+            int outW=0,outH=0; SDL_GetRendererOutputSize(sdlRenderer, &outW, &outH);
+            if (outW <= 0) { outW = WINDOW_WIDTH; outH = WINDOW_HEIGHT; }
+            float zoom = renderer->getZoom();
+            int cameraX = static_cast<int>(playerX - (outW / (2.0f * zoom)));
+            int cameraY = static_cast<int>(playerY - (outH / (2.0f * zoom)));
+            renderer->setCamera(cameraX, cameraY);
+            if (world) {
+                world->updateVisibleChunks(player->getX(), player->getY());
+                world->updateVisibility(player->getX(), player->getY());
+            }
+        }
     }
     if (hit.clickedResume) {
         optionsOpen = false;

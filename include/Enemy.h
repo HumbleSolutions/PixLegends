@@ -2,10 +2,14 @@
 
 #include <SDL2/SDL.h>
 #include <string>
+#include <memory>
+#include <vector>
+#include "Projectile.h"
 
 // Forward declarations
 class SpriteSheet;
 class AssetManager;
+class Renderer;
 
 enum class EnemyState {
     IDLE,
@@ -20,13 +24,19 @@ enum class EnemyDirection {
     RIGHT
 };
 
+enum class EnemyKind {
+    Demon,
+    Wizard
+};
+
 class Enemy {
 public:
-    Enemy(float spawnX, float spawnY, AssetManager* assetManager);
+    Enemy(float spawnX, float spawnY, AssetManager* assetManager, EnemyKind kind);
     ~Enemy() = default;
 
     void update(float deltaTime, float playerX, float playerY);
     void render(SDL_Renderer* sdlRenderer, int cameraX, int cameraY) const;
+    void renderProjectiles(Renderer* renderer) const;
 
     float getX() const { return x; }
     float getY() const { return y; }
@@ -45,6 +55,7 @@ public:
     void consumeAttackCooldown() { attackCooldownTimer = attackCooldownSeconds; }
     int getContactDamage() const { return contactDamage; }
     bool getIsAggroed() const { return isAggroed; }
+    const char* getDisplayName() const { return (kind == EnemyKind::Demon ? "Demon" : "Wizard"); }
 
     // Expose basic dimension for simple collision if needed
     int getRawWidth() const { return width; }
@@ -52,6 +63,7 @@ public:
 
     // Spawn/reset
     void resetToSpawn();
+    const std::vector<std::unique_ptr<Projectile>>& getProjectiles() const { return projectiles; }
 
 private:
     // Core
@@ -62,6 +74,7 @@ private:
     float moveSpeed;
     int health;
     int maxHealth;
+    AssetManager* assets = nullptr;
 
     // State
     EnemyState currentState;
@@ -92,6 +105,8 @@ private:
     void setState(EnemyState newState);
     void setDirection(EnemyDirection newDirection);
     void updateAnimation(float deltaTime);
+    void updateProjectiles(float deltaTime);
+    void fireProjectileTowards(float targetX, float targetY, AssetManager* assetManager);
 
     // Combat/behavior
     float aggroRadius;   // pixels
@@ -106,6 +121,14 @@ private:
     // Spawn position
     float spawnX;
     float spawnY;
+
+    // Type/behavior
+    EnemyKind kind;
+    // Ranged attack (wizard)
+    float rangedCooldownSeconds = 1.2f;
+    float rangedCooldownTimer = 0.0f;
+    float rangedRange = 600.0f;
+    std::vector<std::unique_ptr<Projectile>> projectiles;
 };
 
 

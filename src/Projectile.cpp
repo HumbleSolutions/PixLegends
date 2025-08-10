@@ -9,10 +9,17 @@ Projectile::Projectile(float x, float y, ProjectileDirection direction, AssetMan
       active(true), lifetime(0.0f), maxLifetime(MAX_LIFETIME), damage(damage) {
     
     // Load the projectile sprite sheet
-    spriteSheet = assetManager->getSpriteSheet(AssetManager::WIZARD_PATH + "Projectile.png");
+    // AssetManager may be null for enemy-fired projectiles; rely on preloaded cache in that case
+    if (assetManager) {
+        spriteSheet = assetManager->getSpriteSheet(AssetManager::WIZARD_PATH + "Projectile.png");
+    } else {
+        // Attempt to fetch from global cache via static accessor is not available; use a safe nullptr check later
+        // Enemy.cpp uses nullptr; assume preloaded by AssetManager::preloadAssets
+        spriteSheet = nullptr;
+    }
     if (!spriteSheet) {
-        std::cout << "Failed to load projectile sprite sheet!" << std::endl;
-        active = false;
+        // As a fallback, keep projectile active but render nothing; still apply damage on hit
+        std::cout << "Projectile sprite missing; continuing with invisible projectile." << std::endl;
     }
 }
 

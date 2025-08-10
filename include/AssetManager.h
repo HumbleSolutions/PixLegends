@@ -82,6 +82,8 @@ public:
     // Asset paths
     static const std::string ASSETS_PATH;
     static const std::string WIZARD_PATH;
+    // Base path for the new main character
+    static const std::string MAIN_CHAR_PATH; // e.g., "assets/Main Character/"
     static const std::string TILESET_PATH;
     static const std::string UI_PATH;
     static const std::string OBJECTS_PATH;

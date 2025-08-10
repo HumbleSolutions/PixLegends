@@ -147,6 +147,8 @@ public:
     void update(float deltaTime);
     void render(Renderer* renderer);
     void updateEnemies(float deltaTime, float playerX, float playerY);
+    // UI overlays
+    void renderMinimap(Renderer* renderer, int x, int y, int width, int height, float playerX, float playerY) const;
     
     // Tilemap management
     void loadTilemap(const std::string& filename);
@@ -271,6 +273,8 @@ private:
         TileColor(Uint8 r, Uint8 g, Uint8 b, Uint8 a = 255) : r(r), g(g), b(b), a(a) {}
     };
     TileColor getTileColor(int tileId) const;
+    // Minimap color mapping (brighter, clearer colors)
+    TileColor getMinimapColor(int tileId) const;
     
     // New tilemap generation functions
     void initializeRNG();

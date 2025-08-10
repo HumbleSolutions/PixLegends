@@ -169,12 +169,20 @@ private:
     // Animation spritesheets
     SpriteSheet* idleLeftSpriteSheet;
     SpriteSheet* idleRightSpriteSheet;
+    SpriteSheet* idleUpSpriteSheet;
+    SpriteSheet* idleDownSpriteSheet;
     SpriteSheet* walkLeftSpriteSheet;
     SpriteSheet* walkRightSpriteSheet;
+    SpriteSheet* walkUpSpriteSheet;
+    SpriteSheet* walkDownSpriteSheet;
     SpriteSheet* meleeAttackLeftSpriteSheet;
     SpriteSheet* meleeAttackRightSpriteSheet;
+    SpriteSheet* meleeAttackUpSpriteSheet;
+    SpriteSheet* meleeAttackDownSpriteSheet;
     SpriteSheet* rangedAttackLeftSpriteSheet;
     SpriteSheet* rangedAttackRightSpriteSheet;
+    SpriteSheet* rangedAttackUpSpriteSheet;
+    SpriteSheet* rangedAttackDownSpriteSheet;
     SpriteSheet* hurtLeftSpriteSheet;
     SpriteSheet* hurtRightSpriteSheet;
     SpriteSheet* deathSpriteSheet;
@@ -213,4 +221,7 @@ private:
     float healthPotionCooldown = 0.0f;
     float manaPotionCooldown = 0.0f;
     static constexpr float POTION_COOLDOWN_SECONDS = 5.0f;
+
+    // Render scale for the player sprite (1.0 = original). Upscales visual size only.
+    float renderScale = 1.0f;
 };

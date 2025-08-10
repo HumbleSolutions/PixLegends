@@ -436,12 +436,13 @@ void UISystem::renderOptionsMenu(int selectedIndex,
         {"Sound Volume",  std::to_string(soundVolume)},
         {"Fullscreen",    fullscreenEnabled ? "On" : "Off"},
         {"VSync",         vsyncEnabled ? "On" : "Off"},
-        {"Resume",        ""}
+        {"Resume",        ""},
+        {"Reset Game",    ""}
     };
 
     const int startY = panel.y + 80;
     const int rowH = 44;
-    for (int i = 0; i < 7; ++i) {
+    for (int i = 0; i < 8; ++i) {
         SDL_Rect rowRect{ panel.x + 30, startY + i * rowH, panelW - 60, rowH - 6 };
         bool selected = (mouseX >= rowRect.x && mouseX <= rowRect.x + rowRect.w && mouseY >= rowRect.y && mouseY <= rowRect.y + rowRect.h);
         SDL_SetRenderDrawColor(renderer, selected ? 70 : 50, selected ? 120 : 50, selected ? 180 : 70, 200);
@@ -496,6 +497,16 @@ void UISystem::renderOptionsMenu(int selectedIndex,
                 outResult.clickedResume = true;
             }
         } else if (i == 6) {
+            // Reset game button
+            SDL_SetRenderDrawColor(renderer, 200, 140, 60, 255);
+            SDL_RenderFillRect(renderer, &valueArea);
+            SDL_SetRenderDrawColor(renderer, 255,255,255,255);
+            SDL_RenderDrawRect(renderer, &valueArea);
+            renderText("Reset", valueArea.x + 12, valueArea.y + 8, SDL_Color{255,255,255,255});
+            if (mouseDown && mouseX >= valueArea.x && mouseX <= valueArea.x + valueArea.w && mouseY >= valueArea.y && mouseY <= valueArea.y + valueArea.h) {
+                outResult.clickedReset = true;
+            }
+        } else if (i == 7) {
             // Logout button
             SDL_SetRenderDrawColor(renderer, 170, 70, 70, 255);
             SDL_RenderFillRect(renderer, &valueArea);

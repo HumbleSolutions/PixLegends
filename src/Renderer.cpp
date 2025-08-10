@@ -19,6 +19,13 @@ void Renderer::renderTexture(SDL_Texture* texture, const SDL_Rect* srcRect, cons
         // Apply camera offset
         adjustedDstRect.x -= cameraX;
         adjustedDstRect.y -= cameraY;
+        // Apply zoom scaling around top-left for simplicity
+        if (std::fabs(zoom - 1.0f) > 0.001f) {
+            adjustedDstRect.x = static_cast<int>(adjustedDstRect.x * zoom);
+            adjustedDstRect.y = static_cast<int>(adjustedDstRect.y * zoom);
+            adjustedDstRect.w = static_cast<int>(adjustedDstRect.w * zoom);
+            adjustedDstRect.h = static_cast<int>(adjustedDstRect.h * zoom);
+        }
     }
     
     SDL_RenderCopy(renderer, texture, srcRect, dstRect ? &adjustedDstRect : nullptr);
@@ -30,6 +37,12 @@ void Renderer::renderTexture(SDL_Texture* texture, int x, int y, int width, int 
     }
     
     SDL_Rect dstRect = {x - cameraX, y - cameraY, width, height};
+    if (std::fabs(zoom - 1.0f) > 0.001f) {
+        dstRect.x = static_cast<int>(dstRect.x * zoom);
+        dstRect.y = static_cast<int>(dstRect.y * zoom);
+        dstRect.w = static_cast<int>(dstRect.w * zoom);
+        dstRect.h = static_cast<int>(dstRect.h * zoom);
+    }
     SDL_RenderCopy(renderer, texture, nullptr, &dstRect);
 }
 

@@ -24,8 +24,11 @@ Player::Player(Game* game) : game(game), x(Game::WINDOW_WIDTH / 2.0f - 32.0f), y
                             level(1), experience(0), experienceToNext(100), strength(BASE_STRENGTH), intelligence(BASE_INTELLIGENCE),
                             gold(0),
                             healthPotionCharges(POTION_MAX_CHARGES), manaPotionCharges(POTION_MAX_CHARGES),
-                            idleLeftSpriteSheet(nullptr), idleRightSpriteSheet(nullptr), walkLeftSpriteSheet(nullptr), walkRightSpriteSheet(nullptr), meleeAttackLeftSpriteSheet(nullptr), meleeAttackRightSpriteSheet(nullptr),
-                             rangedAttackLeftSpriteSheet(nullptr), rangedAttackRightSpriteSheet(nullptr), hurtLeftSpriteSheet(nullptr), hurtRightSpriteSheet(nullptr), deathSpriteSheet(nullptr) {
+                            idleLeftSpriteSheet(nullptr), idleRightSpriteSheet(nullptr), idleUpSpriteSheet(nullptr), idleDownSpriteSheet(nullptr),
+                            walkLeftSpriteSheet(nullptr), walkRightSpriteSheet(nullptr), walkUpSpriteSheet(nullptr), walkDownSpriteSheet(nullptr),
+                            meleeAttackLeftSpriteSheet(nullptr), meleeAttackRightSpriteSheet(nullptr), meleeAttackUpSpriteSheet(nullptr), meleeAttackDownSpriteSheet(nullptr),
+                            rangedAttackLeftSpriteSheet(nullptr), rangedAttackRightSpriteSheet(nullptr), rangedAttackUpSpriteSheet(nullptr), rangedAttackDownSpriteSheet(nullptr),
+                            hurtLeftSpriteSheet(nullptr), hurtRightSpriteSheet(nullptr), deathSpriteSheet(nullptr) {
     
     loadSprites();
     calculateExperienceToNext();
@@ -40,18 +43,31 @@ Player::Player(Game* game) : game(game), x(Game::WINDOW_WIDTH / 2.0f - 32.0f), y
 void Player::loadSprites() {
     AssetManager* assetManager = game->getAssetManager();
     
-    // Get preloaded wizard spritesheets
-    idleLeftSpriteSheet = assetManager->getSpriteSheet(AssetManager::WIZARD_PATH + "IDLE_LEFT.png");
-    idleRightSpriteSheet = assetManager->getSpriteSheet(AssetManager::WIZARD_PATH + "IDLE_RIGHT.png");
-    walkLeftSpriteSheet = assetManager->getSpriteSheet(AssetManager::WIZARD_PATH + "WALK_LEFT.png");
-    walkRightSpriteSheet = assetManager->getSpriteSheet(AssetManager::WIZARD_PATH + "WALK_RIGHT.png");
-    meleeAttackLeftSpriteSheet = assetManager->getSpriteSheet(AssetManager::WIZARD_PATH + "MELEE ATTACK_LEFT.png");
-    meleeAttackRightSpriteSheet = assetManager->getSpriteSheet(AssetManager::WIZARD_PATH + "MELEE ATTACK_RIGHT.png");
-    rangedAttackLeftSpriteSheet = assetManager->getSpriteSheet(AssetManager::WIZARD_PATH + "RANGED ATTACK_LEFT.png");
-    rangedAttackRightSpriteSheet = assetManager->getSpriteSheet(AssetManager::WIZARD_PATH + "RANGED ATTACK_RIGHT.png");
-    hurtLeftSpriteSheet = assetManager->getSpriteSheet(AssetManager::WIZARD_PATH + "HURT_LEFT.png");
-    hurtRightSpriteSheet = assetManager->getSpriteSheet(AssetManager::WIZARD_PATH + "HURT_RIGHT.png");
-    deathSpriteSheet = assetManager->getSpriteSheet(AssetManager::WIZARD_PATH + "DEATH.png");
+    // Load new main character directional 8-frame sprite sheets
+    idleLeftSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "IDLE/idle_left.png");
+    idleRightSpriteSheet = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "IDLE/idle_right.png");
+    idleUpSpriteSheet    = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "IDLE/idle_up.png");
+    idleDownSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "IDLE/idle_down.png");
+
+    walkLeftSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "RUN/run_left.png");
+    walkRightSpriteSheet = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "RUN/run_right.png");
+    walkUpSpriteSheet    = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "RUN/run_up.png");
+    walkDownSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "RUN/run_down.png");
+
+    meleeAttackLeftSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "ATTACK 1/attack1_left.png");
+    meleeAttackRightSpriteSheet = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "ATTACK 1/attack1_right.png");
+    meleeAttackUpSpriteSheet    = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "ATTACK 1/attack1_up.png");
+    meleeAttackDownSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "ATTACK 1/attack1_down.png");
+
+    rangedAttackLeftSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "ATTACK 2/attack2_left.png");
+    rangedAttackRightSpriteSheet = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "ATTACK 2/attack2_right.png");
+    rangedAttackUpSpriteSheet    = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "ATTACK 2/attack2_up.png");
+    rangedAttackDownSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "ATTACK 2/attack2_down.png");
+
+    // No hurt/death sheets for the new set; fall back to right/left idle to keep flow consistent
+    hurtLeftSpriteSheet  = idleLeftSpriteSheet;
+    hurtRightSpriteSheet = idleRightSpriteSheet;
+    deathSpriteSheet     = idleDownSpriteSheet; // placeholder single loop
     
     // Set initial sprite sheet
     currentSpriteSheet = idleLeftSpriteSheet;
@@ -67,7 +83,11 @@ void Player::update(float deltaTime) {
     // Update attack cooldowns
     updateAttackCooldowns(deltaTime);
     
-    // Update animation
+    // Update animation — ensure attack sheets have priority over movement
+    // If attacking, keep current attack spritesheet locked
+    if (currentState == PlayerState::ATTACKING_MELEE || currentState == PlayerState::ATTACKING_RANGED) {
+        if (!currentSpriteSheet) currentSpriteSheet = getSpriteSheetForState(currentState);
+    }
     updateAnimation(deltaTime);
 
     // Footstep sound while walking
@@ -99,14 +119,16 @@ void Player::handleInput(const InputManager* inputManager) {
     float moveX, moveY;
     inputManager->getMovementVector(moveX, moveY);
     
-    // Only change direction when there's clear horizontal input
-    // This prevents direction changes during rapid key presses
-    if (moveX > 0.1f) {
-        setDirection(Direction::RIGHT);
-    } else if (moveX < -0.1f) {
-        setDirection(Direction::LEFT);
+    // Update facing directly from most recent input, favoring last non-zero axis to avoid sticky directions
+    if (currentState != PlayerState::ATTACKING_MELEE && currentState != PlayerState::ATTACKING_RANGED && (std::fabs(moveX) >= 0.1f || std::fabs(moveY) >= 0.1f)) {
+        if (std::fabs(moveX) >= std::fabs(moveY)) {
+            if (moveX > 0.1f) setDirection(Direction::RIGHT);
+            else if (moveX < -0.1f) setDirection(Direction::LEFT);
+        } else {
+            if (moveY > 0.1f) setDirection(Direction::DOWN);
+            else if (moveY < -0.1f) setDirection(Direction::UP);
+        }
     }
-    // If moveX is between -0.1 and 0.1, keep the current direction
     
     if (moveX != 0.0f || moveY != 0.0f) {
         if (currentState != PlayerState::ATTACKING_MELEE && currentState != PlayerState::ATTACKING_RANGED) {
@@ -159,17 +181,21 @@ void Player::handleInput(const InputManager* inputManager) {
 }
 
 void Player::move(float deltaTime) {
-    if (currentState == PlayerState::DEAD || currentState == PlayerState::ATTACKING_MELEE || currentState == PlayerState::ATTACKING_RANGED) {
-        return; // Can't move while attacking
+    if (currentState == PlayerState::DEAD) {
+        return; // Can't move when dead
     }
     
     InputManager* inputManager = game->getInputManager();
     float moveX, moveY;
     inputManager->getMovementVector(moveX, moveY);
     
-    // Apply movement
-    float dx = moveX * moveSpeed * deltaTime;
-    float dy = moveY * moveSpeed * deltaTime;
+    // Apply movement with attack slow
+    float speedFactor = 1.0f;
+    if (currentState == PlayerState::ATTACKING_MELEE || currentState == PlayerState::ATTACKING_RANGED) {
+        speedFactor = 0.65f; // slight slow while attacking (was 0.5)
+    }
+    float dx = moveX * moveSpeed * speedFactor * deltaTime;
+    float dy = moveY * moveSpeed * speedFactor * deltaTime;
     x += dx;
     y += dy;
 
@@ -189,15 +215,15 @@ void Player::move(float deltaTime) {
         }
     }
 
-    // Footstep SFX when moving
-    if ((dx != 0.0f || dy != 0.0f) && game && game->getAudioManager() && game->getWorld()) {
+    // Footstep SFX only during walking state (avoid during attacks)
+    if (currentState == PlayerState::WALKING && (dx != 0.0f || dy != 0.0f) && game && game->getAudioManager() && game->getWorld()) {
         footstepTimer -= deltaTime;
         if (footstepTimer <= 0.0f) {
             game->getAudioManager()->playSound("footstep_dirt");
             game->getAudioManager()->startMusicDuck(0.15f, 0.85f);
             footstepTimer = footstepInterval;
         }
-    } else {
+    } else if (currentState != PlayerState::WALKING) {
         footstepTimer = 0.0f;
     }
     
@@ -209,11 +235,14 @@ void Player::performMeleeAttack() {
         return; // Still on cooldown
     }
 
+    // Enter attack state; the animation system will pick the proper sheet per direction
     setState(PlayerState::ATTACKING_MELEE);
     meleeAttackTimer = meleeAttackCooldown;
     currentFrame = 0;
     frameTimer = 0.0f;
     meleeHitConsumedThisSwing = false;
+    // Ensure attack animation uses the correct sheet for current direction
+    currentSpriteSheet = getSpriteSheetForState(PlayerState::ATTACKING_MELEE);
     // Play melee swing SFX at attack start (alternating variants), regardless of hit
     if (game && game->getAudioManager()) {
         static bool altSwing = false;
@@ -463,6 +492,7 @@ void Player::updateAnimation(float deltaTime) {
     if (frameTimer >= currentFrameDuration) {
         frameTimer = 0.0f;
         currentFrame++;
+    // No mid-swing extra SFX
         
         // Loop animation or end attack animation
         if (currentFrame >= currentSpriteSheet->getTotalFrames()) {
@@ -471,6 +501,7 @@ void Player::updateAnimation(float deltaTime) {
                 // End attack animation
                 setState(PlayerState::IDLE);
                 meleeHitConsumedThisSwing = false;
+                
             } else if (currentState == PlayerState::HURT) {
                 // End hurt animation
                 setState(PlayerState::IDLE);
@@ -491,20 +522,37 @@ void Player::setState(PlayerState newState) {
     if (currentState == newState) {
         return;
     }
-    
+
     currentState = newState;
     currentFrame = 0;
     frameTimer = 0.0f;
-    
-    // Update sprite sheet
-    SpriteSheet* newSpriteSheet = getSpriteSheetForState(newState);
-    if (newSpriteSheet && newSpriteSheet != currentSpriteSheet) {
-        currentSpriteSheet = newSpriteSheet;
+
+    // Update sprite sheet with attack priority
+    if (newState == PlayerState::ATTACKING_MELEE || newState == PlayerState::ATTACKING_RANGED) {
+        SpriteSheet* locked = getSpriteSheetForState(newState);
+        if (locked) currentSpriteSheet = locked;
+    } else {
+        SpriteSheet* newSpriteSheet = getSpriteSheetForState(newState);
+        if (newSpriteSheet && newSpriteSheet != currentSpriteSheet) {
+            currentSpriteSheet = newSpriteSheet;
+        }
     }
 }
 
 void Player::setDirection(Direction newDirection) {
+    // Ignore direction changes during attack animations to prevent visual double-swing glitches
+    if (currentState == PlayerState::ATTACKING_MELEE || currentState == PlayerState::ATTACKING_RANGED) {
+        return;
+    }
+    if (currentDirection == newDirection) return;
     currentDirection = newDirection;
+    // Refresh sprite sheet immediately for non-attack states so visuals update promptly
+    SpriteSheet* newSheet = getSpriteSheetForState(currentState);
+    if (newSheet && newSheet != currentSpriteSheet) {
+        currentSpriteSheet = newSheet;
+        currentFrame = 0;
+        frameTimer = 0.0f;
+    }
 }
 
 void Player::render(Renderer* renderer) {
@@ -517,31 +565,19 @@ void Player::render(Renderer* renderer) {
     // Get source rectangle for current frame
     SDL_Rect srcRect = currentSpriteSheet->getFrameRect(currentFrame);
     
-    // The sprite sheet has padding on the sides - each frame is 128x78 but the character is 64x78 in the center
-    // Adjust the source rectangle to only extract the 64x78 character content from the center
-    int frameWidth = currentSpriteSheet->getFrameWidth();  // This should be 128
-    int frameHeight = currentSpriteSheet->getFrameHeight(); // This should be 78
-    int characterWidth = 64;  // The actual character width
-    int characterHeight = 78; // The actual character height
-    
-    // Calculate padding on the sides
-    int paddingLeft = (frameWidth - characterWidth) / 2;  // (128 - 64) / 2 = 32 pixels
-    
-    // Adjust source rectangle to extract only the character content
-    srcRect.x += paddingLeft;  // Start 32 pixels from the left of each frame
-    srcRect.w = characterWidth; // Only extract 64 pixels wide
-    srcRect.h = characterHeight; // Full height of 78 pixels
-    
-    // Calculate destination rectangle - render at player position with character size
-    // The player's collision box is 64x64, so we need to center the 64x78 sprite vertically
-    int playerHeight = 64;  // Player collision box height
-    int spriteOffsetY = (characterHeight - playerHeight) / 2;  // (78 - 64) / 2 = 7 pixels
-    
+    // Generic render: use frame size directly; scale to 64px width while keeping aspect
+    int frameWidth = currentSpriteSheet->getFrameWidth();
+    int frameHeight = currentSpriteSheet->getFrameHeight();
+
+    int dstW = static_cast<int>(64 * renderScale); // upscale visual width
+    int dstH = static_cast<int>(std::round(dstW * (static_cast<float>(frameHeight) / std::max(1, frameWidth))));
+    int spriteOffsetY = std::max(0, (dstH - height) / 2);
+
     SDL_Rect dstRect = {
         static_cast<int>(x),
-        static_cast<int>(y - spriteOffsetY), // Offset upward to center the sprite on the player
-        characterWidth,
-        characterHeight
+        static_cast<int>(y - spriteOffsetY),
+        dstW,
+        dstH
     };
     
     // Render the sprite
@@ -664,47 +700,29 @@ void Player::addManaPotionCharges(int charges) {
 SpriteSheet* Player::getSpriteSheetForState(PlayerState state) {
     switch (state) {
         case PlayerState::IDLE:
-            // Return the appropriate idle sprite based on direction
-            if (currentDirection == Direction::LEFT) {
-                return idleLeftSpriteSheet;
-            } else if (currentDirection == Direction::RIGHT) {
-                return idleRightSpriteSheet;
-            } else {
-                // For UP/DOWN directions, use the left idle sprite as default
-                return idleLeftSpriteSheet;
-            }
+            if (currentDirection == Direction::LEFT) return idleLeftSpriteSheet;
+            if (currentDirection == Direction::RIGHT) return idleRightSpriteSheet;
+            if (currentDirection == Direction::UP) return idleUpSpriteSheet;
+            return idleDownSpriteSheet;
         case PlayerState::WALKING:
-            // Return the appropriate walking sprite based on direction
-            if (currentDirection == Direction::LEFT) {
-                return walkLeftSpriteSheet;
-            } else if (currentDirection == Direction::RIGHT) {
-                return walkRightSpriteSheet;
-            } else {
-                // For UP/DOWN directions, use the left walking sprite as default
-                return walkLeftSpriteSheet;
-            }
+            if (currentDirection == Direction::LEFT) return walkLeftSpriteSheet;
+            if (currentDirection == Direction::RIGHT) return walkRightSpriteSheet;
+            if (currentDirection == Direction::UP) return walkUpSpriteSheet;
+            return walkDownSpriteSheet;
         case PlayerState::ATTACKING_MELEE:
-            // Return the appropriate melee attack sprite based on direction
-            if (currentDirection == Direction::LEFT) {
-                return meleeAttackLeftSpriteSheet;
-            } else if (currentDirection == Direction::RIGHT) {
-                return meleeAttackRightSpriteSheet;
-            } else {
-                // For UP/DOWN directions, use the left melee attack sprite as default
-                return meleeAttackLeftSpriteSheet;
-            }
+            if (currentDirection == Direction::LEFT) return meleeAttackLeftSpriteSheet;
+            if (currentDirection == Direction::RIGHT) return meleeAttackRightSpriteSheet;
+            if (currentDirection == Direction::UP) return meleeAttackUpSpriteSheet;
+            return meleeAttackDownSpriteSheet;
         case PlayerState::ATTACKING_RANGED:
-            // Return the appropriate ranged attack sprite based on direction
-            if (currentDirection == Direction::LEFT) {
-                return rangedAttackLeftSpriteSheet;
-            } else if (currentDirection == Direction::RIGHT) {
-                return rangedAttackRightSpriteSheet;
-            } else {
-                // For UP/DOWN directions, use the left ranged attack sprite as default
-                return rangedAttackLeftSpriteSheet;
-            }
+            if (currentDirection == Direction::LEFT) return rangedAttackLeftSpriteSheet;
+            if (currentDirection == Direction::RIGHT) return rangedAttackRightSpriteSheet;
+            if (currentDirection == Direction::UP) return rangedAttackUpSpriteSheet;
+            return rangedAttackDownSpriteSheet;
         case PlayerState::HURT:
-            return currentDirection == Direction::LEFT ? hurtLeftSpriteSheet : hurtRightSpriteSheet;
+            if (currentDirection == Direction::LEFT) return hurtLeftSpriteSheet;
+            if (currentDirection == Direction::RIGHT) return hurtRightSpriteSheet;
+            return (currentDirection == Direction::UP ? idleUpSpriteSheet : idleDownSpriteSheet);
         case PlayerState::DEAD:
             return deathSpriteSheet;
         default:
