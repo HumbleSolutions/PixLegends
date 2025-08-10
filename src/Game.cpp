@@ -10,6 +10,7 @@
 #include "AudioManager.h"
 #include "Object.h"
 #include "AutotileDemo.h"
+#include "Database.h"
 #include <iostream>
 
 Game::Game() : window(nullptr), sdlRenderer(nullptr), isRunning(false), isPaused(false), 
@@ -18,6 +19,7 @@ Game::Game() : window(nullptr), sdlRenderer(nullptr), isRunning(false), isPaused
 }
 
 Game::~Game() {
+    saveCurrentUserState();
     cleanup();
 }
 
@@ -43,6 +45,17 @@ void Game::initializeSystems() {
     }
 
     // Initialize systems
+    database = std::make_unique<Database>();
+    database->initialize("data");
+    // Preload remembered login if any
+    {
+        auto remember = database->loadRememberState();
+        if (remember.remember) {
+            loginRemember = true;
+            loginUsername = remember.username;
+            loginPassword = remember.password;
+        }
+    }
     renderer = std::make_unique<Renderer>(sdlRenderer);
     inputManager = std::make_unique<InputManager>();
     assetManager = std::make_unique<AssetManager>(sdlRenderer);
@@ -76,6 +89,8 @@ void Game::initializeSystems() {
     
     // Create player after other systems are initialized
     player = std::make_unique<Player>(this);
+    // Start at login screen; defer save load until authenticated
+    loadOrCreateDefaultUserAndSave();
     // Safe spawn: find nearest non-hazard tile around preferred spot
     if (world && player) {
         int ts = world->getTileSize();
@@ -170,6 +185,11 @@ void Game::run() {
 }
 
 void Game::update(float deltaTime) {
+    // While on login screen, do not update gameplay systems to avoid sounds/movement
+    if (loginScreenActive) {
+        if (uiSystem) uiSystem->update(deltaTime);
+        return;
+    }
     // Update player
     if (player) {
         player->update(deltaTime);
@@ -264,6 +284,19 @@ void Game::update(float deltaTime) {
     
     // Update input states (do this last so pressed states are preserved for the current frame)
     inputManager->update();
+
+    // Periodically autosave basic player state (e.g., every ~5 seconds via accumulator of frame time)
+    static float autosaveTimer = 0.0f;
+    autosaveTimer += deltaTime;
+    if (autosaveTimer >= 5.0f && database && player) {
+        autosaveTimer = 0.0f;
+        // Save to the default user (id 1) if exists
+        auto user = database->getUserById(1);
+        if (user) {
+            PlayerSave s = player->makeSaveState();
+            database->savePlayerState(user->userId, s);
+        }
+    }
 }
 
 void Game::render() {
@@ -286,6 +319,60 @@ void Game::render() {
         renderer->setCamera(cameraX, cameraY);
     }
     
+    // Login screen overlay when active
+    if (loginScreenActive) {
+        // Dim background
+        int outW=0,outH=0; SDL_GetRendererOutputSize(sdlRenderer, &outW, &outH);
+        SDL_SetRenderDrawBlendMode(sdlRenderer, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(sdlRenderer, 0, 0, 0, 200);
+        SDL_Rect dim{0,0,(outW>0?outW:WINDOW_WIDTH),(outH>0?outH:WINDOW_HEIGHT)};
+        SDL_RenderFillRect(sdlRenderer, &dim);
+        // Panel
+        int panelW = 520, panelH = 320;
+        SDL_Rect panel{ dim.w/2 - panelW/2, dim.h/2 - panelH/2, panelW, panelH };
+        SDL_SetRenderDrawColor(sdlRenderer, 35,35,48,245);
+        SDL_RenderFillRect(sdlRenderer, &panel);
+        SDL_SetRenderDrawColor(sdlRenderer, 210,210,230,255);
+        SDL_RenderDrawRect(sdlRenderer, &panel);
+        if (uiSystem) {
+            uiSystem->renderTextCentered("PixLegends - Login", dim.w/2, panel.y + 36);
+            // Fake input fields: show current username/password (masked)
+            std::string userDisplay = "User: " + (loginUsername.empty()? std::string("<click and type>") : loginUsername);
+            std::string passMask(loginPassword.size(), '*');
+            std::string passDisplay = "Pass: " + (loginPassword.empty()? std::string("<click and type>") : passMask);
+            uiSystem->renderText(userDisplay, panel.x + 40, panel.y + 90);
+            uiSystem->renderText(passDisplay, panel.x + 40, panel.y + 140);
+            // Visual caret indicator
+            if (loginActiveField == LoginField::Username) {
+                uiSystem->renderText("<", panel.x + 30, panel.y + 90, SDL_Color{180,220,255,255});
+            } else if (loginActiveField == LoginField::Password) {
+                uiSystem->renderText("<", panel.x + 30, panel.y + 140, SDL_Color{180,220,255,255});
+            }
+            // Remember checkbox
+            SDL_Rect chk{ panel.x + 40, panel.y + 180, 20, 20 };
+            SDL_SetRenderDrawColor(sdlRenderer, 255,255,255,255);
+            SDL_RenderDrawRect(sdlRenderer, &chk);
+            if (loginRemember) {
+                SDL_SetRenderDrawColor(sdlRenderer, 90,160,90,255);
+                SDL_RenderFillRect(sdlRenderer, &chk);
+            }
+            uiSystem->renderText("Remember me", chk.x + 28, chk.y + 2);
+            if (!loginError.empty()) uiSystem->renderText(loginError, panel.x + 40, panel.y + 180, SDL_Color{255,120,120,255});
+            // Buttons: Login and Register
+            SDL_Rect btnLogin{ panel.x + 40, panel.y + panelH - 70, 180, 44 };
+            SDL_Rect btnRegister{ panel.x + 240, panel.y + panelH - 70, 180, 44 };
+            SDL_SetRenderDrawColor(sdlRenderer, 90,160,90,255); SDL_RenderFillRect(sdlRenderer, &btnLogin);
+            SDL_SetRenderDrawColor(sdlRenderer, 255,255,255,255); SDL_RenderDrawRect(sdlRenderer, &btnLogin);
+            uiSystem->renderText("Login", btnLogin.x + 12, btnLogin.y + 12);
+            SDL_SetRenderDrawColor(sdlRenderer, 80,120,170,255); SDL_RenderFillRect(sdlRenderer, &btnRegister);
+            SDL_SetRenderDrawColor(sdlRenderer, 255,255,255,255); SDL_RenderDrawRect(sdlRenderer, &btnRegister);
+            uiSystem->renderText("Register", btnRegister.x + 12, btnRegister.y + 12);
+        }
+        // Present and early return (do not render world)
+        SDL_RenderPresent(sdlRenderer);
+        return;
+    }
+
     // Render world or autotile demo
     if (demoMode) {
         autotileDemo->render(renderer.get());
@@ -448,6 +535,31 @@ void Game::render() {
     SDL_RenderPresent(sdlRenderer);
 }
 
+void Game::loadOrCreateDefaultUserAndSave() {
+    if (!database || !player) return;
+    // Ensure there is at least one default user
+    auto user = database->getUserById(1);
+    if (!user) {
+        // Create default admin and player users
+        database->registerUser("admin", "admin", UserRole::ADMIN);
+        auto playerUser = database->registerUser("player", "player", UserRole::PLAYER);
+        if (playerUser) {
+            // Initialize default save
+            PlayerSave s = player->makeSaveState();
+            database->savePlayerState(playerUser->userId, s);
+        }
+    }
+    // Load last save for default player if available
+    auto def = database->getUserByName("player");
+    if (def) {
+        auto save = database->loadPlayerState(def->userId);
+        if (save) {
+            // Apply minimal fields to player
+            player->applySaveState(*save);
+        }
+    }
+}
+
 void Game::handleEvents() {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
@@ -457,14 +569,52 @@ void Game::handleEvents() {
                 break;
                 
             case SDL_KEYDOWN:
-                if (!optionsOpen && event.key.keysym.sym == SDLK_p) {
+                if (loginScreenActive) {
+                    // Simple text input handling for username/password
+                    if (event.key.keysym.sym == SDLK_BACKSPACE) {
+                        if (SDL_GetModState() & KMOD_SHIFT) {
+                            // Clear both on Shift+Backspace
+                            loginUsername.clear(); loginPassword.clear();
+                        } else {
+                            if (loginActiveField == LoginField::Password) {
+                                if (!loginPassword.empty()) loginPassword.pop_back();
+                            } else {
+                                if (!loginUsername.empty()) loginUsername.pop_back();
+                            }
+                        }
+                    } else if (event.key.keysym.sym == SDLK_TAB) {
+                        // Toggle focus between fields
+                        loginActiveField = (loginActiveField == LoginField::Username ? LoginField::Password : LoginField::Username);
+                        // Prevent the tab from propagating to game input
+                        break;
+                    } else if (event.key.keysym.sym == SDLK_RETURN || event.key.keysym.sym == SDLK_KP_ENTER) {
+                        // Pressing Enter triggers Login
+                        if (database) {
+                            std::string err;
+                            auto u = database->authenticate(loginUsername, loginPassword, &err);
+                            if (u) {
+                                loggedInUserId = u->userId;
+                                loginIsAdmin = (u->role == UserRole::ADMIN);
+                                loginScreenActive = false;
+                                loginError.clear();
+                                if (loginRemember) database->saveRememberState(Database::RememberState{loginUsername, loginPassword, true}); else database->clearRememberState();
+                                auto save = database->loadPlayerState(loggedInUserId);
+                                if (save) player->applySaveState(*save);
+                            } else {
+                                loginError = err.empty()? std::string("Invalid credentials") : err;
+                            }
+                        }
+                        break;
+                    }
+                } else if (!optionsOpen && event.key.keysym.sym == SDLK_p) {
                     isPaused = !isPaused;
                 } else if (!optionsOpen && event.key.keysym.sym == SDLK_F1) {
                     demoMode = !demoMode;
                 } else if (!optionsOpen && event.key.keysym.sym == SDLK_F3) {
                     setDebugHitboxes(!getDebugHitboxes());
                 }
-                if (!optionsOpen) inputManager->handleKeyDown(event.key);
+                // Only forward to game input when not on login screen
+                if (!optionsOpen && !loginScreenActive) inputManager->handleKeyDown(event.key);
                 break;
                 
             case SDL_KEYUP:
@@ -476,16 +626,74 @@ void Game::handleEvents() {
                 else handleOptionsInput(event);
                 break;
                 
-            case SDL_MOUSEBUTTONDOWN:
-                inputManager->handleMouseDown(event.button);
-                break;
+            case SDL_MOUSEBUTTONDOWN: {
+                int mx = event.button.x, my = event.button.y;
+                if (loginScreenActive) {
+                    // Hit test input fields and buttons
+                    int outW=0,outH=0; SDL_GetRendererOutputSize(sdlRenderer,&outW,&outH); if (outW<=0){outW=WINDOW_WIDTH;outH=WINDOW_HEIGHT;}
+                    int panelW=520,panelH=320; SDL_Rect panel{ outW/2 - panelW/2, outH/2 - panelH/2, panelW, panelH };
+                    SDL_Rect userField{ panel.x + 120, panel.y + 85, 300, 28 };
+                    SDL_Rect passField{ panel.x + 120, panel.y + 135, 300, 28 };
+                    SDL_Rect chk{ panel.x + 40, panel.y + 180, 20, 20 }; // remember
+                    SDL_Rect btnLogin{ panel.x + 40, panel.y + panelH - 70, 180, 44 };
+                    SDL_Rect btnRegister{ panel.x + 240, panel.y + panelH - 70, 180, 44 };
+                    if (mx>=userField.x && mx<=userField.x+userField.w && my>=userField.y && my<=userField.y+userField.h) { loginActiveField = LoginField::Username; }
+                    else if (mx>=passField.x && mx<=passField.x+passField.w && my>=passField.y && my<=passField.y+passField.h) { loginActiveField = LoginField::Password; }
+                    else if (mx>=chk.x && mx<=chk.x+chk.w && my>=chk.y && my<=chk.y+chk.h) { loginRemember = !loginRemember; }
+                    else if (mx>=btnLogin.x && mx<=btnLogin.x+btnLogin.w && my>=btnLogin.y && my<=btnLogin.y+btnLogin.h) {
+                        if (database) {
+                            std::string err;
+                            auto u = database->authenticate(loginUsername, loginPassword, &err);
+                            if (u) {
+                                loggedInUserId = u->userId;
+                                loginIsAdmin = (u->role == UserRole::ADMIN);
+                                loginScreenActive = false;
+                                loginError.clear();
+                                if (loginRemember) database->saveRememberState(Database::RememberState{loginUsername, loginPassword, true}); else database->clearRememberState();
+                                // Load save
+                                auto save = database->loadPlayerState(loggedInUserId);
+                                if (save) player->applySaveState(*save);
+                            } else {
+                                loginError = err.empty()? std::string("Invalid credentials") : err;
+                            }
+                        }
+                    } else if (mx>=btnRegister.x && mx<=btnRegister.x+btnRegister.w && my>=btnRegister.y && my<=btnRegister.y+btnRegister.h) {
+                        if (database) {
+                            std::string err;
+                            auto u = database->registerUser(loginUsername, loginPassword, UserRole::PLAYER, &err);
+                            if (u) {
+                                loggedInUserId = u->userId;
+                                loginIsAdmin = false;
+                                loginScreenActive = false;
+                                loginError.clear();
+                                if (loginRemember) database->saveRememberState(Database::RememberState{loginUsername, loginPassword, true}); else database->clearRememberState();
+                                // Create initial save
+                                database->savePlayerState(loggedInUserId, player->makeSaveState());
+                            } else {
+                                loginError = err.empty()? std::string("Registration failed") : err;
+                            }
+                        }
+                    } else {
+                        loginActiveField = LoginField::None;
+                    }
+                } else {
+                    inputManager->handleMouseDown(event.button);
+                }
+                break; }
                 
             case SDL_MOUSEBUTTONUP:
                 inputManager->handleMouseUp(event.button);
                 break;
                 
             case SDL_MOUSEMOTION:
-                inputManager->handleMouseMotion(event.motion);
+                if (!loginScreenActive) inputManager->handleMouseMotion(event.motion);
+                break;
+
+            case SDL_TEXTINPUT:
+                if (loginScreenActive) {
+                    if (loginActiveField == LoginField::Password) loginPassword += event.text.text;
+                    else /* Username or None default to Username */ loginUsername += event.text.text;
+                }
                 break;
         }
     }
@@ -516,6 +724,26 @@ void Game::renderOptionsMenuOverlay() {
         SDL_SetWindowFullscreen(window, fs ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
     }
     if (hit.clickedResume) {
+        optionsOpen = false;
+    }
+    if (hit.clickedLogout) {
+        // Save current state and return to login screen
+        if (database && loggedInUserId > 0 && player) {
+            database->savePlayerState(loggedInUserId, player->makeSaveState());
+        }
+        // Persist remember state on logout based on checkbox
+        if (database) {
+            if (loginRemember) {
+                database->saveRememberState(Database::RememberState{ loginUsername, loginPassword, true });
+            } else {
+                database->clearRememberState();
+                loginUsername.clear();
+                loginPassword.clear();
+            }
+        }
+        loginError.clear();
+        loggedInUserId = -1;
+        loginScreenActive = true;
         optionsOpen = false;
     }
 }
@@ -632,6 +860,12 @@ void Game::cleanup() {
     if (window) {
         SDL_DestroyWindow(window);
         window = nullptr;
+    }
+}
+
+void Game::saveCurrentUserState() {
+    if (database && loggedInUserId > 0 && player) {
+        database->savePlayerState(loggedInUserId, player->makeSaveState());
     }
 }
 

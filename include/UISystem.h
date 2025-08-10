@@ -42,6 +42,7 @@ public:
     struct MenuHitResult {
         bool clickedResume = false;
         bool clickedFullscreen = false;
+        bool clickedLogout = false;
         bool changedMaster = false;
         bool changedMusic = false;
         bool changedSound = false;

@@ -1,148 +1,91 @@
-# PixLegends - 2D Action Adventure Game
+## PixLegends
 
-A 2D action-adventure game built with SDL2, featuring procedural world generation, dynamic lighting, and interactive gameplay.
+A 2D action-adventure prototype built with SDL2. It features chunk-based procedural world generation, a combat-ready player character, a boss enemy, interactable objects with loot, a simple HUD, options overlay, audio with mixer fallback, and an autotile visualization demo.
 
-## Recent Performance Optimizations (Latest Update)
+### Current status
+- Procedural world with biomes, large coherent regions, rivers/lakes, and fog of war (toggle always-on; see `World`)
+- Chunk streaming and screen-space culling for tiles, objects, and enemies
+- Player: WASD movement, melee and ranged attacks, potions (HP/MP), leveling, stats, gold
+- Enemy: Demon boss with idle/fly/attack/hurt/death states and contact damage, on-screen boss health bar when engaged
+- Interactables: chests/pots/crates/signs/bonfire with simple loot and prompts; respawn on death with UI popup
+- UI/HUD: health/mana/xp bars, gold, debug info, FPS counter (color-coded), death popup, options overlay
+- Assets: pixel-art characters/tiles/objects and SFX/music included under `assets/`
 
-### 🎯 Key Improvements Implemented
+### Controls
+- Movement: W/A/S/D
+- Melee attack: Space or Left Mouse
+- Ranged attack: Left Shift or Right Mouse
+- Interact: E
+- Use potions: 1 (HP), 2 (MP)
+- Pause: P
+- Options overlay: Esc
+- Toggle autotile demo: F1 (replaces world render with demo grid)
+- Toggle debug hitboxes: F3
 
-#### 1. **FPS Counter & Performance Monitoring**
-- ✅ Added real-time FPS counter displaying current FPS, average FPS, and frame time
-- ✅ Color-coded performance indicators (Green: ≥55 FPS, Yellow: ≥30 FPS, Red: <30 FPS)
-- ✅ Performance metrics tracking with 1-second history buffer
-- ✅ Positioned in top-right corner for easy monitoring
+### Build and run
 
-#### 2. **Procedural Generation Optimization**
-- ✅ **Reduced object count** from unlimited to maximum 8 objects
-- ✅ **Intelligent spawning system** with controlled positioning
-- ✅ **Spawn radius limitation** (15 tiles around player starting position)
-- ✅ **Performance-focused object placement** to reduce lag
-- ✅ **Optimized object types** - only spawn essential objects
+Prerequisites
+- CMake 3.16+
+- A C++17 compiler
+- SDL2, SDL2_image, SDL2_ttf (SDL2_mixer optional but recommended for OGG music)
 
-#### 3. **Texture Loading Fixes**
-- ✅ **Fixed black squares issue** by implementing proper RGBA8888 format conversion
-- ✅ **Improved texture caching** with better error handling
-- ✅ **Consistent blend mode** application for all textures
-- ✅ **Reduced texture loading overhead** with batch processing
-- ✅ **Memory optimization** through proper surface cleanup
-
-#### 4. **Rendering Performance Optimizations**
-- ✅ **Viewport culling** - only render tiles visible on screen
-- ✅ **Camera-based rendering** with margin for smooth scrolling
-- ✅ **Reduced debug output** (300 frames instead of 60)
-- ✅ **Object culling** - only render objects in visible area
-- ✅ **Optimized tile rendering** with proper texture management
-
-#### 5. **Memory and CPU Optimizations**
-- ✅ **Reduced object updates** - only update visible objects
-- ✅ **Efficient data structures** for performance monitoring
-- ✅ **Optimized asset loading** with batch processing
-- ✅ **Reduced console spam** for better performance
-- ✅ **Smart caching** for frequently accessed assets
-
-### 🚀 Performance Impact
-
-- **FPS Improvement**: Significant boost in frame rates, especially on lower-end systems
-- **Memory Usage**: Reduced memory footprint through optimized object spawning
-- **Loading Times**: Faster asset loading with batch processing
-- **Smooth Gameplay**: Eliminated lag caused by excessive object spawning
-- **Visual Quality**: Fixed texture rendering issues for better visual experience
-
-### 🎮 Gameplay Features
-
-- **Procedural World Generation**: Dynamic tile-based world with multiple biomes
-- **Fog of War**: Dynamic visibility system with exploration tracking
-- **Interactive Objects**: Chests, pots, crates with loot system
-- **Player Progression**: Health, mana, experience, and gold systems
-- **Combat System**: Melee and ranged combat with projectiles
-- **UI System**: Comprehensive HUD with stats, debug info, and FPS counter
-
-### 🔧 Technical Details
-
-#### Performance Monitoring
-```cpp
-// FPS counter implementation
-void UISystem::renderFPSCounter(float currentFPS, float averageFPS, Uint32 frameTime) {
-    // Color-coded performance display
-    // Green: ≥55 FPS, Yellow: ≥30 FPS, Red: <30 FPS
-}
+Windows (Visual Studio 2022)
+```bat
+build.bat
 ```
+This generates `build/` with a Visual Studio solution and builds `Release\PixLegends.exe`. Required DLLs (SDL2, image, ttf, and mixer if present) are copied next to the executable. Assets are copied into `Release\assets` automatically.
 
-#### Optimized Object Spawning
-```cpp
-// Reduced from unlimited to maximum 8 objects
-const int maxObjects = 8;
-const int spawnRadius = 15; // Tiles around player starting position
-```
-
-#### Texture Loading Fix
-```cpp
-// Proper RGBA8888 format conversion
-SDL_PixelFormat* format = SDL_AllocFormat(SDL_PIXELFORMAT_RGBA8888);
-convertedSurface = SDL_ConvertSurface(surface, format, 0);
-SDL_SetTextureBlendMode(sdlTexture, SDL_BLENDMODE_BLEND);
-```
-
-#### Viewport Culling
-```cpp
-// Only render visible tiles
-int startX = std::max(0, cameraX / tileSize - 2);
-int endX = std::min(width - 1, (cameraX + 1920) / tileSize + 2);
-```
-
-### 📊 Performance Metrics
-
-- **Target FPS**: 60 FPS
-- **Object Limit**: 8 maximum objects
-- **Render Optimization**: Viewport culling with 2-tile margin
-- **Memory Usage**: Optimized through efficient caching
-- **Loading Time**: Reduced through batch processing
-
-### 🐛 Bug Fixes
-
-1. **Texture Rendering**: Fixed black squares and incorrect texture display
-2. **Object Spawning**: Eliminated excessive object creation causing lag
-3. **Performance Monitoring**: Added comprehensive FPS tracking
-4. **Memory Leaks**: Fixed through proper resource management
-5. **Rendering Issues**: Optimized for smooth 60 FPS gameplay
-
-### 🎯 Future Optimizations
-
-- [ ] Implement object pooling for dynamic objects
-- [ ] Add LOD (Level of Detail) system for distant objects
-- [ ] Optimize pathfinding algorithms
-- [ ] Implement texture atlasing for better memory usage
-- [ ] Add multi-threading for asset loading
-
-## Building and Running
-
-### Prerequisites
-- SDL2
-- SDL2_image
-- SDL2_ttf
-- CMake 3.10+
-
-### Build Instructions
+Linux/macOS
 ```bash
-mkdir build
+./build.sh
+./build/PixLegends
+```
+
+Manual CMake
+```bash
+mkdir -p build
 cd build
 cmake ..
-make
+cmake --build . --config Release
 ```
 
-### Running the Game
-```bash
-./PixLegends
-```
+Dependency setup notes
+- The project will first try `find_package(SDL2/SDL2_image/SDL2_ttf/SDL2_mixer)`. If not found, it falls back to manual detection, checking common paths and the bundled `external/` folder.
+- On Windows you can run `setup_sdl2.bat` to download and populate `external/` with headers, libs, and DLLs.
 
-## Controls
+### Persistent data (accounts and saves)
+- A lightweight file-backed database is included to manage users and player saves under the `data/` directory.
+- On first run it creates CSV files and two default users:
+  - `admin` / `admin` (role: ADMIN)
+  - `player` / `player` (role: PLAYER)
+- The game auto-loads the `player` account and periodically autosaves the player state.
 
-- **WASD**: Move player
-- **Mouse**: Aim and shoot
-- **E**: Interact with objects
-- **ESC**: Exit game
-- **P**: Pause/unpause
+Managing accounts
+- Use the `Database` class to register/authenticate users in a future UI, or edit the CSVs in `data/` directly during development.
 
-## License
+### Audio
+- With SDL_mixer: OGG music and WAV SFX are supported with proper volume/ducking and fade transitions.
+- Without SDL_mixer: falls back to raw SDL device playback for WAV. OGG requires SDL_mixer.
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+### Performance features
+- Fixed-timestep update with frame capping to target 60 FPS
+- Chunked world generation with render-distance streaming
+- Viewport/object/enemy culling
+- Texture caching, sprite-sheet loading, RGBA8888 conversion, blend modes
+- In-game FPS counter with average and frame time
+
+### Project layout highlights
+- Source: `src/` and headers `include/`
+- Assets: `assets/` (sprites, tiles, objects, audio, fonts)
+- External libraries: `external/` (pre-populated or filled by `setup_sdl2.bat`)
+- Build helpers: `build.bat`, `build.sh`
+
+### Roadmap
+- More enemy types and encounters
+- Object pooling for projectiles and effects
+- Texture atlasing; additional biome art; lighting pass
+- Save/load and broader gameplay loop
+  - Expand the file-backed DB or switch to SQLite for richer queries and concurrency
+
+### License
+Code is under MIT (see `LICENSE`). Third‑party assets in `assets/` retain their original licenses; review before redistribution.

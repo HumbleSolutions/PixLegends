@@ -8,6 +8,7 @@
 #include "Object.h"
 #include "World.h"
 #include "Enemy.h"
+#include "Database.h"
 #include <iostream>
 #include <algorithm>
 #include <cmath>
@@ -70,7 +71,7 @@ void Player::update(float deltaTime) {
     updateAnimation(deltaTime);
 
     // Footstep sound while walking
-    if (currentState == PlayerState::WALKING && game && game->getAudioManager()) {
+    if (currentState == PlayerState::WALKING && game && game->getAudioManager() && game->getWorld()) {
         footstepTimer -= deltaTime;
         if (footstepTimer <= 0.0f) {
             game->getAudioManager()->playSound("footstep_dirt");
@@ -189,7 +190,7 @@ void Player::move(float deltaTime) {
     }
 
     // Footstep SFX when moving
-    if ((dx != 0.0f || dy != 0.0f) && game && game->getAudioManager()) {
+    if ((dx != 0.0f || dy != 0.0f) && game && game->getAudioManager() && game->getWorld()) {
         footstepTimer -= deltaTime;
         if (footstepTimer <= 0.0f) {
             game->getAudioManager()->playSound("footstep_dirt");
@@ -600,6 +601,32 @@ void Player::spendGold(int amount) {
     } else {
         std::cout << "Not enough gold! Need " << amount << " but only have " << gold << std::endl;
     }
+}
+
+void Player::applySaveState(const PlayerSave& s) {
+    // Position and spawn
+    x = s.x; y = s.y; spawnX = s.spawnX; spawnY = s.spawnY;
+    // Stats
+    level = s.level; experience = s.experience; calculateExperienceToNext();
+    maxHealth = s.maxHealth; health = std::min(s.health, maxHealth);
+    maxMana = s.maxMana; mana = std::min(s.mana, maxMana);
+    strength = s.strength; intelligence = s.intelligence;
+    gold = s.gold;
+    // Consumables
+    healthPotionCharges = std::clamp(s.healthPotionCharges, 0, POTION_MAX_CHARGES);
+    manaPotionCharges = std::clamp(s.manaPotionCharges, 0, POTION_MAX_CHARGES);
+}
+
+PlayerSave Player::makeSaveState() const {
+    PlayerSave s;
+    s.x = x; s.y = y; s.spawnX = spawnX; s.spawnY = spawnY;
+    s.level = level; s.experience = experience;
+    s.maxHealth = maxHealth; s.health = health;
+    s.maxMana = maxMana; s.mana = mana;
+    s.strength = strength; s.intelligence = intelligence;
+    s.gold = gold;
+    s.healthPotionCharges = healthPotionCharges; s.manaPotionCharges = manaPotionCharges;
+    return s;
 }
 
 bool Player::consumeHealthPotion() {

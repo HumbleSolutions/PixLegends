@@ -15,6 +15,7 @@ class Renderer;
 class SpriteSheet;
 class InputManager;
 class Object;
+struct PlayerSave; // from Database.h
 
 enum class PlayerState {
     IDLE,
@@ -88,6 +89,10 @@ public:
     void useMana(int amount);
     void addGold(int amount);
     void spendGold(int amount);
+
+    // Persistence helpers
+    void applySaveState(const PlayerSave& state);
+    PlayerSave makeSaveState() const;
 
     // Potions
     bool consumeHealthPotion();

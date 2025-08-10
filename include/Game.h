@@ -16,6 +16,7 @@ class World;
 class UISystem;
 class AudioManager;
 class AutotileDemo;
+class Database;
 
 class Game {
 public:
@@ -38,6 +39,7 @@ public:
     World* getWorld() const { return world.get(); }
     UISystem* getUISystem() const { return uiSystem.get(); }
     AudioManager* getAudioManager() const { return audioManager.get(); }
+    Database* getDatabase() const { return database.get(); }
 
     // Game configuration
     static constexpr int WINDOW_WIDTH = 1280;
@@ -68,12 +70,22 @@ private:
     std::unique_ptr<UISystem> uiSystem;
     std::unique_ptr<AudioManager> audioManager;
     std::unique_ptr<AutotileDemo> autotileDemo;
+    std::unique_ptr<Database> database;
     bool demoMode = false;
     
     // Game state
     bool isRunning;
     bool isPaused;
     bool optionsOpen = false;
+    bool loginScreenActive = true;
+    enum class LoginField { Username, Password, None };
+    LoginField loginActiveField = LoginField::Username;
+    std::string loginUsername;
+    std::string loginPassword;
+    std::string loginError;
+    bool loginRemember = false;
+    bool loginIsAdmin = false;
+    int loggedInUserId = -1;
     int optionsSelectedIndex = 0; // 0..5
     std::string currentMusicTrack;
     // Boss music post-death handling
@@ -96,6 +108,8 @@ private:
     void initializeObjects();
     void cleanup();
     void updatePerformanceMetrics();
+    void loadOrCreateDefaultUserAndSave();
+    void saveCurrentUserState();
 
     void renderOptionsMenuOverlay();
     void handleOptionsInput(const SDL_Event& event);

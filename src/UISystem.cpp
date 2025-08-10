@@ -441,14 +441,14 @@ void UISystem::renderOptionsMenu(int selectedIndex,
 
     const int startY = panel.y + 80;
     const int rowH = 44;
-    for (int i = 0; i < 6; ++i) {
+    for (int i = 0; i < 7; ++i) {
         SDL_Rect rowRect{ panel.x + 30, startY + i * rowH, panelW - 60, rowH - 6 };
         bool selected = (mouseX >= rowRect.x && mouseX <= rowRect.x + rowRect.w && mouseY >= rowRect.y && mouseY <= rowRect.y + rowRect.h);
         SDL_SetRenderDrawColor(renderer, selected ? 70 : 50, selected ? 120 : 50, selected ? 180 : 70, 200);
         SDL_RenderFillRect(renderer, &rowRect);
         SDL_SetRenderDrawColor(renderer, 220,220,220,255);
         SDL_RenderDrawRect(renderer, &rowRect);
-        renderText(rows[i].label, rowRect.x + 10, rowRect.y + 12, SDL_Color{255,255,255,255});
+        if (i < 6) renderText(rows[i].label, rowRect.x + 10, rowRect.y + 12, SDL_Color{255,255,255,255});
         // Value or slider/action area on right
         SDL_Rect valueArea{ rowRect.x + rowRect.w - 220, rowRect.y + 8, 200, rowRect.h - 16 };
         if (i <= 2) {
@@ -495,6 +495,16 @@ void UISystem::renderOptionsMenu(int selectedIndex,
             if (mouseDown && mouseX >= valueArea.x && mouseX <= valueArea.x + valueArea.w && mouseY >= valueArea.y && mouseY <= valueArea.y + valueArea.h) {
                 outResult.clickedResume = true;
             }
+        } else if (i == 6) {
+            // Logout button
+            SDL_SetRenderDrawColor(renderer, 170, 70, 70, 255);
+            SDL_RenderFillRect(renderer, &valueArea);
+            SDL_SetRenderDrawColor(renderer, 255,255,255,255);
+            SDL_RenderDrawRect(renderer, &valueArea);
+            renderText("Logout", valueArea.x + 12, valueArea.y + 8, SDL_Color{255,255,255,255});
+            if (mouseDown && mouseX >= valueArea.x && mouseX <= valueArea.x + valueArea.w && mouseY >= valueArea.y && mouseY <= valueArea.y + valueArea.h) {
+                outResult.clickedLogout = true;
+            }
         } else {
             if (!rows[i].value.empty()) {
                 renderText(rows[i].value, rowRect.x + rowRect.w - 80, rowRect.y + 12, SDL_Color{200,200,200,255});
@@ -502,8 +512,9 @@ void UISystem::renderOptionsMenu(int selectedIndex,
         }
     }
 
+    // Place helper text near the bottom, below the last row (avoid overlap with Logout button)
     renderTextCentered("Use mouse to drag sliders and click buttons. Press Esc to close.",
-                       outW/2, panel.y + panelH - 30, SDL_Color{200,200,200,255});
+                       outW/2, panel.y + panelH - 12, SDL_Color{200,200,200,255});
 }
 
 void UISystem::renderDeathPopup(bool& outClickedRespawn, float fadeAlpha01) {

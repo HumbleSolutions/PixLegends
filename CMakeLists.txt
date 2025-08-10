@@ -155,6 +155,7 @@ endif()
 set(SOURCES
     src/main.cpp
     src/Game.cpp
+    src/Database.cpp
     src/AssetManager.cpp
     src/InputManager.cpp
     src/Player.cpp
