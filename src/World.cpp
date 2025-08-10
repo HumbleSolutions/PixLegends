@@ -277,7 +277,7 @@ void World::loadTileTextures() {
         std::cout << "SUCCESS: Grass tile texture loaded successfully" << std::endl;
     }
     
-    tileTextures[TILE_STONE] = assetManager->getTexture("assets/Textures/Tiles/stone_tile.png");
+    tileTextures[TILE_STONE] = assetManager->getTexture("assets/Textures/Tiles/dirt_tile.png");
     if (!tileTextures[TILE_STONE]) {
         std::cout << "ERROR: Failed to load stone tile texture! Will use colored rectangle fallback." << std::endl;
     } else {
@@ -291,21 +291,21 @@ void World::loadTileTextures() {
     // Treat NONE as plain stone to avoid center grass from asset
     edgeTextures["NONE"] = tileTextures[TILE_STONE];
     // Load dedicated T and R if present
-    addEdge("T",    "stone_grass_T.png");
-    addEdge("B",    "stone_grass_B.png");
-    addEdge("L",    "stone_grass_L.png");
-    addEdge("R",    "stone_grass_R.png");
-    addEdge("TL",   "stone_grass_TL.png");
-    addEdge("TR",   "stone_grass_TR.png");
-    addEdge("BL",   "stone_grass_BL.png");
-    addEdge("BR",   "stone_grass_BR.png");
-    addEdge("TB",   "stone_grass_TB.png");
-    addEdge("LR",   "stone_grass_LR.png");
-    addEdge("TBL",  "stone_grass_TBL.png");
-    addEdge("TBR",  "stone_grass_TBR.png");
-    addEdge("TLR",  "stone_grass_TLR.png");
-    addEdge("BLR",  "stone_grass_BLR.png");
-    addEdge("ALL",  "stone_grass_ALL.png");
+    addEdge("T",    "dirt_grass_T.png");
+    addEdge("B",    "dirt_grass_B.png");
+    addEdge("L",    "dirt_grass_L.png");
+    addEdge("R",    "dirt_grass_R.png");
+    addEdge("TL",   "dirt_grass_TL.png");
+    addEdge("TR",   "dirt_grass_TR.png");
+    addEdge("BL",   "dirt_grass_BL.png");
+    addEdge("BR",   "dirt_grass_BR.png");
+    addEdge("TB",   "dirt_grass_TB.png");
+    addEdge("LR",   "dirt_grass_LR.png");
+    addEdge("TBL",  "dirt_grass_TBL.png");
+    addEdge("TBR",  "dirt_grass_TBR.png");
+    addEdge("TLR",  "dirt_grass_TLR.png");
+    addEdge("BLR",  "dirt_grass_BLR.png");
+    addEdge("ALL",  "dirt_grass_ALL.png");
     
     tileTextures[TILE_WATER] = nullptr; // Water not implemented yet
     

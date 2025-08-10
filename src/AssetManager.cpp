@@ -356,26 +356,26 @@ void AssetManager::preloadAssets() {
     // Load tile textures (essential for rendering)
     std::cout << "Loading tile textures..." << std::endl;
     loadTexture(TILESET_PATH + "grass_tile.png");
-    loadTexture(TILESET_PATH + "stone_tile.png");
-    loadTexture(TILESET_PATH + "stone_grass_tile.png");
-    loadTexture(TILESET_PATH + "stone_grass_tile_2.png");
-    loadTexture(TILESET_PATH + "stone_grass_tile_3.png");
-    loadTexture(TILESET_PATH + "stone_grass_tile_4.png");
-    loadTexture(TILESET_PATH + "stone_grass_tile_5.png");
-    loadTexture(TILESET_PATH + "stone_grass_tile_6.png");
-    loadTexture(TILESET_PATH + "stone_grass_tile_7.png");
-    loadTexture(TILESET_PATH + "stone_grass_tile_8.png");
-    loadTexture(TILESET_PATH + "stone_grass_tile_9.png");
-    loadTexture(TILESET_PATH + "stone_grass_tile_10.png");
-    loadTexture(TILESET_PATH + "stone_grass_tile_11.png");
-    loadTexture(TILESET_PATH + "stone_grass_tile_12.png");
-    loadTexture(TILESET_PATH + "stone_grass_tile_13.png");
-    loadTexture(TILESET_PATH + "stone_grass_tile_14.png");
-    loadTexture(TILESET_PATH + "stone_grass_tile_15.png");
-    loadTexture(TILESET_PATH + "stone_grass_tile_16.png");
-    loadTexture(TILESET_PATH + "stone_grass_tile_17.png");
-    loadTexture(TILESET_PATH + "stone_grass_tile_18.png");
-    loadTexture(TILESET_PATH + "stone_grass_tile_19.png");
+    loadTexture(TILESET_PATH + "dirt_tile.png");
+    loadTexture(TILESET_PATH + "dirt_grass_tile.png");
+    loadTexture(TILESET_PATH + "dirt_grass_tile_2.png");
+    loadTexture(TILESET_PATH + "dirt_grass_tile_3.png");
+    loadTexture(TILESET_PATH + "dirt_grass_tile_4.png");
+    loadTexture(TILESET_PATH + "dirt_grass_tile_5.png");
+    loadTexture(TILESET_PATH + "dirt_grass_tile_6.png");
+    loadTexture(TILESET_PATH + "dirt_grass_tile_7.png");
+    loadTexture(TILESET_PATH + "dirt_grass_tile_8.png");
+    loadTexture(TILESET_PATH + "dirt_grass_tile_9.png");
+    loadTexture(TILESET_PATH + "dirt_grass_tile_10.png");
+    loadTexture(TILESET_PATH + "dirt_grass_tile_11.png");
+    loadTexture(TILESET_PATH + "dirt_grass_tile_12.png");
+    loadTexture(TILESET_PATH + "dirt_grass_tile_13.png");
+    loadTexture(TILESET_PATH + "dirt_grass_tile_14.png");
+    loadTexture(TILESET_PATH + "dirt_grass_tile_15.png");
+    loadTexture(TILESET_PATH + "dirt_grass_tile_16.png");
+    loadTexture(TILESET_PATH + "dirt_grass_tile_17.png");
+    loadTexture(TILESET_PATH + "dirt_grass_tile_18.png");
+    loadTexture(TILESET_PATH + "dirt_grass_tile_19.png");
     
     // Load object textures (only the ones we actually use)
     std::cout << "Loading object textures..." << std::endl;

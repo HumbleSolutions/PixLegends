@@ -73,6 +73,13 @@ private:
     // Game state
     bool isRunning;
     bool isPaused;
+    bool optionsOpen = false;
+    int optionsSelectedIndex = 0; // 0..5
+    std::string currentMusicTrack;
+    // Boss music post-death handling
+    bool bossWasDead = false;
+    float bossMusicHoldTimerSec = 0.0f;
+    bool bossFadeOutPending = false;
     
     // Timing and performance monitoring
     Uint32 lastFrameTime;
@@ -89,4 +96,7 @@ private:
     void initializeObjects();
     void cleanup();
     void updatePerformanceMetrics();
+
+    void renderOptionsMenuOverlay();
+    void handleOptionsInput(const SDL_Event& event);
 };

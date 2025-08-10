@@ -21,24 +21,24 @@ void AutotileDemo::loadTextures() {
 
     // Base tiles
     load("grass_tile", "grass_tile.png");
-    load("stone_tile", "stone_tile.png");
+    load("stone_tile", "dirt_tile.png");
 
     // Edge variants
-    load("stone_grass_NONE", "stone_grass_NONE.png");
-    load("stone_grass_T", "stone_grass_T.png");
-    load("stone_grass_B", "stone_grass_B.png");
-    load("stone_grass_L", "stone_grass_L.png");
-    load("stone_grass_TR", "stone_grass_TR.png");
-    load("stone_grass_TL", "stone_grass_TL.png");
-    load("stone_grass_BR", "stone_grass_BR.png");
-    load("stone_grass_BL", "stone_grass_BL.png");
-    load("stone_grass_LR", "stone_grass_LR.png");
-    load("stone_grass_TB", "stone_grass_TB.png");
-    load("stone_grass_TBL", "stone_grass_TBL.png");
-    load("stone_grass_TBR", "stone_grass_TBR.png");
-    load("stone_grass_TLR", "stone_grass_TLR.png");
-    load("stone_grass_BLR", "stone_grass_BLR.png");
-    load("stone_grass_ALL", "stone_grass_ALL.png");
+    load("stone_grass_NONE", "dirt_grass_NONE.png");
+    load("stone_grass_T", "dirt_grass_T.png");
+    load("stone_grass_B", "dirt_grass_B.png");
+    load("stone_grass_L", "dirt_grass_L.png");
+    load("stone_grass_TR", "dirt_grass_TR.png");
+    load("stone_grass_TL", "dirt_grass_TL.png");
+    load("stone_grass_BR", "dirt_grass_BR.png");
+    load("stone_grass_BL", "dirt_grass_BL.png");
+    load("stone_grass_LR", "dirt_grass_LR.png");
+    load("stone_grass_TB", "dirt_grass_TB.png");
+    load("stone_grass_TBL", "dirt_grass_TBL.png");
+    load("stone_grass_TBR", "dirt_grass_TBR.png");
+    load("stone_grass_TLR", "dirt_grass_TLR.png");
+    load("stone_grass_BLR", "dirt_grass_BLR.png");
+    load("stone_grass_ALL", "dirt_grass_ALL.png");
 }
 
 void AutotileDemo::generateTestGrid() {

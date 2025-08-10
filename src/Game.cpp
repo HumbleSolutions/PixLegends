@@ -55,6 +55,24 @@ void Game::initializeSystems() {
     uiSystem = std::make_unique<UISystem>(sdlRenderer);
     uiSystem->setAssetManager(assetManager.get());
     audioManager = std::make_unique<AudioManager>();
+    if (audioManager) {
+        // Favor SFX over music by default
+        audioManager->setMasterVolume(80);
+        audioManager->setSoundVolume(100);
+        audioManager->setMusicVolume(40);
+        audioManager->loadSound("footstep_dirt", "assets/Sound/Footsteps/dirt_step.wav");
+        // Player melee variants (alternate)
+        audioManager->loadSound("player_melee_1", "assets/Sound/Melee/player_melee.wav");
+        audioManager->loadSound("player_melee_1", "assets/Sound/Melee/player_melee_1.wav");
+        audioManager->loadSound("player_melee_2", "assets/Sound/Melee/player_melee_2.wav");
+        audioManager->loadSound("boss_melee", "assets/Sound/Melee/demon_melee.wav");
+        audioManager->loadSound("player_projectile", "assets/Sound/Spells/fire_projectile.wav");
+        audioManager->loadSound("potion_drink", "assets/Sound/Spells/potion_drink.wav");
+        // Try WAV first (works without SDL_mixer), then OGG (works when SDL_mixer is available)
+        audioManager->loadMusic("main_theme", "assets/Sound/Music/main_theme.wav");
+        audioManager->loadMusic("main_theme", "assets/Sound/Music/main_theme.ogg");
+        audioManager->loadMusic("boss_music", "assets/Sound/Music/boss_music.wav");
+    }
     
     // Create player after other systems are initialized
     player = std::make_unique<Player>(this);
@@ -86,6 +104,14 @@ void Game::initializeSystems() {
     if (world && player) {
         world->updateVisibility(player->getX(), player->getY());
         world->updateVisibleChunks(player->getX(), player->getY());
+    }
+    // Start main theme at game start
+    // Start main theme at game start if available
+    if (audioManager && audioManager->hasMusic("main_theme")) {
+        audioManager->playMusic("main_theme");
+        currentMusicTrack = "main_theme";
+    } else {
+        currentMusicTrack.clear();
     }
     
     isRunning = true;
@@ -136,6 +162,7 @@ void Game::update(float deltaTime) {
     
     // Update world
     if (world) {
+        bool playedPlayerMeleeSfx = false; // prevent boss melee SFX from overriding on the same frame
         world->update(deltaTime);
         
         // Update chunks and visibility based on player position
@@ -191,6 +218,10 @@ void Game::update(float deltaTime) {
                 if (SDL_IntersectRect(&playerRect, &eRect, &inter)) {
                     if (enemyPtr->isAttackReady()) {
                         player->takeDamage(enemyPtr->getContactDamage());
+                        if (audioManager && !playedPlayerMeleeSfx) { 
+                            audioManager->playSound("boss_melee");
+                            audioManager->startMusicDuck(0.35f, 0.5f);
+                        }
                         enemyPtr->consumeAttackCooldown();
                         if (player->isDead()) {
                             // Reset enemies to idle spawn when player dies
@@ -286,18 +317,62 @@ void Game::render() {
         }
 
         // Boss health bar while engaged
-        if (world && player) {
+    if (world && player) {
             auto& enemies = world->getEnemies();
             // For now: show the first enemy as Demon Boss if aggroed or in range
             if (!enemies.empty() && enemies[0]) {
                 Enemy* boss = enemies[0].get();
                 // Consider engaged if boss is aggroed or player within attack range
                 bool engaged = boss->getIsAggroed() || boss->isWithinAttackRange(player->getX(), player->getY());
-                if (!boss->isDead() && engaged) {
+            if (!boss->isDead() && engaged) {
                     int outW = 0, outH = 0;
                     SDL_GetRendererOutputSize(sdlRenderer, &outW, &outH);
                     uiSystem->renderBossHealthBar("Demon", boss->getHealth(), boss->getMaxHealth(), (outW > 0 ? outW : WINDOW_WIDTH));
+                // Start boss music if available
+                if (audioManager && audioManager->hasMusic("boss_music") && currentMusicTrack != "boss_music") { 
+                    audioManager->fadeToMusic("boss_music", 400, 300); 
+                    currentMusicTrack = "boss_music"; 
                 }
+                bossWasDead = false;
+                bossMusicHoldTimerSec = 0.0f;
+                bossFadeOutPending = false;
+            } else {
+                // Boss died or disengaged: switch back to main theme if present; otherwise stop music
+                bool bossJustDied = boss->isDead() && !bossWasDead;
+                if (bossJustDied) {
+                    bossWasDead = true;
+                    bossMusicHoldTimerSec = 3.0f; // hold boss music for 3 seconds
+                    bossFadeOutPending = true;
+                }
+                if (bossWasDead) {
+                    if (bossMusicHoldTimerSec > 0.0f) {
+                        // Use fixed timestep duration since we're inside update(TARGET_FRAME_TIME)
+                        bossMusicHoldTimerSec -= TARGET_FRAME_TIME;
+                    } else if (bossFadeOutPending) {
+                        // Start a 3s fade-out of boss music, then fade main theme in
+                        if (audioManager) {
+                            audioManager->fadeToMusic("main_theme", 3000, 400);
+                            currentMusicTrack = "main_theme";
+                        }
+                        bossFadeOutPending = false;
+                    }
+                } else {
+                    // Not dead: handle disengage (no special hold)
+                    if (audioManager) {
+                        if (audioManager->hasMusic("main_theme")) {
+                            if (currentMusicTrack != "main_theme") {
+                                audioManager->fadeToMusic("main_theme", 500, 400);
+                                currentMusicTrack = "main_theme";
+                            }
+                        } else {
+                            if (!currentMusicTrack.empty()) {
+                                audioManager->stopMusic();
+                                currentMusicTrack.clear();
+                            }
+                        }
+                    }
+                }
+            }
             }
         }
 
@@ -349,6 +424,10 @@ void Game::render() {
             }
         }
     }
+    // Options overlay on top
+    if (optionsOpen) {
+        renderOptionsMenuOverlay();
+    }
     
     // Present
     SDL_RenderPresent(sdlRenderer);
@@ -363,20 +442,23 @@ void Game::handleEvents() {
                 break;
                 
             case SDL_KEYDOWN:
-                if (event.key.keysym.sym == SDLK_ESCAPE) {
-                    isRunning = false;
-                } else if (event.key.keysym.sym == SDLK_p) {
+                if (!optionsOpen && event.key.keysym.sym == SDLK_p) {
                     isPaused = !isPaused;
-                } else if (event.key.keysym.sym == SDLK_F1) {
+                } else if (!optionsOpen && event.key.keysym.sym == SDLK_F1) {
                     demoMode = !demoMode;
-                } else if (event.key.keysym.sym == SDLK_F3) {
+                } else if (!optionsOpen && event.key.keysym.sym == SDLK_F3) {
                     setDebugHitboxes(!getDebugHitboxes());
                 }
-                inputManager->handleKeyDown(event.key);
+                if (!optionsOpen) inputManager->handleKeyDown(event.key);
                 break;
                 
             case SDL_KEYUP:
-                inputManager->handleKeyUp(event.key);
+                if (event.key.keysym.sym == SDLK_ESCAPE) {
+                    optionsOpen = !optionsOpen;
+                    break;
+                }
+                if (!optionsOpen) inputManager->handleKeyUp(event.key);
+                else handleOptionsInput(event);
                 break;
                 
             case SDL_MOUSEBUTTONDOWN:
@@ -392,6 +474,40 @@ void Game::handleEvents() {
                 break;
         }
     }
+}
+
+void Game::renderOptionsMenuOverlay() {
+    if (!uiSystem) return;
+    // Query current settings
+    int master = audioManager ? audioManager->getMasterVolume() : 100;
+    int music  = audioManager ? audioManager->getMusicVolume()  : 100;
+    int sound  = audioManager ? audioManager->getSoundVolume()  : 100;
+    // Basic flags from window/renderer
+    Uint32 winFlags = SDL_GetWindowFlags(window);
+    bool fullscreen = (winFlags & SDL_WINDOW_FULLSCREEN) || (winFlags & SDL_WINDOW_FULLSCREEN_DESKTOP);
+    bool vsync = true; // We created renderer with PRESENTVSYNC
+    int mx, my; Uint32 mouse = SDL_GetMouseState(&mx, &my);
+    bool mouseDown = (mouse & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
+    UISystem::MenuHitResult hit;
+    uiSystem->renderOptionsMenu(optionsSelectedIndex, master, music, sound, fullscreen, vsync, mx, my, mouseDown, hit);
+    if (audioManager) {
+        if (hit.changedMaster) audioManager->setMasterVolume(hit.newMaster);
+        if (hit.changedMusic)  audioManager->setMusicVolume(hit.newMusic);
+        if (hit.changedSound)  audioManager->setSoundVolume(hit.newSound);
+    }
+    if (hit.clickedFullscreen) {
+        Uint32 flags = SDL_GetWindowFlags(window);
+        bool fs = (flags & SDL_WINDOW_FULLSCREEN) || (flags & SDL_WINDOW_FULLSCREEN_DESKTOP);
+        SDL_SetWindowFullscreen(window, fs ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
+    }
+    if (hit.clickedResume) {
+        optionsOpen = false;
+    }
+}
+
+void Game::handleOptionsInput(const SDL_Event& event) {
+    // Mouse-only; keyboard arrows disabled. Only handle Esc to close handled elsewhere.
+    (void)event;
 }
 
 void Game::initializeObjects() {

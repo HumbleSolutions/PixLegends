@@ -2,6 +2,7 @@
 #include "Game.h"
 #include "Renderer.h"
 #include "AssetManager.h"
+#include "AudioManager.h"
 #include "InputManager.h"
 #include "Projectile.h"
 #include "Object.h"
@@ -67,6 +68,22 @@ void Player::update(float deltaTime) {
     
     // Update animation
     updateAnimation(deltaTime);
+
+    // Footstep sound while walking
+    if (currentState == PlayerState::WALKING && game && game->getAudioManager()) {
+        footstepTimer -= deltaTime;
+        if (footstepTimer <= 0.0f) {
+            game->getAudioManager()->playSound("footstep_dirt");
+            footstepTimer = footstepInterval;
+        }
+    } else {
+        // Reset timer when not walking to play promptly when walking resumes
+        footstepTimer = 0.0f;
+    }
+
+    // Update potion cooldowns
+    if (healthPotionCooldown > 0.0f) healthPotionCooldown -= deltaTime;
+    if (manaPotionCooldown > 0.0f) manaPotionCooldown -= deltaTime;
     
     // Update projectiles
     updateProjectiles(deltaTime);
@@ -150,8 +167,22 @@ void Player::move(float deltaTime) {
     inputManager->getMovementVector(moveX, moveY);
     
     // Apply movement
-    x += moveX * moveSpeed * deltaTime;
-    y += moveY * moveSpeed * deltaTime;
+    float dx = moveX * moveSpeed * deltaTime;
+    float dy = moveY * moveSpeed * deltaTime;
+    x += dx;
+    y += dy;
+
+    // Footstep SFX when moving
+    if ((dx != 0.0f || dy != 0.0f) && game && game->getAudioManager()) {
+        footstepTimer -= deltaTime;
+        if (footstepTimer <= 0.0f) {
+            game->getAudioManager()->playSound("footstep_dirt");
+            game->getAudioManager()->startMusicDuck(0.15f, 0.85f);
+            footstepTimer = footstepInterval;
+        }
+    } else {
+        footstepTimer = 0.0f;
+    }
     
     // Unlimited world roaming: do not clamp to window or finite world size
 }
@@ -166,6 +197,13 @@ void Player::performMeleeAttack() {
     currentFrame = 0;
     frameTimer = 0.0f;
     meleeHitConsumedThisSwing = false;
+    // Play melee swing SFX at attack start (alternating variants), regardless of hit
+    if (game && game->getAudioManager()) {
+        static bool altSwing = false;
+        game->getAudioManager()->playSound(altSwing ? "player_melee_2" : "player_melee_1");
+        altSwing = !altSwing;
+        game->getAudioManager()->startMusicDuck(0.25f, 0.6f);
+    }
     
     std::cout << "Melee attack! Damage: " << meleeDamage << std::endl;
 }
@@ -218,6 +256,11 @@ void Player::performRangedAttack() {
     frameTimer = 0.0f;
     
     std::cout << "Ranged attack! Damage: " << rangedDamage << std::endl;
+    // Play projectile fire SFX immediately on shoot
+    if (game && game->getAudioManager()) {
+        game->getAudioManager()->playSound("player_projectile");
+        game->getAudioManager()->startMusicDuck(0.2f, 0.7f);
+    }
     
     // Create projectile
     float projectileX = x + width / 2.0f; // Center of player
@@ -544,20 +587,24 @@ void Player::spendGold(int amount) {
 }
 
 bool Player::consumeHealthPotion() {
-    if (healthPotionCharges <= 0 || health >= maxHealth) {
+    if (healthPotionCooldown > 0.0f || healthPotionCharges <= 0 || health >= maxHealth) {
         return false;
     }
     heal(HEALTH_POTION_HEAL);
     healthPotionCharges--;
+    healthPotionCooldown = POTION_COOLDOWN_SECONDS;
+    if (game && game->getAudioManager()) game->getAudioManager()->playSound("potion_drink");
     return true;
 }
 
 bool Player::consumeManaPotion() {
-    if (manaPotionCharges <= 0 || mana >= maxMana) {
+    if (manaPotionCooldown > 0.0f || manaPotionCharges <= 0 || mana >= maxMana) {
         return false;
     }
     mana = std::min(mana + MANA_POTION_RESTORE, maxMana);
     manaPotionCharges--;
+    manaPotionCooldown = POTION_COOLDOWN_SECONDS;
+    if (game && game->getAudioManager()) game->getAudioManager()->playSound("potion_drink");
     return true;
 }
 

@@ -15,6 +15,7 @@ endif()
 find_package(SDL2 QUIET)
 find_package(SDL2_image QUIET)
 find_package(SDL2_ttf QUIET)
+find_package(SDL2_mixer QUIET)
 
 # Method 2: If not found, try to find SDL2 manually
 if(NOT SDL2_FOUND)
@@ -54,6 +55,26 @@ if(NOT SDL2_FOUND)
         set(SDL2_LIBRARIES ${SDL2_LIBRARY})
         set(SDL2_INCLUDE_DIRS ${SDL2_INCLUDE_DIR})
         message(STATUS "SDL2 found manually: ${SDL2_LIBRARY}")
+    endif()
+endif()
+
+# Similar manual detection for SDL2_mixer
+if(NOT SDL2_mixer_FOUND AND NOT SDL2_MIXER_FOUND)
+    set(SDL2_MIXER_SEARCH_PATHS
+        "C:/SDL2_mixer"
+        "C:/Program Files/SDL2_mixer"
+        "C:/Program Files (x86)/SDL2_mixer"
+        "${CMAKE_SOURCE_DIR}/external/SDL2_mixer"
+        "${CMAKE_SOURCE_DIR}/external/SDL2_mixer-2.6.3"
+        "${CMAKE_SOURCE_DIR}/../SDL2_mixer"
+    )
+    find_library(SDL2_MIXER_LIBRARY NAMES SDL2_mixer PATHS ${SDL2_MIXER_SEARCH_PATHS} PATH_SUFFIXES lib lib/x64 lib/x86)
+    find_path(SDL2_MIXER_INCLUDE_DIR NAMES SDL_mixer.h PATHS ${SDL2_MIXER_SEARCH_PATHS} PATH_SUFFIXES include include/SDL2)
+    if(SDL2_MIXER_LIBRARY AND SDL2_MIXER_INCLUDE_DIR)
+        set(SDL2_MIXER_FOUND TRUE)
+        set(SDL2_MIXER_LIBRARIES ${SDL2_MIXER_LIBRARY})
+        set(SDL2_MIXER_INCLUDE_DIRS ${SDL2_MIXER_INCLUDE_DIR})
+        message(STATUS "SDL2_mixer found manually: ${SDL2_MIXER_LIBRARY}")
     endif()
 endif()
 
@@ -124,6 +145,11 @@ include_directories(${CMAKE_SOURCE_DIR}/include)
 include_directories(${SDL2_INCLUDE_DIRS})
 include_directories(${SDL2_IMAGE_INCLUDE_DIRS})
 include_directories(${SDL2_TTF_INCLUDE_DIRS})
+if(SDL2_mixer_FOUND)
+    include_directories(${SDL2_MIXER_INCLUDE_DIRS})
+elseif(SDL2_MIXER_FOUND)
+    include_directories(${SDL2_MIXER_INCLUDE_DIRS})
+endif()
 
 # Source files
 set(SOURCES
@@ -151,6 +177,13 @@ target_link_libraries(PixLegends
     ${SDL2_IMAGE_LIBRARIES}
     ${SDL2_TTF_LIBRARIES}
 )
+if(SDL2_mixer_FOUND)
+    target_link_libraries(PixLegends ${SDL2_mixer_LIBRARIES})
+    target_compile_definitions(PixLegends PRIVATE USE_SDL_MIXER)
+elseif(SDL2_MIXER_FOUND)
+    target_link_libraries(PixLegends ${SDL2_MIXER_LIBRARIES})
+    target_compile_definitions(PixLegends PRIVATE USE_SDL_MIXER)
+endif()
 
 # On Windows, we need to link against SDL2main for the main function
 if(WIN32 AND SDL2MAIN_LIBRARY)
@@ -163,32 +196,57 @@ if(WIN32)
     set_target_properties(PixLegends PROPERTIES
         WIN32_EXECUTABLE FALSE
     )
-    
-    # Copy SDL2 DLLs to output directory if they exist
-    if(EXISTS "${SDL2_SEARCH_PATHS}/lib/x64/SDL2.dll")
+
+    # Derive DLL directories from the resolved .lib locations and copy DLLs next to the exe
+    if(SDL2_LIBRARY)
+        get_filename_component(SDL2_LIB_DIR "${SDL2_LIBRARY}" DIRECTORY)
+        set(SDL2_DLL "${SDL2_LIB_DIR}/SDL2.dll")
+        if(EXISTS "${SDL2_DLL}")
+            add_custom_command(TARGET PixLegends POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different "${SDL2_DLL}" $<TARGET_FILE_DIR:PixLegends>
+            )
+        endif()
+    endif()
+
+    # Copy SDL2_mixer DLL to output if present
+    if(SDL2_MIXER_LIBRARY)
+        get_filename_component(SDL2_MIXER_LIB_DIR "${SDL2_MIXER_LIBRARY}" DIRECTORY)
+        # Copy mixer DLL if present
+        if(EXISTS "${SDL2_MIXER_LIB_DIR}/SDL2_mixer.dll")
+            add_custom_command(TARGET PixLegends POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${SDL2_MIXER_LIB_DIR}/SDL2_mixer.dll"
+                $<TARGET_FILE_DIR:PixLegends>
+            )
+        endif()
+        # Copy entire mixer lib dir (brings in codec DLLs too)
         add_custom_command(TARGET PixLegends POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${SDL2_SEARCH_PATHS}/lib/x64/SDL2.dll"
-            $<TARGET_FILE_DIR:PixLegends>
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${SDL2_MIXER_LIB_DIR}"
+            "$<TARGET_FILE_DIR:PixLegends>"
         )
     endif()
-    
-    if(EXISTS "${SDL2_SEARCH_PATHS}/lib/x64/SDL2_image.dll")
-        add_custom_command(TARGET PixLegends POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${SDL2_SEARCH_PATHS}/lib/x64/SDL2_image.dll"
-            $<TARGET_FILE_DIR:PixLegends>
-        )
+
+    if(SDL2_IMAGE_LIBRARY)
+        get_filename_component(SDL2_IMAGE_LIB_DIR "${SDL2_IMAGE_LIBRARY}" DIRECTORY)
+        set(SDL2_IMAGE_DLL "${SDL2_IMAGE_LIB_DIR}/SDL2_image.dll")
+        if(EXISTS "${SDL2_IMAGE_DLL}")
+            add_custom_command(TARGET PixLegends POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different "${SDL2_IMAGE_DLL}" $<TARGET_FILE_DIR:PixLegends>
+            )
+        endif()
     endif()
-    
-    if(EXISTS "${SDL2_SEARCH_PATHS}/lib/x64/SDL2_ttf.dll")
-        add_custom_command(TARGET PixLegends POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${SDL2_SEARCH_PATHS}/lib/x64/SDL2_ttf.dll"
-            $<TARGET_FILE_DIR:PixLegends>
-        )
+
+    if(SDL2_TTF_LIBRARY)
+        get_filename_component(SDL2_TTF_LIB_DIR "${SDL2_TTF_LIBRARY}" DIRECTORY)
+        set(SDL2_TTF_DLL "${SDL2_TTF_LIB_DIR}/SDL2_ttf.dll")
+        if(EXISTS "${SDL2_TTF_DLL}")
+            add_custom_command(TARGET PixLegends POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different "${SDL2_TTF_DLL}" $<TARGET_FILE_DIR:PixLegends>
+            )
+        endif()
     endif()
-    
+
 elseif(APPLE)
     # macOS-specific settings
     set_target_properties(PixLegends PROPERTIES
@@ -233,3 +291,4 @@ message(STATUS "SDL2_image found: ${SDL2_IMAGE_FOUND}")
 message(STATUS "SDL2_ttf found: ${SDL2_TTF_FOUND}")
 message(STATUS "SDL2 library: ${SDL2_LIBRARY}")
 message(STATUS "SDL2main library: ${SDL2MAIN_LIBRARY}")
+message(STATUS "SDL2_mixer found: ${SDL2_mixer_FOUND}${SDL2_MIXER_FOUND}")

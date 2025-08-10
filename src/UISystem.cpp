@@ -401,6 +401,111 @@ void UISystem::renderFPSCounter(float currentFPS, float averageFPS, Uint32 frame
     renderText(fpsText, x, y, color);
 }
 
+void UISystem::renderOptionsMenu(int selectedIndex,
+                           int masterVolume, int musicVolume, int soundVolume,
+                           bool fullscreenEnabled, bool vsyncEnabled,
+                           int mouseX, int mouseY, bool mouseDown,
+                           MenuHitResult& outResult) {
+    if (!defaultFont) return;
+    int outW = 0, outH = 0;
+    if (renderer) SDL_GetRendererOutputSize(renderer, &outW, &outH);
+    if (outW <= 0) { outW = 1280; outH = 720; }
+
+    // Dim background
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 160);
+    SDL_Rect dim{0,0,outW,outH};
+    SDL_RenderFillRect(renderer, &dim);
+
+    // Panel
+    const int panelW = 600, panelH = 400;
+    SDL_Rect panel{ outW/2 - panelW/2, outH/2 - panelH/2, panelW, panelH };
+    SDL_SetRenderDrawColor(renderer, 32, 32, 48, 235);
+    SDL_RenderFillRect(renderer, &panel);
+    SDL_SetRenderDrawColor(renderer, 200, 200, 220, 255);
+    SDL_RenderDrawRect(renderer, &panel);
+
+    // Title
+    renderTextCentered("Options", outW/2, panel.y + 30, SDL_Color{255,255,255,255});
+
+    // Entries
+    struct Row { std::string label; std::string value; };
+    Row rows[] = {
+        {"Master Volume", std::to_string(masterVolume)},
+        {"Music Volume",  std::to_string(musicVolume)},
+        {"Sound Volume",  std::to_string(soundVolume)},
+        {"Fullscreen",    fullscreenEnabled ? "On" : "Off"},
+        {"VSync",         vsyncEnabled ? "On" : "Off"},
+        {"Resume",        ""}
+    };
+
+    const int startY = panel.y + 80;
+    const int rowH = 44;
+    for (int i = 0; i < 6; ++i) {
+        SDL_Rect rowRect{ panel.x + 30, startY + i * rowH, panelW - 60, rowH - 6 };
+        bool selected = (mouseX >= rowRect.x && mouseX <= rowRect.x + rowRect.w && mouseY >= rowRect.y && mouseY <= rowRect.y + rowRect.h);
+        SDL_SetRenderDrawColor(renderer, selected ? 70 : 50, selected ? 120 : 50, selected ? 180 : 70, 200);
+        SDL_RenderFillRect(renderer, &rowRect);
+        SDL_SetRenderDrawColor(renderer, 220,220,220,255);
+        SDL_RenderDrawRect(renderer, &rowRect);
+        renderText(rows[i].label, rowRect.x + 10, rowRect.y + 12, SDL_Color{255,255,255,255});
+        // Value or slider/action area on right
+        SDL_Rect valueArea{ rowRect.x + rowRect.w - 220, rowRect.y + 8, 200, rowRect.h - 16 };
+        if (i <= 2) {
+            // Draw slider
+            int v = (i == 0 ? masterVolume : (i == 1 ? musicVolume : soundVolume));
+            v = std::max(0, std::min(100, v));
+            SDL_SetRenderDrawColor(renderer, 60, 60, 60, 255);
+            SDL_RenderFillRect(renderer, &valueArea);
+            SDL_SetRenderDrawColor(renderer, 120, 120, 120, 255);
+            SDL_RenderDrawRect(renderer, &valueArea);
+            // Knob position
+            int knobW = 12;
+            float t = v / 100.0f;
+            int knobX = valueArea.x + static_cast<int>(t * (valueArea.w - knobW));
+            SDL_Rect knob{ knobX, valueArea.y, knobW, valueArea.h };
+            SDL_SetRenderDrawColor(renderer, 200, 200, 240, 255);
+            SDL_RenderFillRect(renderer, &knob);
+            // Mouse interaction
+            bool hovering = (mouseX >= valueArea.x && mouseX <= valueArea.x + valueArea.w && mouseY >= valueArea.y && mouseY <= valueArea.y + valueArea.h);
+            if (hovering && mouseDown) {
+                float rel = (mouseX - valueArea.x) / static_cast<float>(valueArea.w - knobW);
+                int newVal = std::max(0, std::min(100, static_cast<int>(rel * 100.0f)));
+                if (i == 0) { outResult.changedMaster = true; outResult.newMaster = newVal; }
+                if (i == 1) { outResult.changedMusic = true;  outResult.newMusic  = newVal; }
+                if (i == 2) { outResult.changedSound = true;  outResult.newSound  = newVal; }
+            }
+        } else if (i == 3) {
+            // Fullscreen toggle button
+            SDL_SetRenderDrawColor(renderer, 80, 120, 160, 255);
+            SDL_RenderFillRect(renderer, &valueArea);
+            SDL_SetRenderDrawColor(renderer, 255,255,255,255);
+            SDL_RenderDrawRect(renderer, &valueArea);
+            renderText(fullscreenEnabled ? "On" : "Off", valueArea.x + 12, valueArea.y + 8, SDL_Color{255,255,255,255});
+            if (mouseDown && mouseX >= valueArea.x && mouseX <= valueArea.x + valueArea.w && mouseY >= valueArea.y && mouseY <= valueArea.y + valueArea.h) {
+                outResult.clickedFullscreen = true;
+            }
+        } else if (i == 5) {
+            // Resume button
+            SDL_SetRenderDrawColor(renderer, 90, 160, 90, 255);
+            SDL_RenderFillRect(renderer, &valueArea);
+            SDL_SetRenderDrawColor(renderer, 255,255,255,255);
+            SDL_RenderDrawRect(renderer, &valueArea);
+            renderText("Resume", valueArea.x + 12, valueArea.y + 8, SDL_Color{255,255,255,255});
+            if (mouseDown && mouseX >= valueArea.x && mouseX <= valueArea.x + valueArea.w && mouseY >= valueArea.y && mouseY <= valueArea.y + valueArea.h) {
+                outResult.clickedResume = true;
+            }
+        } else {
+            if (!rows[i].value.empty()) {
+                renderText(rows[i].value, rowRect.x + rowRect.w - 80, rowRect.y + 12, SDL_Color{200,200,200,255});
+            }
+        }
+    }
+
+    renderTextCentered("Use mouse to drag sliders and click buttons. Press Esc to close.",
+                       outW/2, panel.y + panelH - 30, SDL_Color{200,200,200,255});
+}
+
 void UISystem::renderDeathPopup(bool& outClickedRespawn, float fadeAlpha01) {
     outClickedRespawn = false;
     if (!defaultFont) return;

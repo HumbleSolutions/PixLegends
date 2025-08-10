@@ -199,4 +199,13 @@ private:
 
     // Melee swing state
     bool meleeHitConsumedThisSwing = false;
+
+    // Footstep timing
+    float footstepTimer = 0.0f;
+    float footstepInterval = 0.55f; // seconds between steps while walking
+
+    // Potion cooldowns (seconds)
+    float healthPotionCooldown = 0.0f;
+    float manaPotionCooldown = 0.0f;
+    static constexpr float POTION_COOLDOWN_SECONDS = 5.0f;
 };

@@ -37,6 +37,26 @@ public:
     void renderFPSCounter(float currentFPS, float averageFPS, Uint32 frameTime);
     // Death popup
     void renderDeathPopup(bool& outClickedRespawn, float fadeAlpha01);
+
+    // Options menu (simple keyboard-driven UI). selectedIndex highlights current row.
+    struct MenuHitResult {
+        bool clickedResume = false;
+        bool clickedFullscreen = false;
+        bool changedMaster = false;
+        bool changedMusic = false;
+        bool changedSound = false;
+        int newMaster = 0;
+        int newMusic = 0;
+        int newSound = 0;
+    };
+
+    void renderOptionsMenu(int selectedIndex,
+                           int masterVolume, int musicVolume, int soundVolume,
+                           bool fullscreenEnabled, bool vsyncEnabled,
+                           // mouse for hit testing
+                           int mouseX, int mouseY, bool mouseDown,
+                           // output
+                           MenuHitResult& outResult);
     
 private:
     SDL_Renderer* renderer;
