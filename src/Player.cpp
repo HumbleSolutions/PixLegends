@@ -172,6 +172,22 @@ void Player::move(float deltaTime) {
     x += dx;
     y += dy;
 
+    // Tile hazards: water and lava
+    if (game && game->getWorld()) {
+        World* world = game->getWorld();
+        int ts = world->getTileSize();
+        int tileX = static_cast<int>((x + width * 0.5f) / ts);
+        int tileY = static_cast<int>((y + height * 0.9f) / ts); // feet position bias
+        int tileId = world->getTile(tileX, tileY);
+        if (tileId == TILE_WATER_DEEP) {
+            // Drown: continuous heavy damage
+            takeDamage(static_cast<int>(std::ceil(40.0f * deltaTime))); // ~40 DPS
+        } else if (tileId == TILE_LAVA) {
+            // Instant death
+            if (!isDead()) takeDamage(health);
+        }
+    }
+
     // Footstep SFX when moving
     if ((dx != 0.0f || dy != 0.0f) && game && game->getAudioManager()) {
         footstepTimer -= deltaTime;

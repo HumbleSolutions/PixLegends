@@ -7,6 +7,7 @@
 #include <random>
 #include <cmath> // Required for sin and cos
 #include <algorithm> // Required for std::max
+#include <cstdio>
 #include <cstdlib> // Required for std::abs
 
 World::World() : width(1000), height(1000), tileSize(32), tilesetTexture(nullptr), assetManager(nullptr), rng(std::random_device{}()), visibilityRadius(50), fogOfWarEnabled(true) {
@@ -125,7 +126,7 @@ void World::render(Renderer* renderer) {
                 int tileId = chunk->tiles[y][x].id;
                 
                 // Validate tile ID to catch any invalid values
-                if (tileId < 0 || tileId > TILE_WATER) {
+                if (tileId < 0 || tileId > TILE_LAST) {
                     std::cout << "ERROR: Invalid tile ID " << tileId << " at position (" << worldX << ", " << worldY << "). Setting to grass." << std::endl;
                     tileId = TILE_GRASS;
                     chunk->tiles[y][x].id = TILE_GRASS;
@@ -163,53 +164,49 @@ void World::render(Renderer* renderer) {
                         visibleTilesCount++;
                     }
                     
-                    // Explicit render path: grass vs stone (treat all non-grass as stone)
+                    // Variant-based rendering per material type
                     SDL_Rect destRect = { screenX, screenY, tileSize, tileSize };
 
-                    if (tileId == TILE_GRASS) {
-                        Texture* grassTex = tileTextures[TILE_GRASS];
-                        SDL_Texture* sdlTex = grassTex ? grassTex->getTexture() : nullptr;
-                        if (sdlTex) {
-                            SDL_SetTextureBlendMode(sdlTex, SDL_BLENDMODE_BLEND);
-                            if (fogOfWarEnabled && isExplored && !isVisible) {
-                                SDL_SetTextureColorMod(sdlTex, 100, 100, 100);
-                            } else if (fogOfWarEnabled && !isExplored) {
-                                SDL_SetTextureColorMod(sdlTex, 50, 50, 50);
-                            } else {
-                                SDL_SetTextureColorMod(sdlTex, 255, 255, 255);
-                            }
-                            SDL_RenderCopy(renderer->getSDLRenderer(), sdlTex, nullptr, &destRect);
+                    // Special-cases: animated sprite sheets for deep water and lava
+                    if (tileId == TILE_WATER_DEEP && deepWaterSpriteSheet && deepWaterSpriteSheet->getTexture()) {
+                        int total = std::max(1, deepWaterSpriteSheet->getTotalFrames());
+                        // Time-based animation with a slight per-tile phase offset for variety
+                        Uint32 ticks = SDL_GetTicks();
+                        int frame = static_cast<int>((ticks / 150) % total); // global sync
+                        SDL_Rect src = deepWaterSpriteSheet->getFrameRect(frame);
+                        SDL_Texture* sdlTex = deepWaterSpriteSheet->getTexture()->getTexture();
+                        SDL_RenderCopy(renderer->getSDLRenderer(), sdlTex, &src, &destRect);
+                        continue;
+                    }
+                    if (tileId == TILE_LAVA && lavaSpriteSheet && lavaSpriteSheet->getTexture()) {
+                        int total = std::max(1, lavaSpriteSheet->getTotalFrames());
+                        Uint32 ticks = SDL_GetTicks();
+                        int frame = static_cast<int>((ticks / 120) % total); // global sync
+                        SDL_Rect src = lavaSpriteSheet->getFrameRect(frame);
+                        SDL_Texture* sdlTex = lavaSpriteSheet->getTexture()->getTexture();
+                        SDL_RenderCopy(renderer->getSDLRenderer(), sdlTex, &src, &destRect);
+                        continue;
+                    }
+
+                    Texture* chosen = nullptr;
+                    if (tileId >= 0 && tileId < static_cast<int>(tileVariantTextures.size()) && !tileVariantTextures[tileId].empty()) {
+                        size_t idx = static_cast<size_t>(getPreferredVariantIndex(tileId, worldX, worldY));
+                        idx = std::min(idx, tileVariantTextures[tileId].size() - 1);
+                        chosen = tileVariantTextures[tileId][idx];
+                    } else if (tileId >= 0 && tileId < static_cast<int>(tileTextures.size())) {
+                        chosen = tileTextures[tileId];
+                    }
+                    SDL_Texture* sdlTex = chosen ? chosen->getTexture() : nullptr;
+                    if (sdlTex) {
+                        SDL_SetTextureBlendMode(sdlTex, SDL_BLENDMODE_BLEND);
+                        if (fogOfWarEnabled && isExplored && !isVisible) {
+                            SDL_SetTextureColorMod(sdlTex, 100, 100, 100);
+                        } else if (fogOfWarEnabled && !isExplored) {
+                            SDL_SetTextureColorMod(sdlTex, 50, 50, 50);
+                        } else {
+                            SDL_SetTextureColorMod(sdlTex, 255, 255, 255);
                         }
-                    } else {
-                        // Stone autotiling for stone and any non-grass type
-                        std::string mask = buildMaskFromNeighbors(worldX, worldY);
-                        Texture* edgeTex = getEdgeTextureForMask(mask);
-                        SDL_Texture* sdlTex = edgeTex ? edgeTex->getTexture() : nullptr;
-                        if (sdlTex || !mask.empty()) {
-                            SDL_SetTextureBlendMode(sdlTex, SDL_BLENDMODE_BLEND);
-                            if (fogOfWarEnabled && isExplored && !isVisible) {
-                                SDL_SetTextureColorMod(sdlTex, 100, 100, 100);
-                            } else if (fogOfWarEnabled && !isExplored) {
-                                SDL_SetTextureColorMod(sdlTex, 50, 50, 50);
-                            } else {
-                                SDL_SetTextureColorMod(sdlTex, 255, 255, 255);
-                            }
-                            if (mask == "R" && edgeTextures.find("L") != edgeTextures.end() && edgeTextures["L"]) {
-                                SDL_RenderCopyEx(renderer->getSDLRenderer(), edgeTextures["L"]->getTexture(), nullptr, &destRect, 0.0, nullptr, SDL_FLIP_HORIZONTAL);
-                            } else if (mask == "T" && (edgeTextures.find("T") == edgeTextures.end() || !edgeTextures["T"])) {
-                                if (edgeTextures.find("B") != edgeTextures.end() && edgeTextures["B"]) {
-                                    SDL_RenderCopyEx(renderer->getSDLRenderer(), edgeTextures["B"]->getTexture(), nullptr, &destRect, 180.0, nullptr, SDL_FLIP_NONE);
-                                } else if (tileTextures[TILE_STONE]) {
-                                    SDL_RenderCopy(renderer->getSDLRenderer(), tileTextures[TILE_STONE]->getTexture(), nullptr, &destRect);
-                                }
-                            } else if (sdlTex) {
-                                SDL_RenderCopy(renderer->getSDLRenderer(), sdlTex, nullptr, &destRect);
-                            } else if (tileTextures[TILE_STONE]) {
-                                SDL_RenderCopy(renderer->getSDLRenderer(), tileTextures[TILE_STONE]->getTexture(), nullptr, &destRect);
-                            }
-                        } else if (tileTextures[TILE_STONE]) {
-                            SDL_RenderCopy(renderer->getSDLRenderer(), tileTextures[TILE_STONE]->getTexture(), nullptr, &destRect);
-                        }
+                        SDL_RenderCopy(renderer->getSDLRenderer(), sdlTex, nullptr, &destRect);
                     }
                 }
             }
@@ -261,95 +258,64 @@ void World::loadTileTextures() {
         std::cout << "AssetManager not available, skipping tile texture loading" << std::endl;
         return;
     }
-    
-    // Initialize tile textures vector
-    tileTextures.resize(22, nullptr); // 22 tile types: grass, stone, 19 stone_grass variants, water
-    
-    // Load tile textures using AssetManager with correct paths
-    std::cout << "Loading tile textures..." << std::endl;
-    
-    // Use the correct AssetManager paths - these should match how they're preloaded in AssetManager::preloadAssets()
-    // The AssetManager uses TILESET_PATH + filename, where TILESET_PATH = "assets/Textures/Tiles/"
-    tileTextures[TILE_GRASS] = assetManager->getTexture("assets/Textures/Tiles/grass_tile.png");
-    if (!tileTextures[TILE_GRASS]) {
-        std::cout << "ERROR: Failed to load grass tile texture! Will use colored rectangle fallback." << std::endl;
-    } else {
-        std::cout << "SUCCESS: Grass tile texture loaded successfully" << std::endl;
-    }
-    
-    tileTextures[TILE_STONE] = assetManager->getTexture("assets/Textures/Tiles/dirt_tile.png");
-    if (!tileTextures[TILE_STONE]) {
-        std::cout << "ERROR: Failed to load stone tile texture! Will use colored rectangle fallback." << std::endl;
-    } else {
-        std::cout << "SUCCESS: Stone tile texture loaded successfully" << std::endl;
-    }
-    
-    // Load stone/grass edge textures for autotiling
-    auto addEdge = [&](const std::string& key, const char* file){
-        edgeTextures[key] = assetManager->getTexture(std::string("assets/Textures/Tiles/") + file);
+    // Initialize textures containers
+    tileTextures.clear();
+    tileVariantTextures.clear();
+    tileTextures.resize(TILE_LAST + 1, nullptr);
+    tileVariantTextures.resize(TILE_LAST + 1);
+
+    auto load8 = [&](int type, const std::string& dir, const std::string& prefix){
+        std::vector<Texture*> list;
+        for (int i = 1; i <= 8; ++i) {
+            char name[64];
+            std::snprintf(name, sizeof(name), "%s_%02d.png", prefix.c_str(), i);
+            std::string path = std::string("assets/Textures/Tiles/") + dir + "/" + name;
+            Texture* t = assetManager->getTexture(path);
+            if (t) list.push_back(t);
+        }
+        if (!list.empty()) {
+            // Save ordered base variants for chaining (01..08)
+            if (static_cast<int>(tileBaseVariants.size()) <= type) tileBaseVariants.resize(type + 1);
+            tileBaseVariants[type] = list;
+
+            // Also create a biased set for non-chained selection
+            auto pick = [&](int idx){ return (idx >= 0 && idx < static_cast<int>(list.size())) ? list[idx] : nullptr; };
+            std::vector<Texture*> biased;
+            for (int k = 0; k < 6; ++k) { if (pick(5)) biased.push_back(pick(5)); }
+            for (int k = 0; k < 6; ++k) { if (pick(6)) biased.push_back(pick(6)); }
+            for (int k = 0; k < 6; ++k) { if (pick(7)) biased.push_back(pick(7)); }
+            biased.insert(biased.end(), list.begin(), list.end());
+
+            tileVariantTextures[type] = biased;
+            tileTextures[type] = pick(5) ? pick(5) : list.front();
+        }
     };
-    // Treat NONE as plain stone to avoid center grass from asset
-    edgeTextures["NONE"] = tileTextures[TILE_STONE];
-    // Load dedicated T and R if present
-    addEdge("T",    "dirt_grass_T.png");
-    addEdge("B",    "dirt_grass_B.png");
-    addEdge("L",    "dirt_grass_L.png");
-    addEdge("R",    "dirt_grass_R.png");
-    addEdge("TL",   "dirt_grass_TL.png");
-    addEdge("TR",   "dirt_grass_TR.png");
-    addEdge("BL",   "dirt_grass_BL.png");
-    addEdge("BR",   "dirt_grass_BR.png");
-    addEdge("TB",   "dirt_grass_TB.png");
-    addEdge("LR",   "dirt_grass_LR.png");
-    addEdge("TBL",  "dirt_grass_TBL.png");
-    addEdge("TBR",  "dirt_grass_TBR.png");
-    addEdge("TLR",  "dirt_grass_TLR.png");
-    addEdge("BLR",  "dirt_grass_BLR.png");
-    addEdge("ALL",  "dirt_grass_ALL.png");
-    
-    tileTextures[TILE_WATER] = nullptr; // Water not implemented yet
-    
-    // Debug output
-    std::cout << "Tile textures loaded:" << std::endl;
-    std::cout << "  Grass tile: " << (tileTextures[TILE_GRASS] ? "Loaded" : "Failed - using colored rectangle fallback") << std::endl;
-    std::cout << "  Stone tile: " << (tileTextures[TILE_STONE] ? "Loaded" : "Failed - using colored rectangle fallback") << std::endl;
-    
-    // Check stone_grass tile loading
-    int stoneGrassLoaded = 0;
-    for (int i = TILE_STONE_GRASS; i <= TILE_STONE_GRASS_19; i++) {
-        if (tileTextures[i]) {
-            stoneGrassLoaded++;
-        }
-    }
-    std::cout << "  Stone grass tiles: " << stoneGrassLoaded << "/19 loaded successfully" << std::endl;
-    
-    // Check if any textures failed to load
-    int loadedCount = 0;
-    for (int i = 0; i < tileTextures.size(); i++) {
-        if (tileTextures[i]) {
-            loadedCount++;
-            // Print texture details
-            std::cout << "  Texture " << i << " dimensions: " << tileTextures[i]->getWidth() << "x" << tileTextures[i]->getHeight() << std::endl;
-            
-            // Test if the texture is valid
-            if (tileTextures[i]->getTexture()) {
-                std::cout << "  Texture " << i << " SDL_Texture is valid" << std::endl;
-            } else {
-                std::cout << "  Texture " << i << " SDL_Texture is NULL!" << std::endl;
-            }
-        } else {
-            std::cout << "  Texture " << i << " failed to load! Will use colored rectangle fallback." << std::endl;
-        }
-    }
-    std::cout << "Successfully loaded " << loadedCount << " out of " << tileTextures.size() << " tile textures" << std::endl;
-    
-    // Additional debugging: Check what happens when we try to get textures by path
-    std::cout << "Testing texture retrieval by path..." << std::endl;
-    Texture* testGrass = assetManager->getTexture("assets/Textures/Tiles/grass_tile.png");
-    std::cout << "  Direct path test - grass: " << (testGrass ? "SUCCESS" : "FAILED") << std::endl;
-    
-    // Check if the issue is with the AssetManager paths
-    std::cout << "AssetManager TILESET_PATH: " << AssetManager::TILESET_PATH << std::endl;
+
+    // Base materials
+    load8(TILE_GRASS,           "Grass",            "Grass");
+    load8(TILE_DIRT,            "Dirt",             "Dirt");
+    load8(TILE_STONE,           "Stone",            "Stone");
+    load8(TILE_ASPHALT,         "Asphalt",          "Asphalt");
+    load8(TILE_CONCRETE,        "Concrete",         "Concrete");
+    load8(TILE_SAND,            "Sand",             "Sand");
+    load8(TILE_SNOW,            "Snow",             "Snow");
+
+    // Transition/buffer materials
+    load8(TILE_GRASSY_ASPHALT,  "Grassy Asphalt",   "GrassyAsphalt");
+    load8(TILE_GRASSY_CONCRETE, "Grassy Concrete",  "GrassyConcrete");
+    load8(TILE_SANDY_DIRT,      "Sandy Dirt",       "SandyDirt");
+    load8(TILE_SANDY_STONE,     "Sandy Stone",      "SandyStone");
+    load8(TILE_SNOWY_STONE,     "Snowy Stone",      "SnowyStone");
+    load8(TILE_STONY_DIRT,      "Stony Dirt",       "StonyDirt");
+    load8(TILE_WET_DIRT,        "Wet Dirt",         "WetDirt");
+
+    // Fluids/hazards
+    tileTextures[TILE_WATER_SHALLOW] = assetManager->getTexture("assets/Textures/Tiles/Water/water_shallow.png");
+    // Also set a static fallback texture for deep water in case sprite sheet fails
+    tileTextures[TILE_WATER_DEEP] = assetManager->getTexture("assets/Textures/Tiles/Water/water_deep_01.png");
+    // water_deep_01.png: auto-detect layout (horizontal or vertical). totalFrames=4.
+    deepWaterSpriteSheet = assetManager->loadSpriteSheet("assets/Textures/Tiles/Water/water_deep_01.png", 32, 32, 0, 4);
+    lavaSpriteSheet = assetManager->loadSpriteSheet("assets/Textures/Tiles/Lava/lava.png", 32, 32, 9, 9);
 }
 
 bool World::isGrassAt(int tx, int ty) {
@@ -394,7 +360,7 @@ void World::loadTilemap(const std::string& filename) {
 void World::setTile(int x, int y, int tileId) {
     if (x >= 0 && x < width && y >= 0 && y < height) {
         // Validate tile ID to ensure it's within valid range
-        if (tileId < 0 || tileId > TILE_WATER) {
+        if (tileId < 0 || tileId > TILE_LAST) {
             std::cout << "WARNING: Invalid tile ID " << tileId << " at position (" << x << ", " << y << "). Setting to grass." << std::endl;
             tileId = TILE_GRASS;
         }
@@ -414,6 +380,16 @@ bool World::isWalkable(int x, int y) const {
         return tiles[y][x].walkable;
     }
     return false;
+}
+
+bool World::isHazardTileId(int tileId) const {
+    return tileId == TILE_WATER_SHALLOW || tileId == TILE_WATER_DEEP || tileId == TILE_LAVA;
+}
+
+bool World::isSafeTile(int tileX, int tileY) const {
+    if (tileX < 0 || tileX >= width || tileY < 0 || tileY >= height) return false;
+    const Tile &t = tiles[tileY][tileX];
+    return t.walkable && !isHazardTileId(t.id);
 }
 
 
@@ -448,72 +424,15 @@ Object* World::getObjectAt(int x, int y) const {
 }
 
 int World::getPrioritizedTileType(int x, int y) {
-    // New priority system with stone as highest priority:
-    // 1. Stone (40% chance) - highest priority (stone_tile.png)
-    // 2. Grass (20% chance) - lower priority (grass_tile.png)
-    // 3. Stone with grass variants (40% total, ~2.1% each) - distributed evenly
-    
-    // Use position-based noise for more natural distribution
+    // Simple fallback: Stone, Grass, then Dirt
     float noise = (sin(x * 0.1f) + cos(y * 0.1f) + sin((x + y) * 0.05f)) / 3.0f;
-    noise = (noise + 1.0f) / 2.0f; // Normalize to 0-1
-    
-    // Combine noise with random value for more natural patterns
+    noise = (noise + 1.0f) / 2.0f; // 0..1
     std::uniform_real_distribution<float> dist(0.0f, 1.0f);
     float randomValue = dist(rng);
-    float combinedValue = (noise * 0.3f + randomValue * 0.7f);
-    
-    // Base probabilities - stone is now highest priority
-    float stoneProb = 0.40f;
-    float grassProb = 0.20f;
-    float stoneGrassTotalProb = 0.40f; // Total for all stone_grass variants
-    
-    // Add position-based variations for more interesting patterns
-    // Create some stone clusters in certain areas
-    float stoneClusterNoise = sin(x * 0.05f) * cos(y * 0.05f);
-    if (stoneClusterNoise > 0.7f) {
-        stoneProb += 0.20f;
-        grassProb -= 0.10f;
-        stoneGrassTotalProb -= 0.10f;
-    }
-    
-    // Create some stone grass transition areas
-    float transitionNoise = sin((x + y) * 0.08f);
-    if (transitionNoise > 0.6f && transitionNoise < 0.8f) {
-        stoneGrassTotalProb += 0.15f;
-        stoneProb -= 0.10f;
-        grassProb -= 0.05f;
-    }
-    
-    // Ensure probabilities stay positive and normalized
-    stoneProb = std::max(0.0f, stoneProb);
-    grassProb = std::max(0.0f, grassProb);
-    stoneGrassTotalProb = std::max(0.0f, stoneGrassTotalProb);
-    
-    // Normalize probabilities
-    float total = stoneProb + grassProb + stoneGrassTotalProb;
-    if (total > 0.0f) {
-        stoneProb /= total;
-        grassProb /= total;
-        stoneGrassTotalProb /= total;
-    } else {
-        // Fallback to default distribution
-        stoneProb = 0.40f;
-        grassProb = 0.20f;
-        stoneGrassTotalProb = 0.40f;
-    }
-    
-    // Apply probabilities
-    if (combinedValue < stoneProb) {
-        return TILE_STONE;
-    } else if (combinedValue < stoneProb + grassProb) {
-        return TILE_GRASS;
-    } else {
-        // Distribute stone_grass variants evenly
-        float stoneGrassValue = (combinedValue - (stoneProb + grassProb)) / stoneGrassTotalProb;
-        int stoneGrassIndex = static_cast<int>(stoneGrassValue * 19); // 19 variants
-        stoneGrassIndex = std::min(stoneGrassIndex, 18); // Ensure we don't exceed array bounds
-        return TILE_STONE_GRASS + stoneGrassIndex;
-    }
+    float v = (noise * 0.3f + randomValue * 0.7f);
+    if (v < 0.4f) return TILE_STONE;
+    if (v < 0.6f) return TILE_GRASS;
+    return TILE_DIRT;
 }
 
 bool World::shouldPlaceStone(int x, int y) {
@@ -529,8 +448,7 @@ bool World::shouldPlaceStone(int x, int y) {
             int ny = y + dy;
             if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
                 int tileId = tiles[ny][nx].id;
-                if (tileId == TILE_STONE || 
-                    (tileId >= TILE_STONE_GRASS && tileId <= TILE_STONE_GRASS_19)) {
+                if (tileId == TILE_STONE) {
                     stoneCount++;
                 }
             }
@@ -555,8 +473,7 @@ bool World::shouldPlaceStoneGrass(int x, int y) {
             int ny = y + dy;
             if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
                 int tileId = tiles[ny][nx].id;
-                if (tileId == TILE_STONE || 
-                    (tileId >= TILE_STONE_GRASS && tileId <= TILE_STONE_GRASS_19)) {
+                if (tileId == TILE_STONE) {
                     stoneCount++;
                 }
             }
@@ -590,8 +507,7 @@ void World::generateTilemap(const TileGenerationConfig& config) {
     tiles.resize(height, std::vector<Tile>(width));
     
     std::cout << "Generating tilemap: " << width << "x" << height << " tiles" << std::endl;
-    std::cout << "Tile weights - Stone: " << tileGenConfig.stoneWeight << "%, Grass: " << tileGenConfig.grassWeight 
-              << "%, StoneGrass variants: 40% total (2% each)" << std::endl;
+    std::cout << "Tile weights configured; using biome-based generation with transition buffers." << std::endl;
     
     // Generate tiles based on configuration
     for (int y = 0; y < height; y++) {
@@ -608,43 +524,32 @@ void World::generateTilemap(const TileGenerationConfig& config) {
             bool transparent = true;
             
             // Validate tile type to ensure it's within valid range
-            if (tileType < 0 || tileType > TILE_WATER) {
+            if (tileType < 0 || tileType > TILE_LAST) {
                 std::cout << "ERROR: Invalid tile type " << tileType << " generated at position (" << x << ", " << y << "). Setting to grass." << std::endl;
                 tileType = TILE_GRASS;
             }
             
             switch (tileType) {
                 case TILE_GRASS:
-                    walkable = true;
-                    transparent = true;
-                    break;
+                case TILE_DIRT:
                 case TILE_STONE:
-                    walkable = true;
-                    transparent = true; // Stone tiles are transparent for line of sight
-                    break;
-                case TILE_STONE_GRASS:
-                case TILE_STONE_GRASS_2:
-                case TILE_STONE_GRASS_3:
-                case TILE_STONE_GRASS_4:
-                case TILE_STONE_GRASS_5:
-                case TILE_STONE_GRASS_6:
-                case TILE_STONE_GRASS_7:
-                case TILE_STONE_GRASS_8:
-                case TILE_STONE_GRASS_9:
-                case TILE_STONE_GRASS_10:
-                case TILE_STONE_GRASS_11:
-                case TILE_STONE_GRASS_12:
-                case TILE_STONE_GRASS_13:
-                case TILE_STONE_GRASS_14:
-                case TILE_STONE_GRASS_15:
-                case TILE_STONE_GRASS_16:
-                case TILE_STONE_GRASS_17:
-                case TILE_STONE_GRASS_18:
-                case TILE_STONE_GRASS_19:
+                case TILE_ASPHALT:
+                case TILE_CONCRETE:
+                case TILE_SAND:
+                case TILE_SNOW:
+                case TILE_GRASSY_ASPHALT:
+                case TILE_GRASSY_CONCRETE:
+                case TILE_SANDY_DIRT:
+                case TILE_SANDY_STONE:
+                case TILE_SNOWY_STONE:
+                case TILE_STONY_DIRT:
+                case TILE_WET_DIRT:
                     walkable = true;
                     transparent = true;
                     break;
-                case TILE_WATER:
+                case TILE_WATER_SHALLOW:
+                case TILE_WATER_DEEP:
+                case TILE_LAVA:
                     walkable = false;
                     transparent = true;
                     break;
@@ -658,7 +563,7 @@ void World::generateTilemap(const TileGenerationConfig& config) {
         }
     }
     
-    // Apply stone clustering if enabled
+    // Apply stone clustering if enabled (legacy behavior)
     if (tileGenConfig.enableStoneClustering) {
         applyStoneClustering();
     }
@@ -670,7 +575,7 @@ void World::generateTilemap(const TileGenerationConfig& config) {
     int invalidTileCount = 0;
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
-            if (tiles[y][x].id < 0 || tiles[y][x].id > TILE_WATER) {
+            if (tiles[y][x].id < 0 || tiles[y][x].id > TILE_LAST) {
                 invalidTileCount++;
                 std::cout << "ERROR: Invalid tile ID " << tiles[y][x].id << " at position (" << x << ", " << y << ")" << std::endl;
             }
@@ -738,118 +643,12 @@ int World::generateWeightedTileType(int x, int y) {
     float stoneGrass4Weight = tileGenConfig.stoneGrass4Weight;
     float stoneGrass5Weight = tileGenConfig.stoneGrass5Weight;
     float stoneGrass6Weight = tileGenConfig.stoneGrass6Weight;
-    float stoneGrass7Weight = tileGenConfig.stoneGrass7Weight;
-    float stoneGrass8Weight = tileGenConfig.stoneGrass8Weight;
-    float stoneGrass9Weight = tileGenConfig.stoneGrass9Weight;
-    float stoneGrass10Weight = tileGenConfig.stoneGrass10Weight;
-    float stoneGrass11Weight = tileGenConfig.stoneGrass11Weight;
-    float stoneGrass12Weight = tileGenConfig.stoneGrass12Weight;
-    float stoneGrass13Weight = tileGenConfig.stoneGrass13Weight;
-    float stoneGrass14Weight = tileGenConfig.stoneGrass14Weight;
-    float stoneGrass15Weight = tileGenConfig.stoneGrass15Weight;
-    float stoneGrass16Weight = tileGenConfig.stoneGrass16Weight;
-    float stoneGrass17Weight = tileGenConfig.stoneGrass17Weight;
-    float stoneGrass18Weight = tileGenConfig.stoneGrass18Weight;
-    float stoneGrass19Weight = tileGenConfig.stoneGrass19Weight;
-    
-    // Check each stone_grass variant in order
-    cumulativeWeight += stoneGrassWeight;
-    if (randomValue < cumulativeWeight) {
-        return TILE_STONE_GRASS;
+    // No stone_grass variants anymore; fallback sequence
+    if (randomValue < cumulativeWeight + stoneGrassWeight) {
+        return TILE_DIRT;
     }
-    
-    cumulativeWeight += stoneGrass2Weight;
-    if (randomValue < cumulativeWeight) {
-        return TILE_STONE_GRASS_2;
-    }
-    
-    cumulativeWeight += stoneGrass3Weight;
-    if (randomValue < cumulativeWeight) {
-        return TILE_STONE_GRASS_3;
-    }
-    
-    cumulativeWeight += stoneGrass4Weight;
-    if (randomValue < cumulativeWeight) {
-        return TILE_STONE_GRASS_4;
-    }
-    
-    cumulativeWeight += stoneGrass5Weight;
-    if (randomValue < cumulativeWeight) {
-        return TILE_STONE_GRASS_5;
-    }
-    
-    cumulativeWeight += stoneGrass6Weight;
-    if (randomValue < cumulativeWeight) {
-        return TILE_STONE_GRASS_6;
-    }
-    
-    cumulativeWeight += stoneGrass7Weight;
-    if (randomValue < cumulativeWeight) {
-        return TILE_STONE_GRASS_7;
-    }
-    
-    cumulativeWeight += stoneGrass8Weight;
-    if (randomValue < cumulativeWeight) {
-        return TILE_STONE_GRASS_8;
-    }
-    
-    cumulativeWeight += stoneGrass9Weight;
-    if (randomValue < cumulativeWeight) {
-        return TILE_STONE_GRASS_9;
-    }
-    
-    cumulativeWeight += stoneGrass10Weight;
-    if (randomValue < cumulativeWeight) {
-        return TILE_STONE_GRASS_10;
-    }
-    
-    cumulativeWeight += stoneGrass11Weight;
-    if (randomValue < cumulativeWeight) {
-        return TILE_STONE_GRASS_11;
-    }
-    
-    cumulativeWeight += stoneGrass12Weight;
-    if (randomValue < cumulativeWeight) {
-        return TILE_STONE_GRASS_12;
-    }
-    
-    cumulativeWeight += stoneGrass13Weight;
-    if (randomValue < cumulativeWeight) {
-        return TILE_STONE_GRASS_13;
-    }
-    
-    cumulativeWeight += stoneGrass14Weight;
-    if (randomValue < cumulativeWeight) {
-        return TILE_STONE_GRASS_14;
-    }
-    
-    cumulativeWeight += stoneGrass15Weight;
-    if (randomValue < cumulativeWeight) {
-        return TILE_STONE_GRASS_15;
-    }
-    
-    cumulativeWeight += stoneGrass16Weight;
-    if (randomValue < cumulativeWeight) {
-        return TILE_STONE_GRASS_16;
-    }
-    
-    cumulativeWeight += stoneGrass17Weight;
-    if (randomValue < cumulativeWeight) {
-        return TILE_STONE_GRASS_17;
-    }
-    
-    cumulativeWeight += stoneGrass18Weight;
-    if (randomValue < cumulativeWeight) {
-        return TILE_STONE_GRASS_18;
-    }
-    
-    cumulativeWeight += stoneGrass19Weight;
-    if (randomValue < cumulativeWeight) {
-        return TILE_STONE_GRASS_19;
-    }
-    
-    // Fallback to stone if something goes wrong (stone is highest priority)
-    return TILE_STONE;
+    // Otherwise return grass as low-priority
+    return TILE_GRASS;
 }
 
 int World::generateNoiseBasedTileType(int x, int y) {
@@ -859,75 +658,17 @@ int World::generateNoiseBasedTileType(int x, int y) {
     // Use noise to determine tile type with weighted distribution
     float normalizedNoise = (noiseValue + 1.0f) / 2.0f; // Normalize to 0-1
     
-    // Create weighted thresholds based on tile weights - stone is now highest priority
+    // Simplified thresholds for legacy path
     float stoneThreshold = tileGenConfig.stoneWeight / 100.0f;
     float grassThreshold = stoneThreshold + (tileGenConfig.grassWeight / 100.0f);
-    float stoneGrassThreshold = grassThreshold + (tileGenConfig.stoneGrassWeight / 100.0f);
-    float stoneGrass2Threshold = stoneGrassThreshold + (tileGenConfig.stoneGrass2Weight / 100.0f);
-    float stoneGrass3Threshold = stoneGrass2Threshold + (tileGenConfig.stoneGrass3Weight / 100.0f);
-    float stoneGrass4Threshold = stoneGrass3Threshold + (tileGenConfig.stoneGrass4Weight / 100.0f);
-    float stoneGrass5Threshold = stoneGrass4Threshold + (tileGenConfig.stoneGrass5Weight / 100.0f);
-    float stoneGrass6Threshold = stoneGrass5Threshold + (tileGenConfig.stoneGrass6Weight / 100.0f);
-    float stoneGrass7Threshold = stoneGrass6Threshold + (tileGenConfig.stoneGrass7Weight / 100.0f);
-    float stoneGrass8Threshold = stoneGrass7Threshold + (tileGenConfig.stoneGrass8Weight / 100.0f);
-    float stoneGrass9Threshold = stoneGrass8Threshold + (tileGenConfig.stoneGrass9Weight / 100.0f);
-    float stoneGrass10Threshold = stoneGrass9Threshold + (tileGenConfig.stoneGrass10Weight / 100.0f);
-    float stoneGrass11Threshold = stoneGrass10Threshold + (tileGenConfig.stoneGrass11Weight / 100.0f);
-    float stoneGrass12Threshold = stoneGrass11Threshold + (tileGenConfig.stoneGrass12Weight / 100.0f);
-    float stoneGrass13Threshold = stoneGrass12Threshold + (tileGenConfig.stoneGrass13Weight / 100.0f);
-    float stoneGrass14Threshold = stoneGrass13Threshold + (tileGenConfig.stoneGrass14Weight / 100.0f);
-    float stoneGrass15Threshold = stoneGrass14Threshold + (tileGenConfig.stoneGrass15Weight / 100.0f);
-    float stoneGrass16Threshold = stoneGrass15Threshold + (tileGenConfig.stoneGrass16Weight / 100.0f);
-    float stoneGrass17Threshold = stoneGrass16Threshold + (tileGenConfig.stoneGrass17Weight / 100.0f);
-    float stoneGrass18Threshold = stoneGrass17Threshold + (tileGenConfig.stoneGrass18Weight / 100.0f);
-    float stoneGrass19Threshold = stoneGrass18Threshold + (tileGenConfig.stoneGrass19Weight / 100.0f);
     
     // Determine tile type based on noise value
     if (normalizedNoise < stoneThreshold) {
         return TILE_STONE;
     } else if (normalizedNoise < grassThreshold) {
         return TILE_GRASS;
-    } else if (normalizedNoise < stoneGrassThreshold) {
-        return TILE_STONE_GRASS;
-    } else if (normalizedNoise < stoneGrass2Threshold) {
-        return TILE_STONE_GRASS_2;
-    } else if (normalizedNoise < stoneGrass3Threshold) {
-        return TILE_STONE_GRASS_3;
-    } else if (normalizedNoise < stoneGrass4Threshold) {
-        return TILE_STONE_GRASS_4;
-    } else if (normalizedNoise < stoneGrass5Threshold) {
-        return TILE_STONE_GRASS_5;
-    } else if (normalizedNoise < stoneGrass6Threshold) {
-        return TILE_STONE_GRASS_6;
-    } else if (normalizedNoise < stoneGrass7Threshold) {
-        return TILE_STONE_GRASS_7;
-    } else if (normalizedNoise < stoneGrass8Threshold) {
-        return TILE_STONE_GRASS_8;
-    } else if (normalizedNoise < stoneGrass9Threshold) {
-        return TILE_STONE_GRASS_9;
-    } else if (normalizedNoise < stoneGrass10Threshold) {
-        return TILE_STONE_GRASS_10;
-    } else if (normalizedNoise < stoneGrass11Threshold) {
-        return TILE_STONE_GRASS_11;
-    } else if (normalizedNoise < stoneGrass12Threshold) {
-        return TILE_STONE_GRASS_12;
-    } else if (normalizedNoise < stoneGrass13Threshold) {
-        return TILE_STONE_GRASS_13;
-    } else if (normalizedNoise < stoneGrass14Threshold) {
-        return TILE_STONE_GRASS_14;
-    } else if (normalizedNoise < stoneGrass15Threshold) {
-        return TILE_STONE_GRASS_15;
-    } else if (normalizedNoise < stoneGrass16Threshold) {
-        return TILE_STONE_GRASS_16;
-    } else if (normalizedNoise < stoneGrass17Threshold) {
-        return TILE_STONE_GRASS_17;
-    } else if (normalizedNoise < stoneGrass18Threshold) {
-        return TILE_STONE_GRASS_18;
-    } else if (normalizedNoise < stoneGrass19Threshold) {
-        return TILE_STONE_GRASS_19;
     } else {
-        // Fallback to stone if something goes wrong (stone is highest priority)
-        return TILE_STONE;
+        return TILE_DIRT;
     }
 }
 
@@ -984,7 +725,7 @@ void World::applyStoneClustering() {
                     
                     // Increase stone probability in surrounding areas
                     if (randomValue < tileGenConfig.stoneClusterChance) {
-                        // Convert some nearby grass tiles to stone or stone grass
+                        // Convert some nearby grass tiles to stone or dirt (legacy transition removed)
                         for (int dy = -1; dy <= 1; dy++) {
                             for (int dx = -1; dx <= 1; dx++) {
                                 int nx = x + dx;
@@ -996,7 +737,7 @@ void World::applyStoneClustering() {
                                         if (dist(rng) < 0.5f) {
                                             tiles[ny][nx].id = TILE_STONE;
                                         } else {
-                                            tiles[ny][nx].id = TILE_STONE_GRASS;
+                                            tiles[ny][nx].id = TILE_DIRT;
                                         }
                                     }
                                 }
@@ -1057,7 +798,7 @@ void World::validateTileWeights() {
 
 void World::printTileDistribution() {
     int grassCount = 0, stoneCount = 0;
-    int stoneGrassCounts[19] = {0}; // Array to count all stone_grass variants
+    int stoneGrassCounts[19] = {0}; // Legacy, unused with new materials
     
     // Count tile types
     for (int y = 0; y < height; y++) {
@@ -1067,9 +808,6 @@ void World::printTileDistribution() {
                 case TILE_GRASS: grassCount++; break;
                 case TILE_STONE: stoneCount++; break;
                 default:
-                    if (tileId >= TILE_STONE_GRASS && tileId <= TILE_STONE_GRASS_19) {
-                        stoneGrassCounts[tileId - TILE_STONE_GRASS]++;
-                    }
                     break;
             }
         }
@@ -1083,16 +821,7 @@ void World::printTileDistribution() {
     std::cout << "  Stone: " << stoneCount << " (" << stonePercent << "%)" << std::endl;
     std::cout << "  Grass: " << grassCount << " (" << grassPercent << "%)" << std::endl;
     
-    // Display stone_grass variant counts
-    int totalStoneGrass = 0;
-    for (int i = 0; i < 19; i++) {
-        totalStoneGrass += stoneGrassCounts[i];
-        float variantPercent = (static_cast<float>(stoneGrassCounts[i]) / totalTiles) * 100.0f;
-        std::cout << "  StoneGrass" << (i + 1) << ": " << stoneGrassCounts[i] << " (" << variantPercent << "%)" << std::endl;
-    }
-    
-    float totalStoneGrassPercent = (static_cast<float>(totalStoneGrass) / totalTiles) * 100.0f;
-    std::cout << "  Total StoneGrass variants: " << totalStoneGrass << " (" << totalStoneGrassPercent << "%)" << std::endl;
+    // Omit legacy stone_grass breakdown with new materials
 }
 
 // Fog of war and visibility methods
@@ -1240,34 +969,24 @@ void World::markTileExplored(int x, int y) {
 
 World::TileColor World::getTileColor(int tileId) const {
     switch (tileId) {
-        case TILE_GRASS:
-            return TileColor(34, 139, 34, 255); // Forest green
-        case TILE_STONE:
-            return TileColor(128, 128, 128, 255); // Gray
-        case TILE_STONE_GRASS:
-        case TILE_STONE_GRASS_2:
-        case TILE_STONE_GRASS_3:
-        case TILE_STONE_GRASS_4:
-        case TILE_STONE_GRASS_5:
-        case TILE_STONE_GRASS_6:
-        case TILE_STONE_GRASS_7:
-        case TILE_STONE_GRASS_8:
-        case TILE_STONE_GRASS_9:
-        case TILE_STONE_GRASS_10:
-        case TILE_STONE_GRASS_11:
-        case TILE_STONE_GRASS_12:
-        case TILE_STONE_GRASS_13:
-        case TILE_STONE_GRASS_14:
-        case TILE_STONE_GRASS_15:
-        case TILE_STONE_GRASS_16:
-        case TILE_STONE_GRASS_17:
-        case TILE_STONE_GRASS_18:
-        case TILE_STONE_GRASS_19:
-            return TileColor(100, 150, 100, 255); // Darker green
-        case TILE_WATER:
-            return TileColor(0, 191, 255, 255); // Deep sky blue
-        default:
-            return TileColor(34, 139, 34, 255); // Default to grass
+        case TILE_GRASS:          return TileColor(34, 139, 34, 255);
+        case TILE_DIRT:           return TileColor(139, 69, 19, 255);
+        case TILE_STONE:          return TileColor(128, 128, 128, 255);
+        case TILE_ASPHALT:        return TileColor(60, 60, 60, 255);
+        case TILE_CONCRETE:       return TileColor(120, 120, 120, 255);
+        case TILE_SAND:           return TileColor(237, 201, 175, 255);
+        case TILE_SNOW:           return TileColor(240, 248, 255, 255);
+        case TILE_GRASSY_ASPHALT: return TileColor(80, 120, 80, 255);
+        case TILE_GRASSY_CONCRETE:return TileColor(90, 140, 90, 255);
+        case TILE_SANDY_DIRT:     return TileColor(210, 180, 140, 255);
+        case TILE_SANDY_STONE:    return TileColor(200, 190, 160, 255);
+        case TILE_SNOWY_STONE:    return TileColor(220, 230, 240, 255);
+        case TILE_STONY_DIRT:     return TileColor(150, 120, 100, 255);
+        case TILE_WET_DIRT:       return TileColor(110, 80, 60, 255);
+        case TILE_WATER_SHALLOW:  return TileColor(64, 164, 223, 220);
+        case TILE_WATER_DEEP:     return TileColor(0, 105, 148, 220);
+        case TILE_LAVA:           return TileColor(255, 69, 0, 220);
+        default:                  return TileColor(34, 139, 34, 255);
     }
 }
 
@@ -1324,15 +1043,362 @@ void World::generateChunkTiles(Chunk* chunk) {
     int worldStartX = chunk->chunkX * chunkSize;
     int worldStartY = chunk->chunkY * chunkSize;
     
-    // 1) Fill with stone by default
+    // Generate per-tile from biomes
     for (int y = 0; y < chunkSize; y++) {
         for (int x = 0; x < chunkSize; x++) {
-            chunk->tiles[y][x] = Tile(TILE_STONE, true, true);
+            int wx = worldStartX + x;
+            int wy = worldStartY + y;
+            int biome = getBiomeType(wx, wy);
+            int region = pickRegionGroupForBiome(wx, wy, biome);
+            // Priority on a single base tile per region; variants only as accents later
+            int mat = pickBaseMaterialForGroup(region, 0.5f);
+            bool walk = !(mat == TILE_WATER_SHALLOW || mat == TILE_WATER_DEEP || mat == TILE_LAVA);
+            chunk->tiles[y][x] = Tile(mat, walk, true);
         }
     }
 
-    // 2) Carve random grass patches (stable per chunk)
-    carveRandomGrassPatches(chunk);
+    // Smooth large patches
+    smoothRegions(chunk);
+    applyTransitionBuffers(chunk);
+    addAccents(chunk);
+    // Water features
+    placeWaterLakes(chunk);
+    carveRivers(chunk);
+    pruneRiverStubs(chunk);
+}
+
+// Classification helpers for color groups and smoothing
+int World::getMaterialGroupId(int tileId) const {
+    switch (tileId) {
+        case TILE_GRASS:
+        case TILE_GRASSY_ASPHALT:
+        case TILE_GRASSY_CONCRETE: return 0; // green
+        case TILE_DIRT:
+        case TILE_STONY_DIRT:
+        case TILE_WET_DIRT:        return 1; // earth
+        case TILE_STONE:
+        case TILE_CONCRETE:
+        case TILE_ASPHALT:
+        case TILE_SNOWY_STONE:     return 2; // stone/gray
+        case TILE_SAND:
+        case TILE_SANDY_DIRT:
+        case TILE_SANDY_STONE:     return 3; // sand/yellow
+        case TILE_SNOW:            return 4; // snow/white
+        default:                   return 1;
+    }
+}
+
+bool World::areMaterialsCloseInColor(int a, int b) const {
+    int ga = getMaterialGroupId(a);
+    int gb = getMaterialGroupId(b);
+    if (ga == gb) return true;
+    if ((ga == 1 && gb == 2) || (ga == 2 && gb == 1)) return true; // earth~stone
+    if ((ga == 1 && gb == 3) || (ga == 3 && gb == 1)) return true; // earth~sand
+    if ((ga == 2 && gb == 3) || (ga == 3 && gb == 2)) return true; // stone~sand
+    return false;
+}
+
+int World::pickRegionGroupForBiome(int wx, int wy, int biomeType) const {
+    // Use multi-octave low-frequency noise to create very large contiguous regions
+    float base = tileGenConfig.regionNoiseScale;
+    float f = (generateNoise(wx * base, wy * base) * 0.6f
+             + generateNoise(wx * base * 0.5f, wy * base * 0.5f) * 0.3f
+             + generateNoise(wx * base * 0.25f, wy * base * 0.25f) * 0.1f);
+    f = (f + 1.0f) * 0.5f;
+    switch (biomeType) {
+        case 0: // plains
+            if (f < 0.65f) return 0; // green
+            if (f < 0.85f) return 1; // earth
+            return 2;                // stone
+        case 1: // hills
+            if (f < 0.5f) return 2;
+            if (f < 0.8f) return 1;
+            return 0;
+        case 2: // mountains
+            if (f < 0.8f) return 2; return 1;
+        case 3: // arid
+            if (f < 0.7f) return 3;
+            if (f < 0.9f) return 1;
+            return 2;
+        case 4: // tundra
+            if (f < 0.7f) return 4; return 2;
+        default:
+            return 1;
+    }
+}
+
+int World::pickBaseMaterialForGroup(int groupId, float noiseVal) const {
+    switch (groupId) {
+        // Use 06-08 biased materials by default; transitions are added later by applyTransitionBuffers
+        case 0: return TILE_GRASS; // variants 06-08 are prioritized at load
+        case 1: return TILE_DIRT;
+        case 2: return TILE_STONE;
+        case 3: return TILE_SAND;
+        case 4: return TILE_SNOW;
+        default: return TILE_DIRT;
+    }
+}
+
+void World::smoothRegions(Chunk* chunk) {
+    if (!chunk) return;
+    const int s = tileGenConfig.chunkSize;
+    for (int it = 0; it < tileGenConfig.regionSmoothingIterations; ++it) {
+        auto copy = chunk->tiles;
+        for (int y = 0; y < s; ++y) {
+            for (int x = 0; x < s; ++x) {
+                int counts[5] = {0};
+                // Larger neighborhood to grow patches faster
+                for (int dy = -2; dy <= 2; ++dy) {
+                    for (int dx = -2; dx <= 2; ++dx) {
+                        int nx = x + dx, ny = y + dy;
+                        if (nx < 0 || ny < 0 || nx >= s || ny >= s) continue;
+                        counts[getMaterialGroupId(copy[ny][nx].id)]++;
+                    }
+                }
+                int best = 0, bestCount = -1;
+                for (int g = 0; g < 5; ++g) {
+                    if (counts[g] > bestCount) { bestCount = counts[g]; best = g; }
+                }
+                int desired = pickBaseMaterialForGroup(best, 0.5f);
+                if (!areMaterialsCloseInColor(copy[y][x].id, desired)) {
+                    chunk->tiles[y][x].id = desired;
+                }
+            }
+        }
+    }
+}
+
+void World::addAccents(Chunk* chunk) {
+    if (!chunk) return;
+    const int s = tileGenConfig.chunkSize;
+    // Deterministic PRNG per chunk for stable accents
+    std::mt19937 prng(static_cast<unsigned int>((chunk->chunkX * 2654435761u) ^ (chunk->chunkY * 97531u)));
+    std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+
+    auto groupAccent = [&](int groupId, int baseMat) -> int {
+        // Map group to a rare accent within same color family
+        switch (groupId) {
+            case 0: return baseMat; // green stays uniform for readability
+            case 1: return TILE_STONY_DIRT; // occasional stones in dirt
+            case 2: return TILE_CONCRETE;   // occasional concrete in stone fields
+            case 3: return TILE_SANDY_STONE; // rocky sand spot
+            case 4: return TILE_SNOWY_STONE; // rocky snow spot
+            default: return baseMat;
+        }
+    };
+
+    for (int y = 0; y < s; ++y) {
+        for (int x = 0; x < s; ++x) {
+            int id = chunk->tiles[y][x].id;
+            if (id == TILE_WATER_SHALLOW || id == TILE_WATER_DEEP || id == TILE_LAVA) continue;
+            int g = getMaterialGroupId(id);
+            float r = dist(prng);
+            if (r < tileGenConfig.accentChance) {
+                int accent = groupAccent(g, id);
+                // Respect color compatibility strictly
+                if (areMaterialsCloseInColor(id, accent)) {
+                    chunk->tiles[y][x].id = accent;
+                }
+            }
+        }
+    }
+}
+
+int World::getPreferredVariantIndex(int tileType, int worldX, int worldY) const {
+    // Prefer variants 06-08 using very low-frequency noise to form large blobs.
+    float base = tileGenConfig.regionNoiseScale * 0.75f;
+    float f = (generateNoise(worldX * base, worldY * base) + 1.0f) * 0.5f; // 0..1
+    if (f < 0.66f) return 5; // -> index 5 (frame 06)
+    if (f < 0.85f) return 6; // -> index 6 (frame 07)
+    return 7;                // -> index 7 (frame 08)
+}
+
+void World::carveRivers(Chunk* chunk) {
+    if (!chunk) return;
+    const int s = tileGenConfig.chunkSize;
+    const int worldStartX = chunk->chunkX * s;
+    const int worldStartY = chunk->chunkY * s;
+
+    auto inb = [&](int x, int y){ return x >= 0 && x < s && y >= 0 && y < s; };
+    auto isDeep = [&](int x, int y){ return chunk->tiles[y][x].id == TILE_WATER_DEEP; };
+    auto isShallow = [&](int x, int y){ return chunk->tiles[y][x].id == TILE_WATER_SHALLOW; };
+
+    // Collect candidate lake-edge seeds (not adjacent to deep water) in grassy/stone biomes
+    std::vector<std::pair<int,int>> seeds;
+    for (int y = 1; y < s - 1; ++y) {
+        for (int x = 1; x < s - 1; ++x) {
+            if (!isShallow(x, y)) continue;
+            int wx = worldStartX + x;
+            int wy = worldStartY + y;
+            int biome = getBiomeType(wx, wy);
+            if (!(biome == 0 || biome == 1 || biome == 2)) continue;
+            bool adjacentDeep = false, edge = false;
+            for (int dy = -1; dy <= 1; ++dy) {
+                for (int dx = -1; dx <= 1; ++dx) {
+                    if (dx == 0 && dy == 0) continue;
+                    int nx = x + dx, ny = y + dy;
+                    if (!inb(nx, ny)) continue;
+                    if (isDeep(nx, ny)) adjacentDeep = true;
+                    if (!isShallow(nx, ny)) edge = true;
+                }
+            }
+            // Ensure we start near the downhill/ocean-ward side of the lake by preferring higher ocean potential
+            if (!adjacentDeep && edge) {
+                float oceanP = (generateNoise(wx * tileGenConfig.waterNoiseScale, wy * tileGenConfig.waterNoiseScale) + 1.0f) * 0.5f;
+                if (oceanP > tileGenConfig.shallowWaterThreshold) seeds.emplace_back(x, y);
+            }
+        }
+    }
+
+    // Deterministic PRNG per chunk to pick a couple of seeds
+    std::mt19937 prng(static_cast<unsigned int>((chunk->chunkX * 2654435761u) ^ (chunk->chunkY * 97531u)));
+    std::shuffle(seeds.begin(), seeds.end(), prng);
+    int numRivers = std::min(3, static_cast<int>(seeds.size()));
+
+    const float oceanScale = tileGenConfig.waterNoiseScale;          // pulls rivers toward oceans
+    const float flowScale  = tileGenConfig.waterNoiseScale * 1.6f;   // adds windiness
+
+    for (int i = 0; i < numRivers; ++i) {
+        int x = seeds[i].first;
+        int y = seeds[i].second;
+        int prevX = x, prevY = y;
+        const int maxSteps = s * 6; // longer reach
+
+        for (int step = 0; step < maxSteps; ++step) {
+            int wx = worldStartX + x;
+            int wy = worldStartY + y;
+
+            // Compute a meandering flow direction using angle noise
+            float ang = (generateNoise(wx * flowScale, wy * flowScale) + 1.0f) * 3.14159265f; // 0..2pi
+            float dirX = std::cos(ang);
+            float dirY = std::sin(ang);
+
+            // Pick the neighbor that maximizes ocean potential with a small alignment to flow direction
+            int bestNx = x, bestNy = y; float bestScore = -1e9f;
+            for (int dy = -1; dy <= 1; ++dy) {
+                for (int dx = -1; dx <= 1; ++dx) {
+                    if (dx == 0 && dy == 0) continue;
+                    int nx = x + dx, ny = y + dy;
+                    if (!inb(nx, ny)) continue;
+                    if (nx == prevX && ny == prevY) continue; // avoid immediate backtrack
+                    int nwx = worldStartX + nx;
+                    int nwy = worldStartY + ny;
+                    float oceanN = (generateNoise(nwx * oceanScale, nwy * oceanScale) + 1.0f) * 0.5f;
+                    float align = (dx * dirX + dy * dirY) * 0.35f; // windiness
+                    float score = oceanN + align;
+                    if (score > bestScore) { bestScore = score; bestNx = nx; bestNy = ny; }
+                }
+            }
+
+            if (bestNx == x && bestNy == y) break; // stuck
+            prevX = x; prevY = y; x = bestNx; y = bestNy;
+
+            // Stop if we reached deep water
+            if (isDeep(x, y)) break;
+
+            // Carve narrow river, discourage branching by only carving current cell
+            chunk->tiles[y][x].id = TILE_WATER_SHALLOW;
+            // Rarely widen, but do not create lateral offshoots
+            if ((step % 13) == 0) {
+                for (int wy2 = -1; wy2 <= 1; ++wy2) {
+                    for (int wx2 = -1; wx2 <= 1; ++wx2) {
+                        int nx = x + wx2, ny = y + wy2;
+                        if (!inb(nx, ny)) continue;
+                        if (std::abs(wx2) + std::abs(wy2) == 1 && (nx == prevX || ny == prevY)) { // widen in flow direction
+                            if (chunk->tiles[ny][nx].id != TILE_WATER_DEEP) {
+                                chunk->tiles[ny][nx].id = TILE_WATER_SHALLOW;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+void World::pruneRiverStubs(Chunk* chunk) {
+    if (!chunk) return;
+    const int s = tileGenConfig.chunkSize;
+    auto inb = [&](int x, int y){ return x >= 0 && x < s && y >= 0 && y < s; };
+
+    // Two passes: remove shallow-water cells with <=1 shallow neighbors and not touching deep water
+    for (int pass = 0; pass < 2; ++pass) {
+        auto copy = chunk->tiles;
+        for (int y = 0; y < s; ++y) {
+            for (int x = 0; x < s; ++x) {
+                if (copy[y][x].id != TILE_WATER_SHALLOW) continue;
+                int shallowN = 0; bool touchesDeep = false;
+                const int dirs[4][2] = {{1,0},{-1,0},{0,1},{0,-1}};
+                for (auto &d : dirs) {
+                    int nx = x + d[0], ny = y + d[1];
+                    if (!inb(nx, ny)) continue;
+                    int id = copy[ny][nx].id;
+                    if (id == TILE_WATER_SHALLOW) shallowN++;
+                    if (id == TILE_WATER_DEEP) touchesDeep = true;
+                }
+                if (!touchesDeep && shallowN <= 1) {
+                    chunk->tiles[y][x].id = TILE_STONE; // revert stub to local neutral (stone/gray)
+                }
+            }
+        }
+    }
+}
+
+void World::applyTransitionBuffers(Chunk* chunk) {
+    if (!chunk) return;
+    const int s = tileGenConfig.chunkSize;
+    auto inb = [&](int x, int y){ return x >= 0 && x < s && y >= 0 && y < s; };
+    auto needsBuffer = [&](int a, int b) -> int {
+        if (a == b) return -1;
+        auto is = [&](int t, TileType tt){ return t == static_cast<int>(tt); };
+        // Grass transitions
+        if ((is(a, TILE_GRASS) && is(b, TILE_CONCRETE)) || (is(b, TILE_GRASS) && is(a, TILE_CONCRETE))) return TILE_GRASSY_CONCRETE;
+        if ((is(a, TILE_GRASS) && is(b, TILE_ASPHALT))  || (is(b, TILE_GRASS) && is(a, TILE_ASPHALT)))  return TILE_GRASSY_ASPHALT;
+        if ((is(a, TILE_GRASS) && is(b, TILE_DIRT))     || (is(b, TILE_GRASS) && is(a, TILE_DIRT)))     return TILE_STONY_DIRT; // grass↔dirt edge accent
+        // Sand transitions
+        if ((is(a, TILE_STONE) && is(b, TILE_SAND))     || (is(b, TILE_STONE) && is(a, TILE_SAND)))     return TILE_SANDY_STONE;
+        if ((is(a, TILE_DIRT)  && is(b, TILE_SAND))     || (is(b, TILE_DIRT)  && is(a, TILE_SAND)))     return TILE_SANDY_DIRT;
+        // Snow transitions
+        if ((is(a, TILE_STONE) && is(b, TILE_SNOW))     || (is(b, TILE_STONE) && is(a, TILE_SNOW)))     return TILE_SNOWY_STONE;
+        // Dirt/stone generic
+        if ((is(a, TILE_DIRT)  && is(b, TILE_STONE))    || (is(b, TILE_DIRT)  && is(a, TILE_STONE)))    return TILE_STONY_DIRT;
+        return -1;
+    };
+
+    // Copy tiles to examine neighbors without cascading effects
+    auto tilesCopy = chunk->tiles;
+    for (int y = 0; y < s; ++y) {
+        for (int x = 0; x < s; ++x) {
+            int a = tilesCopy[y][x].id;
+            if (a == TILE_WATER_SHALLOW || a == TILE_WATER_DEEP) {
+                // Wet dirt rim around water
+                for (int dy = -1; dy <= 1; ++dy) {
+                    for (int dx = -1; dx <= 1; ++dx) {
+                        if (dx == 0 && dy == 0) continue;
+                        int nx = x + dx, ny = y + dy;
+                        if (!inb(nx, ny)) continue;
+                        int b = tilesCopy[ny][nx].id;
+                        if (b == TILE_DIRT || b == TILE_GRASS || b == TILE_STONE || b == TILE_SAND) {
+                            chunk->tiles[ny][nx].id = TILE_WET_DIRT;
+                        }
+                    }
+                }
+                continue;
+            }
+
+            const int dirs[4][2] = {{1,0},{-1,0},{0,1},{0,-1}};
+            for (auto &d : dirs) {
+                int nx = x + d[0], ny = y + d[1];
+                if (!inb(nx, ny)) continue;
+                int b = tilesCopy[ny][nx].id;
+                int buf = needsBuffer(a, b);
+                if (buf >= 0) {
+                    chunk->tiles[y][x].id = buf;
+                    break;
+                }
+            }
+        }
+    }
 }
 
 void World::carveRandomGrassPatches(Chunk* chunk) {
@@ -1353,6 +1419,85 @@ void World::carveRandomGrassPatches(Chunk* chunk) {
         for (int y = oy; y < oy + size; ++y) {
             for (int x = ox; x < ox + size; ++x) {
                 chunk->tiles[y][x].id = TILE_GRASS;
+            }
+        }
+    }
+}
+
+void World::placeWaterLakes(Chunk* chunk) {
+    const int s = tileGenConfig.chunkSize;
+    int worldStartX = chunk->chunkX * s;
+    int worldStartY = chunk->chunkY * s;
+    // Oceans from very low frequency field, large lakes from medium frequency only in certain biomes
+    float oceanScale = tileGenConfig.waterNoiseScale;
+    float macroLakeScale  = tileGenConfig.waterNoiseScale * 1.1f; // medium frequency, coherent
+    float macroLakeThreshold = std::max(0.80f, tileGenConfig.shallowWaterThreshold + 0.02f);
+
+    int shallowCount = 0;
+    for (int y = 0; y < s; ++y) {
+        for (int x = 0; x < s; ++x) {
+            int wx = worldStartX + x;
+            int wy = worldStartY + y;
+            int biome = getBiomeType(wx, wy);
+            float deepN = (generateNoise(wx * oceanScale, wy * oceanScale) + 1.0f) * 0.5f;
+            if (deepN >= tileGenConfig.deepWaterThreshold) {
+                chunk->tiles[y][x].id = TILE_WATER_DEEP;
+                continue;
+            }
+            if (biome == 0 || biome == 1 || biome == 2) {
+                float lm = (generateNoise(wx * macroLakeScale, wy * macroLakeScale) + 1.0f) * 0.5f;
+                if (lm > macroLakeThreshold && lm < tileGenConfig.deepWaterThreshold) {
+                    chunk->tiles[y][x].id = TILE_WATER_SHALLOW;
+                    shallowCount++;
+                }
+            }
+        }
+    }
+
+    // Extremely rare oasis in arid chunks
+    int centerBiome = getBiomeType(worldStartX + s / 2, worldStartY + s / 2);
+    // PRNG per chunk
+    std::mt19937 prng(static_cast<unsigned int>((chunk->chunkX * 2654435761u) ^ (chunk->chunkY * 97531u)));
+
+    if (centerBiome == 3) {
+        std::uniform_real_distribution<float> r01(0.0f, 1.0f);
+        if (r01(prng) < 0.005f) { // 0.5% per arid chunk
+            std::uniform_int_distribution<int> rx(4, s - 5);
+            std::uniform_int_distribution<int> ry(4, s - 5);
+            std::uniform_int_distribution<int> rr(2, 4);
+            int cx = rx(prng), cy = ry(prng), rad = rr(prng);
+            for (int dy = -rad; dy <= rad; ++dy) {
+                for (int dx = -rad; dx <= rad; ++dx) {
+                    int nx = cx + dx, ny = cy + dy;
+                    if (nx < 0 || ny < 0 || nx >= s || ny >= s) continue;
+                    if (dx * dx + dy * dy <= rad * rad) {
+                        chunk->tiles[ny][nx].id = TILE_WATER_SHALLOW;
+                        shallowCount++;
+                    }
+                }
+            }
+        }
+    }
+
+    // Fallback: if no lakes were created in a grassy/stone chunk, create a small circular lake with low probability
+    if (shallowCount < s) {
+        int cb = getBiomeType(worldStartX + s / 2, worldStartY + s / 2);
+        if (cb == 0 || cb == 1 || cb == 2) {
+            std::uniform_real_distribution<float> r01(0.0f, 1.0f);
+            if (r01(prng) < 0.06f) { // ~6% per eligible chunk
+                std::uniform_int_distribution<int> rx(6, s - 7);
+                std::uniform_int_distribution<int> ry(6, s - 7);
+                std::uniform_int_distribution<int> rr(3, 6);
+                int cx = rx(prng), cy = ry(prng), rad = rr(prng);
+                for (int dy = -rad; dy <= rad; ++dy) {
+                    for (int dx = -rad; dx <= rad; ++dx) {
+                        int nx = cx + dx, ny = cy + dy;
+                        if (nx < 0 || ny < 0 || nx >= s || ny >= s) continue;
+                        if (dx * dx + dy * dy <= rad * rad) {
+                            chunk->tiles[ny][nx].id = TILE_WATER_SHALLOW;
+                        }
+                    }
+                }
             }
         }
     }
@@ -1392,32 +1537,38 @@ void World::updateVisibleChunks(float playerX, float playerY) {
 
 // Biome system
 int World::getBiomeType(int x, int y) const {
-    // Use noise to determine biome type
-    float noise = generateNoise(x * tileGenConfig.biomeScale, y * tileGenConfig.biomeScale);
-    
-    if (noise < 0.3f) return 0;      // Plains (grass dominant)
-    else if (noise < 0.6f) return 1; // Hills (stone-grass mix)
-    else return 2;                    // Mountains (stone dominant)
+    float n1 = generateNoise(x * tileGenConfig.biomeScale, y * tileGenConfig.biomeScale);
+    float n2 = generateNoise((x + 10000) * tileGenConfig.biomeScale * 0.8f, (y - 10000) * tileGenConfig.biomeScale * 0.8f);
+    float a = (n1 + 1.0f) * 0.5f;
+    float b = (n2 + 1.0f) * 0.5f;
+    if (a < 0.25f) return 0;      // Plains
+    if (a < 0.5f)  return 1;      // Hills
+    if (a < 0.7f)  return 2;      // Mountains
+    if (b < 0.5f)  return 3;      // Arid
+    return 4;                     // Tundra
 }
 
 int World::generateBiomeBasedTile(int x, int y, int biomeType) const {
-    // Generate noise for this specific position
-    float noise = generateNoise(x * tileGenConfig.noiseScale, y * tileGenConfig.noiseScale);
-    
+    float n = (generateNoise(x * tileGenConfig.noiseScale, y * tileGenConfig.noiseScale) + 1.0f) * 0.5f;
     switch (biomeType) {
-        case 0: // Plains - mostly grass with some stone-grass
-            if (noise < 0.8f) return TILE_GRASS;
-            else return TILE_STONE_GRASS + (static_cast<int>(noise * 19) % 19);
-            
-        case 1: // Hills - mix of grass and stone-grass
-            if (noise < 0.4f) return TILE_GRASS;
-            else if (noise < 0.8f) return TILE_STONE_GRASS + (static_cast<int>(noise * 19) % 19);
-            else return TILE_STONE;
-            
-        case 2: // Mountains - mostly stone with some stone-grass
-            if (noise < 0.3f) return TILE_STONE;
-            else return TILE_STONE_GRASS + (static_cast<int>(noise * 19) % 19);
-            
+        case 0: // Plains
+            if (n < 0.75f) return TILE_GRASS;
+            if (n < 0.90f) return TILE_DIRT;
+            return TILE_STONE;
+        case 1: // Hills
+            if (n < 0.5f) return TILE_STONE;
+            if (n < 0.75f) return TILE_STONY_DIRT;
+            return TILE_GRASS;
+        case 2: // Mountains
+            if (n < 0.8f) return TILE_STONE;
+            return TILE_STONY_DIRT;
+        case 3: // Arid
+            if (n < 0.7f) return TILE_SAND;
+            if (n < 0.85f) return TILE_SANDY_DIRT;
+            return TILE_SANDY_STONE;
+        case 4: // Tundra
+            if (n < 0.7f) return TILE_SNOW;
+            return TILE_SNOWY_STONE;
         default:
             return TILE_GRASS;
     }

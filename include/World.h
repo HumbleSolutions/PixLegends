@@ -10,34 +10,36 @@
 // Forward declarations
 class Renderer;
 class Texture;
+class SpriteSheet;
 class Object;
 class Enemy;
 class AssetManager;
 
-// Tile type constants
+// Tile type constants (high-level material IDs)
 enum TileType {
     TILE_GRASS = 0,
-    TILE_STONE = 1,
-    TILE_STONE_GRASS = 2,
-    TILE_STONE_GRASS_2 = 3,
-    TILE_STONE_GRASS_3 = 4,
-    TILE_STONE_GRASS_4 = 5,
-    TILE_STONE_GRASS_5 = 6,
-    TILE_STONE_GRASS_6 = 7,
-    TILE_STONE_GRASS_7 = 8,
-    TILE_STONE_GRASS_8 = 9,
-    TILE_STONE_GRASS_9 = 10,
-    TILE_STONE_GRASS_10 = 11,
-    TILE_STONE_GRASS_11 = 12,
-    TILE_STONE_GRASS_12 = 13,
-    TILE_STONE_GRASS_13 = 14,
-    TILE_STONE_GRASS_14 = 15,
-    TILE_STONE_GRASS_15 = 16,
-    TILE_STONE_GRASS_16 = 17,
-    TILE_STONE_GRASS_17 = 18,
-    TILE_STONE_GRASS_18 = 19,
-    TILE_STONE_GRASS_19 = 20,
-    TILE_WATER = 21
+    TILE_DIRT = 1,
+    TILE_STONE = 2,
+    TILE_ASPHALT = 3,
+    TILE_CONCRETE = 4,
+    TILE_SAND = 5,
+    TILE_SNOW = 6,
+
+    // Transition/buffer materials
+    TILE_GRASSY_ASPHALT = 7,
+    TILE_GRASSY_CONCRETE = 8,
+    TILE_SANDY_DIRT = 9,
+    TILE_SANDY_STONE = 10,
+    TILE_SNOWY_STONE = 11,
+    TILE_STONY_DIRT = 12,
+    TILE_WET_DIRT = 13,
+
+    // Fluids/hazards
+    TILE_WATER_SHALLOW = 14,
+    TILE_WATER_DEEP = 15,
+    TILE_LAVA = 16,
+
+    TILE_LAST = TILE_LAVA
 };
 
 struct Tile {
@@ -88,6 +90,9 @@ struct TileGenerationConfig {
     bool useNoiseDistribution = true;
     float noiseScale = 0.05f;  // Reduced for larger world
     float noiseThreshold = 0.5f;
+    // Region generation for larger, coherent patches
+    float regionNoiseScale = 0.0015f; // lower frequency → even bigger blobs
+    int regionSmoothingIterations = 8; // more passes → larger coherent patches
     
     // Clustering options
     bool enableStoneClustering = true;
@@ -96,7 +101,22 @@ struct TileGenerationConfig {
     
     // Biome system
     bool enableBiomes = true;
-    float biomeScale = 0.02f;  // Larger scale for biomes
+    float biomeScale = 0.005f;  // Much larger biome blobs
+
+    // Water overlay
+    bool enableWater = true;
+    float waterNoiseScale = 0.0035f;        // very large features
+    float shallowWaterThreshold = 0.80f;    // lakes/rivers
+    float deepWaterThreshold = 0.985f;      // extremely rare deep ocean
+
+    // Lava overlay (in stone biomes only)
+    bool enableLava = true;
+    float lavaNoiseScale = 0.04f;
+    float lavaThreshold = 0.88f;
+    
+    // Visual coherence controls
+    float accentChance = 0.06f;         // chance to sprinkle accent tiles within same color group
+    int variantPatchSizeTiles = 32;     // size of region using the same visual variant
     
     TileGenerationConfig() = default;
 };
@@ -167,6 +187,10 @@ public:
     void enableFogOfWar(bool enable) { fogOfWarEnabled = enable; }
     bool isFogOfWarEnabled() const { return fogOfWarEnabled; }
 
+    // Tile safety/hazard helpers
+    bool isHazardTileId(int tileId) const;
+    bool isSafeTile(int tileX, int tileY) const;
+
     // Chunk management
     void generateChunk(int chunkX, int chunkY);
     void updateVisibleChunks(float playerX, float playerY);
@@ -195,8 +219,15 @@ private:
     // Asset management
     AssetManager* assetManager;
     
-    // Tile textures
+    // Tile textures: representative texture per material (first variant)
     std::vector<Texture*> tileTextures;
+    // Per-material variant textures (e.g., 8 variants per material)
+    std::vector<std::vector<Texture*>> tileVariantTextures;
+    // Ordered base variants 01..08 used for chaining adjacency (no biasing)
+    std::vector<std::vector<Texture*>> tileBaseVariants;
+    // Animated tiles
+    SpriteSheet* deepWaterSpriteSheet = nullptr;
+    SpriteSheet* lavaSpriteSheet = nullptr;
     // Edge textures for autotiling (stone with grass edges)
     std::unordered_map<std::string, Texture*> edgeTextures;
     
@@ -220,9 +251,21 @@ private:
     Texture* getEdgeTextureForMask(const std::string& mask);
     bool isGrassAt(int tx, int ty);
     void carveRandomGrassPatches(Chunk* chunk);
+    void placeLavaLakes(Chunk* chunk);
+    void placeWaterLakes(Chunk* chunk);
+    void carveRivers(Chunk* chunk);
+    void pruneRiverStubs(Chunk* chunk);
     int getPrioritizedTileType(int x, int y);
     bool shouldPlaceStone(int x, int y);
     bool shouldPlaceStoneGrass(int x, int y);
+    void applyTransitionBuffers(Chunk* chunk);
+    void addAccents(Chunk* chunk);
+    int getPreferredVariantIndex(int tileType, int worldX, int worldY) const;
+    void smoothRegions(Chunk* chunk);
+    int pickRegionGroupForBiome(int wx, int wy, int biomeType) const;
+    int pickBaseMaterialForGroup(int groupId, float noiseVal) const;
+    int getMaterialGroupId(int tileId) const;
+    bool areMaterialsCloseInColor(int a, int b) const;
     struct TileColor {
         Uint8 r, g, b, a;
         TileColor(Uint8 r, Uint8 g, Uint8 b, Uint8 a = 255) : r(r), g(g), b(b), a(a) {}
@@ -245,6 +288,10 @@ private:
     // Biome system
     int getBiomeType(int x, int y) const;
     int generateBiomeBasedTile(int x, int y, int biomeType) const;
+    int generateStonefieldTile(int x, int y) const; // reserved
+
+    // Query helpers
+    int getTileIdAt(int tileX, int tileY);
     
     // Visibility calculation
     void calculateVisibility(float playerX, float playerY);

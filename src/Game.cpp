@@ -76,11 +76,26 @@ void Game::initializeSystems() {
     
     // Create player after other systems are initialized
     player = std::make_unique<Player>(this);
-    // Relocate spawn: e.g., near tile (15, 10)
+    // Safe spawn: find nearest non-hazard tile around preferred spot
     if (world && player) {
         int ts = world->getTileSize();
-        float spawnX = 15.0f * ts;
-        float spawnY = 10.0f * ts;
+        int preferTX = 15;
+        int preferTY = 10;
+        int safeTX = preferTX;
+        int safeTY = preferTY;
+        const int maxSearch = 200; // tiles radius search cap
+        bool found = false;
+        for (int r = 0; r <= maxSearch && !found; ++r) {
+            for (int dy = -r; dy <= r && !found; ++dy) {
+                for (int dx = -r; dx <= r; ++dx) {
+                    int tx = preferTX + dx;
+                    int ty = preferTY + dy;
+                    if (world->isSafeTile(tx, ty)) { safeTX = tx; safeTY = ty; found = true; break; }
+                }
+            }
+        }
+        float spawnX = static_cast<float>(safeTX * ts);
+        float spawnY = static_cast<float>(safeTY * ts);
         player->setSpawnPoint(spawnX, spawnY);
         player->respawn(spawnX, spawnY);
     }

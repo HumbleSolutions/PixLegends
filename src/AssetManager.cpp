@@ -353,29 +353,35 @@ void AssetManager::preloadAssets() {
     loadSpriteSheet(WIZARD_PATH + "HURT_RIGHT.png", 128, 78, 4, 4);
     loadSpriteSheet(WIZARD_PATH + "DEATH.png", 128, 78, 6, 6);
     
-    // Load tile textures (essential for rendering)
+    // Load new tile textures by folder groups (variants are loaded lazily by World)
     std::cout << "Loading tile textures..." << std::endl;
-    loadTexture(TILESET_PATH + "grass_tile.png");
-    loadTexture(TILESET_PATH + "dirt_tile.png");
-    loadTexture(TILESET_PATH + "dirt_grass_tile.png");
-    loadTexture(TILESET_PATH + "dirt_grass_tile_2.png");
-    loadTexture(TILESET_PATH + "dirt_grass_tile_3.png");
-    loadTexture(TILESET_PATH + "dirt_grass_tile_4.png");
-    loadTexture(TILESET_PATH + "dirt_grass_tile_5.png");
-    loadTexture(TILESET_PATH + "dirt_grass_tile_6.png");
-    loadTexture(TILESET_PATH + "dirt_grass_tile_7.png");
-    loadTexture(TILESET_PATH + "dirt_grass_tile_8.png");
-    loadTexture(TILESET_PATH + "dirt_grass_tile_9.png");
-    loadTexture(TILESET_PATH + "dirt_grass_tile_10.png");
-    loadTexture(TILESET_PATH + "dirt_grass_tile_11.png");
-    loadTexture(TILESET_PATH + "dirt_grass_tile_12.png");
-    loadTexture(TILESET_PATH + "dirt_grass_tile_13.png");
-    loadTexture(TILESET_PATH + "dirt_grass_tile_14.png");
-    loadTexture(TILESET_PATH + "dirt_grass_tile_15.png");
-    loadTexture(TILESET_PATH + "dirt_grass_tile_16.png");
-    loadTexture(TILESET_PATH + "dirt_grass_tile_17.png");
-    loadTexture(TILESET_PATH + "dirt_grass_tile_18.png");
-    loadTexture(TILESET_PATH + "dirt_grass_tile_19.png");
+    auto load8 = [&](const std::string& dir, const std::string& prefix){
+        for (int i = 1; i <= 8; ++i) {
+            char name[64];
+            std::snprintf(name, sizeof(name), "%s_%02d.png", prefix.c_str(), i);
+            loadTexture(TILESET_PATH + dir + "/" + name);
+        }
+    };
+    load8("Grass", "Grass");
+    load8("Dirt", "Dirt");
+    load8("Stone", "Stone");
+    load8("Asphalt", "Asphalt");
+    load8("Concrete", "Concrete");
+    load8("Sand", "Sand");
+    load8("Snow", "Snow");
+    load8("Grassy Asphalt", "GrassyAsphalt");
+    load8("Grassy Concrete", "GrassyConcrete");
+    load8("Sandy Dirt", "SandyDirt");
+    load8("Sandy Stone", "SandyStone");
+    load8("Snowy Stone", "SnowyStone");
+    load8("Stony Dirt", "StonyDirt");
+    load8("Wet Dirt", "WetDirt");
+
+    // Water/lava
+    loadTexture(TILESET_PATH + "Water/water_shallow.png");
+    // Deep water: auto-detect frames per row; total frames fixed at 4
+    loadSpriteSheet(TILESET_PATH + "Water/water_deep_01.png", 32, 32, 0, 4);
+    loadSpriteSheet(TILESET_PATH + "Lava/lava.png", 32, 32, 9, 9);
     
     // Load object textures (only the ones we actually use)
     std::cout << "Loading object textures..." << std::endl;
