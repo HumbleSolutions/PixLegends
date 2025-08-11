@@ -742,19 +742,54 @@ void UISystem::renderMagicAnvil(const Player* player,
         };
         int chance = static_cast<int>(std::round(chanceForNext(heq.plusLevel)));
         bool hasPreview = !selectedScrollKey.empty();
-        int extraH = 0; if (heq.fire>0 || heq.ice>0 || heq.lightning>0 || heq.poison>0) extraH = 16;
-        int w = 240, h = (hasPreview ? 92 : 72) + extraH; SDL_Rect tip{ mouseX + 16, mouseY + 12, w, h };
+        // Dynamically size tooltip height based on number of lines we will render
+        int lineH = 16;
+        int lines = 0;
+        lines += 1; // name
+        lines += 1; // +level/base
+        lines += 1; // chance
+        if (hovered == static_cast<int>(Player::EquipmentSlot::SWORD)) {
+            lines += 4; // ATK, ASPD, Crit, DUR
+        }
+        // Element lines: place Fire last, so count all present
+        int elemLines = 0;
+        if (heq.ice > 0) elemLines++;
+        if (heq.poison > 0) elemLines++;
+        if (heq.fire > 0) elemLines++;
+        lines += elemLines;
+        if (hasPreview) lines += 1; // preview row
+        int w = 260;
+        int h = 12 + lines * lineH + 8; // top+bottom padding
+        SDL_Rect tip{ mouseX + 16, mouseY + 12, w, h };
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
         SDL_SetRenderDrawColor(renderer, 25,25,28,220); SDL_RenderFillRect(renderer, &tip);
         SDL_SetRenderDrawColor(renderer, 220,220,230,255); SDL_RenderDrawRect(renderer, &tip);
-        static const char* names[9] = {"Ring","Helm","Necklace","Sword","Chest","Shield","Glove","Waist","Feet"};
-        renderText(names[hovered], tip.x + 8, tip.y + 6, SDL_Color{255,255,180,255});
-        renderText(std::string("+") + std::to_string(heq.plusLevel) + "  Base:" + std::to_string(heq.basePower), tip.x + 8, tip.y + 22);
-        renderText("Chance:" + std::to_string(chance) + "%", tip.x + 8, tip.y + 38, SDL_Color{140,200,255,255});
-        int yoff = 54;
-        if (heq.fire>0) { renderText("Fire: +" + std::to_string(heq.fire), tip.x + 8, tip.y + yoff, SDL_Color{255,140,80,255}); yoff += 16; }
-        if (heq.ice>0) { renderText("Water: +" + std::to_string(heq.ice), tip.x + 8, tip.y + yoff, SDL_Color{140,180,255,255}); yoff += 16; }
-        if (heq.poison>0) { renderText("Poison: +" + std::to_string(heq.poison), tip.x + 8, tip.y + yoff, SDL_Color{160,255,160,255}); yoff += 16; }
+        // Show actual item name when available, else generic slot name
+        static const char* slotNames[9] = {"Ring","Helm","Necklace","Sword","Chest","Shield","Glove","Waist","Feet"};
+        std::string displayName = heq.name.empty() ? std::string(slotNames[hovered]) : heq.name;
+        int ycur = tip.y + 6;
+        renderText(displayName, tip.x + 8, ycur, SDL_Color{255,255,180,255});
+        ycur += lineH;
+        renderText(std::string("+") + std::to_string(heq.plusLevel) + "  Base:" + std::to_string(heq.basePower), tip.x + 8, ycur);
+        ycur += lineH;
+        // Show sword-specific stats if available
+        if (hovered == static_cast<int>(Player::EquipmentSlot::SWORD)) {
+            renderText("ATK: " + std::to_string(heq.attack), tip.x + 8, ycur);
+            ycur += lineH;
+            std::ostringstream aspd; aspd.setf(std::ios::fixed); aspd.precision(2);
+            aspd << "ASPD " << heq.attackSpeedMultiplier << "x";
+            renderText(aspd.str(), tip.x + 8, ycur);
+            ycur += lineH;
+            std::ostringstream crit; crit.setf(std::ios::fixed); crit.precision(1);
+            crit << "Crit " << heq.critChancePercent << "%";
+            renderText(crit.str(), tip.x + 8, ycur);
+            ycur += lineH;
+            renderText("DUR " + std::to_string(heq.durability) + "/" + std::to_string(heq.maxDurability), tip.x + 8, ycur);
+            ycur += lineH;
+        }
+        renderText("Chance:" + std::to_string(chance) + "%", tip.x + 8, ycur, SDL_Color{140,200,255,255});
+        ycur += lineH;
+        // Optional preview next so Fire can stay at the very bottom
         if (hasPreview) {
             std::string pv;
             SDL_Color green{120, 255, 120, 255};
@@ -762,8 +797,12 @@ void UISystem::renderMagicAnvil(const Player* player,
             else if (selectedScrollKey == std::string("fire")) pv = "+1 fire";
             else if (selectedScrollKey == std::string("water")) pv = "+1 water";
             else if (selectedScrollKey == std::string("poison")) pv = "+1 poison";
-            if (!pv.empty()) renderText("Preview: " + pv, tip.x + 8, tip.y + yoff, green);
+            if (!pv.empty()) { renderText("Preview: " + pv, tip.x + 8, ycur, green); ycur += lineH; }
         }
+        // Element lines: Water, Poison, then Fire last
+        if (heq.ice>0) { renderText("Water: +" + std::to_string(heq.ice), tip.x + 8, ycur, SDL_Color{140,180,255,255}); ycur += lineH; }
+        if (heq.poison>0) { renderText("Poison: +" + std::to_string(heq.poison), tip.x + 8, ycur, SDL_Color{160,255,160,255}); ycur += lineH; }
+        if (heq.fire>0) { renderText("Fire: +" + std::to_string(heq.fire), tip.x + 8, ycur, SDL_Color{255,140,80,255}); ycur += lineH; }
     }
 
     // Draw the selected slot icon in the side item slot for feedback

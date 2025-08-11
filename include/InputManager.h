@@ -16,7 +16,8 @@ enum class InputAction {
     PAUSE,
     QUIT,
     USE_HP_POTION,
-    USE_MP_POTION
+    USE_MP_POTION,
+    SHIELD
 };
 
 enum class InputState {

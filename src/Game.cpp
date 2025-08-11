@@ -252,7 +252,8 @@ void Game::update(float deltaTime) {
                         SDL_Rect inter;
                         if (SDL_IntersectRect(&hitbox, &eRect, &inter)) {
                             if (player->consumeMeleeHitIfActive()) {
-                                enemyPtr->takeDamage(player->getMeleeDamage());
+                                // Roll damage with crit and consume durability for the sword
+                                enemyPtr->takeDamage(player->rollMeleeDamageForHit());
                             }
                             // do not break: allow hitting first valid enemy; keep break to single
                             break;

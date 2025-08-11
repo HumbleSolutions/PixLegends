@@ -53,6 +53,8 @@ public:
     // Melee combat helpers
     bool isMeleeAttacking() const { return currentState == PlayerState::ATTACKING_MELEE; }
     int getMeleeDamage() const { return meleeDamage; }
+    // Computes hit damage with crit and applies durability loss
+    int rollMeleeDamageForHit();
     SDL_Rect getMeleeHitbox() const; // returns {0,0,0,0} if not attacking
     bool isMeleeHitActive() const;    // true only during the active frames window
     bool consumeMeleeHitIfActive();   // returns true once per swing when entering active window
@@ -64,8 +66,12 @@ public:
     // Combat
     void performMeleeAttack();
     void performRangedAttack();
+    void startShield();
+    void stopShield();
     bool hasFireWeapon() const { const auto& sw = equipment[static_cast<size_t>(EquipmentSlot::SWORD)]; const auto& sh = equipment[static_cast<size_t>(EquipmentSlot::SHIELD)]; return sw.fire > 0 || sh.fire > 0; }
     void takeDamage(int damage);
+    bool isShieldActive() const { return shieldActive; }
+    bool hasFireShield() const { return equipment[static_cast<size_t>(EquipmentSlot::SHIELD)].fire > 0; }
     bool isDead() const { return currentState == PlayerState::DEAD; }
     void respawn(float respawnX, float respawnY);
     void setSpawnPoint(float sx, float sy) { spawnX = sx; spawnY = sy; }
@@ -144,6 +150,12 @@ public:
         int resistIce = 0;
         int resistLightning = 0;
         int resistPoison = 0;
+        // Sword-specific combat stats (used primarily for SWORD slot)
+        int attack = 0;                 // base attack power contribution
+        float attackSpeedMultiplier = 1.0f; // scales melee attack rate (cooldown divided by this)
+        float critChancePercent = 0.0f; // 0..100
+        int durability = 0;             // current durability
+        int maxDurability = 0;          // cap for durability
     };
     const EquipmentItem& getEquipment(EquipmentSlot slot) const { return equipment[static_cast<int>(slot)]; }
     void upgradeEquipment(EquipmentSlot slot, int deltaPlus);
@@ -235,6 +247,19 @@ private:
     SpriteSheet* hurtLeftSpriteSheet;
     SpriteSheet* hurtRightSpriteSheet;
     SpriteSheet* deathSpriteSheet;
+    // Fire shield visuals
+    SpriteSheet* fireShieldSpriteSheet = nullptr;
+    int fireShieldFrame = 0;
+    float fireShieldTimer = 0.0f;
+    float fireShieldFrameDuration = 0.08f;
+    bool shieldActive = false;
+    // Fire shield gameplay
+    float fireShieldTickTimer = 0.0f; // AoE damage tick
+    static constexpr float FIRE_SHIELD_TICK_SECONDS = 0.5f;
+    static constexpr int FIRE_SHIELD_DAMAGE = 20;
+    // Mana drain while channeling
+    float fireShieldManaAccumulator = 0.0f;
+    static constexpr float FIRE_SHIELD_MANA_DRAIN_PER_SEC = 8.0f; // mana per second
     
     // Helper functions
     void loadSprites();
@@ -273,4 +298,8 @@ private:
 
     // Render scale for the player sprite (1.0 = original). Upscales visual size only.
     float renderScale = 1.0f;
+
+    // Equipment helpers
+    void updateSwordNameByPlus();
+    void updateSwordStatsByPlus();
 };

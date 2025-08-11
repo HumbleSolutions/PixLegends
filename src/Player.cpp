@@ -56,6 +56,9 @@ Player::Player(Game* game) : game(game), x(Game::WINDOW_WIDTH / 2.0f - 32.0f), y
     initEquip(EquipmentSlot::WAIST,    "Rope Belt", 1);
     initEquip(EquipmentSlot::FEET,     "Worn Boots", 2);
     // Testing: give 6 of each scroll type by default (upgrade + elements)
+    // Ensure sword name and stats reflect current + level mapping
+    updateSwordNameByPlus();
+    updateSwordStatsByPlus();
     addUpgradeScrolls(6);
     addElementScrolls("fire", 6);
     addElementScrolls("water", 6);
@@ -90,6 +93,8 @@ void Player::loadSprites() {
     hurtLeftSpriteSheet  = idleLeftSpriteSheet;
     hurtRightSpriteSheet = idleRightSpriteSheet;
     deathSpriteSheet     = idleDownSpriteSheet; // placeholder single loop
+    // Fire shield sheet: 8 frames, 48x48; use auto loader and treat as looping overlay
+    fireShieldSpriteSheet = assetManager->loadSpriteSheetAuto("assets/Textures/Spells/fire_sheild.png", 8, 8);
     
     // Set initial sprite sheet
     currentSpriteSheet = idleLeftSpriteSheet;
@@ -130,6 +135,50 @@ void Player::update(float deltaTime) {
     
     // Update projectiles
     updateProjectiles(deltaTime);
+
+    // Update fire shield if active
+    if (shieldActive && fireShieldSpriteSheet) {
+        if (mana <= 0) { stopShield(); }
+        if (!shieldActive) {
+            // Early out if we just stopped due to 0 mana
+            return;
+        }
+        fireShieldTimer += deltaTime;
+        if (fireShieldTimer >= fireShieldFrameDuration) {
+            fireShieldTimer = 0.0f;
+            fireShieldFrame = (fireShieldFrame + 1) % std::max(1, fireShieldSpriteSheet->getTotalFrames());
+        }
+        // Tick AoE damage
+        fireShieldTickTimer -= deltaTime;
+        if (fireShieldTickTimer <= 0.0f) {
+            fireShieldTickTimer = FIRE_SHIELD_TICK_SECONDS;
+            // Deal AoE to nearby enemies
+            if (game && game->getWorld()) {
+                auto& enemies = const_cast<std::vector<std::unique_ptr<Enemy>>&>(game->getWorld()->getEnemies());
+                SDL_Rect area = getCollisionRect();
+                // Expand radius
+                area.x -= 40; area.y -= 40; area.w += 80; area.h += 80;
+                for (auto& e : enemies) {
+                    if (!e || e->isDead()) continue;
+                    SDL_Rect er = e->getCollisionRect();
+                    SDL_Rect inter;
+                    if (SDL_IntersectRect(&area, &er, &inter)) {
+                        e->takeDamage(FIRE_SHIELD_DAMAGE);
+                    }
+                }
+            }
+        }
+        // Mana drain over time; disable if depleted
+        fireShieldManaAccumulator += deltaTime * FIRE_SHIELD_MANA_DRAIN_PER_SEC;
+        int drainWhole = static_cast<int>(fireShieldManaAccumulator);
+        if (drainWhole > 0) {
+            fireShieldManaAccumulator -= static_cast<float>(drainWhole);
+            useMana(drainWhole);
+            if (mana <= 0) {
+                stopShield();
+            }
+        }
+    }
 }
 
 void Player::handleInput(const InputManager* inputManager) {
@@ -169,6 +218,13 @@ void Player::handleInput(const InputManager* inputManager) {
     if (inputManager->isActionHeld(InputAction::ATTACK_RANGED) && canAttack() && hasFireWeapon()) {
         std::cout << "Ranged attack triggered!" << std::endl;
         performRangedAttack();
+    }
+
+    // Shield hold: while held, keep active; on release, stop
+    if (inputManager->isActionHeld(InputAction::SHIELD)) {
+        if (hasFireShield()) startShield();
+    } else if (shieldActive) {
+        stopShield();
     }
     
     // Handle interaction input
@@ -259,7 +315,12 @@ void Player::performMeleeAttack() {
 
     // Enter attack state; the animation system will pick the proper sheet per direction
     setState(PlayerState::ATTACKING_MELEE);
-    meleeAttackTimer = meleeAttackCooldown;
+    // Apply sword attack speed multiplier to cooldown
+    {
+        const auto& sword = equipment[static_cast<size_t>(EquipmentSlot::SWORD)];
+        float aspd = (sword.attackSpeedMultiplier > 0.01f ? sword.attackSpeedMultiplier : 1.0f);
+        meleeAttackTimer = meleeAttackCooldown / aspd;
+    }
     currentFrame = 0;
     frameTimer = 0.0f;
     meleeHitConsumedThisSwing = false;
@@ -273,7 +334,7 @@ void Player::performMeleeAttack() {
         game->getAudioManager()->startMusicDuck(0.25f, 0.6f);
     }
     
-    std::cout << "Melee attack! Damage: " << meleeDamage << std::endl;
+    std::cout << "Melee attack! Damage: ~" << meleeDamage << std::endl;
 }
 
 bool Player::isMeleeHitActive() const {
@@ -372,6 +433,10 @@ void Player::performRangedAttack() {
 
 void Player::takeDamage(int damage) {
     if (currentState == PlayerState::DEAD) {
+        return;
+    }
+    // Fire shield immunity
+    if (shieldActive) {
         return;
     }
     
@@ -651,6 +716,39 @@ void Player::render(Renderer* renderer) {
     
     // Render the sprite
     SDL_RenderCopy(renderer->getSDLRenderer(), currentSpriteSheet->getTexture()->getTexture(), &srcRect, &dstRect);
+
+    // Render fire shield overlay centered on player
+    if (shieldActive && mana > 0 && fireShieldSpriteSheet) {
+        SDL_Rect fs = fireShieldSpriteSheet->getFrameRect(fireShieldFrame);
+        int fW = fireShieldSpriteSheet->getFrameWidth();
+        int fH = fireShieldSpriteSheet->getFrameHeight();
+        int fx = static_cast<int>(x + width/2 - fW/2);
+        int fy = static_cast<int>(y + height/2 - fH/2 - 5); // nudge up 5px
+        int camX2=0, camY2=0; renderer->getCamera(camX2, camY2); float z = renderer->getZoom();
+        auto scaled = [camX2, camY2, z](int wx, int wy) -> SDL_Point {
+            float sx = (static_cast<float>(wx - camX2)) * z;
+            float sy = (static_cast<float>(wy - camY2)) * z;
+            return SDL_Point{ static_cast<int>(std::floor(sx)), static_cast<int>(std::floor(sy)) };
+        };
+        SDL_Point tl2 = scaled(fx, fy);
+        SDL_Point br2 = scaled(fx + fW, fy + fH);
+        SDL_Rect dst2{ tl2.x, tl2.y, std::max(1, br2.x - tl2.x), std::max(1, br2.y - tl2.y) };
+        SDL_RenderCopy(renderer->getSDLRenderer(), fireShieldSpriteSheet->getTexture()->getTexture(), &fs, &dst2);
+    }
+}
+
+void Player::startShield() {
+    if (shieldActive) return;
+    if (!hasFireShield()) return;
+    if (mana <= 0) return;
+    shieldActive = true;
+    fireShieldTickTimer = 0.0f;
+    fireShieldTimer = 0.0f;
+    fireShieldFrame = 0;
+}
+
+void Player::stopShield() {
+    shieldActive = false;
 }
 
 void Player::gainExperience(int xp) {
@@ -675,9 +773,14 @@ void Player::upgradeEquipment(EquipmentSlot slot, int deltaPlus) {
     maxMana += 3 * std::max(0, deltaPlus);
     health = std::min(health, maxHealth);
     mana = std::min(mana, maxMana);
-    // Recalculate derived damage: sword + adds 2 dmg per plus level
-    int weaponBonus = equipment[static_cast<size_t>(EquipmentSlot::SWORD)].plusLevel * 2;
+    // Recalculate derived damage: base from STR plus sword ATK contribution
+    updateSwordStatsByPlus();
+    int weaponBonus = equipment[static_cast<size_t>(EquipmentSlot::SWORD)].attack;
     meleeDamage = strength * 2 + weaponBonus;
+    // Update sword display name if the sword was upgraded
+    if (slot == EquipmentSlot::SWORD) {
+        updateSwordNameByPlus();
+    }
 }
 
 void Player::enchantEquipment(EquipmentSlot slot, const std::string& element, int amount) {
@@ -810,9 +913,12 @@ void Player::applySaveState(const PlayerSave& s) {
         equipment[i].lightning = std::max(0, s.equipLightning[i]);
         equipment[i].poison = std::max(0, s.equipPoison[i]);
     }
-    // Recompute melee damage with sword +
-    int weaponBonus = equipment[static_cast<size_t>(EquipmentSlot::SWORD)].plusLevel * 2;
+    // Recompute melee damage with sword stats
+    updateSwordStatsByPlus();
+    int weaponBonus = equipment[static_cast<size_t>(EquipmentSlot::SWORD)].attack;
     meleeDamage = strength * 2 + weaponBonus;
+    // Ensure sword name matches loaded + level
+    updateSwordNameByPlus();
     // Inventory persistence (exact grid)
     for (int b = 0; b < 2; ++b) {
         bags[b].clear();
@@ -967,6 +1073,121 @@ bool Player::canAttack() const {
 
 void Player::calculateExperienceToNext() {
     experienceToNext = level * 100; // Simple formula: level * 100
+}
+
+void Player::updateSwordNameByPlus() {
+    // Map + level to sword names (1..30)
+    static const char* namesByPlus[31] = {
+        "", // 0 unused
+        "Rusty Sword", // +1
+        "Rusty Sword", // +2
+        "Rusty Sword", // +3
+        "Iron Shortsword", // +4
+        "Iron Shortsword", // +5
+        "Iron Shortsword", // +6
+        "Iron Shortsword", // +7
+        "Steel Longsword", // +8
+        "Steel Longsword", // +9
+        "Steel Longsword", // +10
+        "Tempered Steel Sword", // +11
+        "Tempered Steel Sword", // +12
+        "Tempered Steel Sword", // +13
+        "Tempered Steel Sword", // +14
+        "Elven Blade", // +15
+        "Elven Blade", // +16
+        "Elven Blade", // +17
+        "Runed Silver Sword", // +18
+        "Runed Silver Sword", // +19
+        "Runed Silver Sword", // +20
+        "Enchanted Mithril Sword", // +21
+        "Enchanted Mithril Sword", // +22
+        "Enchanted Mithril Sword", // +23
+        "Dragonbone Sword", // +24
+        "Dragonbone Sword", // +25
+        "Dragonbone Sword", // +26
+        "Flameforged Greatsword", // +27
+        "Flameforged Greatsword", // +28
+        "Flameforged Greatsword", // +29
+        "Godslayer Blade" // +30
+    };
+    size_t idx = static_cast<size_t>(EquipmentSlot::SWORD);
+    int p = std::clamp(equipment[idx].plusLevel, 0, 30);
+    if (p >= 1) {
+        equipment[idx].name = namesByPlus[p];
+    } else {
+        // default base
+        equipment[idx].name = "Rusty Sword";
+    }
+}
+
+void Player::updateSwordStatsByPlus() {
+    size_t idx = static_cast<size_t>(EquipmentSlot::SWORD);
+    int p = std::clamp(equipment[idx].plusLevel, 0, 30);
+    // Defaults for +0 or out of range
+    int atk = 0; float aspd = 1.0f; float crit = 0.0f; int dur = 0;
+    if (p >= 1) {
+        static const int atkTable[31] = {
+            0,
+            5, 8, 11, 15, 19, 23, 27, 32, 37, 42, 48, 54, 60, 66, 73,
+            80, 87, 95, 103, 111, 120, 129, 138, 148, 158, 168, 180, 192, 204, 220
+        };
+        static const float aspdTable[31] = {
+            1.0f,
+            1.00f, 1.01f, 1.01f, 1.02f, 1.02f, 1.03f, 1.03f, 1.04f, 1.04f, 1.05f,
+            1.05f, 1.06f, 1.06f, 1.07f, 1.07f, 1.08f, 1.08f, 1.09f, 1.09f, 1.10f,
+            1.10f, 1.11f, 1.11f, 1.12f, 1.12f, 1.13f, 1.13f, 1.14f, 1.14f, 1.15f
+        };
+        static const float critTable[31] = {
+            0.0f,
+            1.0f, 1.5f, 2.0f, 2.5f, 3.0f, 3.5f, 4.0f, 4.5f, 5.0f, 5.5f,
+            6.0f, 6.5f, 7.0f, 7.5f, 8.0f, 8.5f, 9.0f, 9.5f, 10.0f, 10.5f,
+            11.0f, 11.5f, 12.0f, 12.5f, 13.0f, 13.5f, 14.0f, 14.5f, 15.0f, 15.0f
+        };
+        static const int durTable[31] = {
+            0,
+            50, 55, 60, 65, 70, 75, 80, 85, 90, 95,
+            100, 105, 110, 115, 120, 125, 130, 135, 140, 145,
+            150, 155, 160, 165, 170, 175, 180, 185, 190, 195
+        };
+        atk = atkTable[p]; aspd = aspdTable[p]; crit = critTable[p]; dur = durTable[p];
+    }
+    equipment[idx].attack = atk;
+    equipment[idx].attackSpeedMultiplier = aspd;
+    equipment[idx].critChancePercent = crit;
+    // Only increase maxDurability; keep current durability if set, else initialize to max
+    int newMax = dur;
+    if (newMax > equipment[idx].maxDurability) {
+        equipment[idx].maxDurability = newMax;
+    } else {
+        equipment[idx].maxDurability = newMax; // keep synchronized with table
+    }
+    if (equipment[idx].durability <= 0 || equipment[idx].durability > equipment[idx].maxDurability) {
+        equipment[idx].durability = equipment[idx].maxDurability;
+    }
+}
+
+int Player::rollMeleeDamageForHit() {
+    // Base damage = strength*2 + sword ATK
+    const auto& sword = equipment[static_cast<size_t>(EquipmentSlot::SWORD)];
+    int base = strength * 2 + sword.attack;
+    // Simple crit roll using SDL ticks as rng seed source
+    float critChance = std::max(0.0f, std::min(100.0f, sword.critChancePercent));
+    bool isCrit = false;
+    if (critChance > 0.0f) {
+        // Deterministic pseudo-rng for now
+        unsigned r = static_cast<unsigned>((SDL_GetTicks() * 1103515245u + 12345u) & 0x7fffffff);
+        float roll01 = (r % 10000) / 100.0f; // 0..100
+        isCrit = (roll01 < critChance);
+    }
+    int dmg = base;
+    if (isCrit) {
+        dmg = static_cast<int>(std::round(base * 1.5f));
+    }
+    // Durability loss on hit if any
+    if (equipment[static_cast<size_t>(EquipmentSlot::SWORD)].durability > 0) {
+        equipment[static_cast<size_t>(EquipmentSlot::SWORD)].durability = std::max(0, equipment[static_cast<size_t>(EquipmentSlot::SWORD)].durability - 1);
+    }
+    return std::max(1, dmg);
 }
 
 void Player::updateProjectiles(float deltaTime) {

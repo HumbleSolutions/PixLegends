@@ -19,8 +19,10 @@ void InputManager::initializeKeyBindings() {
     actionToKey[InputAction::MOVE_RIGHT] = SDL_SCANCODE_D;
     
     // Combat keys
-    actionToKey[InputAction::ATTACK_MELEE] = SDL_SCANCODE_SPACE;
+    actionToKey[InputAction::ATTACK_MELEE] = SDL_SCANCODE_UNKNOWN; // mouse left only
     actionToKey[InputAction::ATTACK_RANGED] = SDL_SCANCODE_LSHIFT;
+    // Shield toggle/hold
+    actionToKey[InputAction::SHIELD] = SDL_SCANCODE_SPACE;
     
     // Interaction keys
     actionToKey[InputAction::INTERACT] = SDL_SCANCODE_E;
