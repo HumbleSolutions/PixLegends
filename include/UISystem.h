@@ -87,9 +87,14 @@ public:
         bool changedMaster = false;
         bool changedMusic = false;
         bool changedSound = false;
+        bool changedMonster = false;
+        bool changedPlayer = false;
         int newMaster = 0;
         int newMusic = 0;
         int newSound = 0;
+        int newMonster = 0;
+        int newPlayer = 0;
+        int newThemeIndex = -1; // 0 = main, 1 = fast tempo
         int newTabIndex = -1; // -1 means unchanged
     };
 

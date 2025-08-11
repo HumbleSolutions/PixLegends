@@ -101,8 +101,13 @@ void Player::loadSprites() {
 }
 
 void Player::update(float deltaTime) {
-    // Handle input
-    handleInput(game->getInputManager());
+    // Handle input (disable combat when options menu is open)
+    if (!game->isOptionsOpen()) {
+        handleInput(game->getInputManager());
+    } else {
+        // Soft-reset movement/attacks while in menu
+        if (currentState == PlayerState::WALKING) setState(PlayerState::IDLE);
+    }
     
     // Update movement
     move(deltaTime);
@@ -519,6 +524,9 @@ void Player::interact() {
                         break;
                     case LootType::EXPERIENCE:
                         gainExperience(item.amount);
+                        if (game && game->getAudioManager()) {
+                            game->getAudioManager()->playSound("exp_gather");
+                        }
                         notification += std::to_string(item.amount) + " XP";
                         break;
                     case LootType::HEALTH_POTION:
@@ -746,10 +754,17 @@ void Player::startShield() {
     fireShieldTickTimer = 0.0f;
     fireShieldTimer = 0.0f;
     fireShieldFrame = 0;
+    if (game && game->getAudioManager()) {
+        game->getAudioManager()->startLoopingSound("fire_shield_loop");
+        game->getAudioManager()->startMusicDuck(0.2f, 0.8f);
+    }
 }
 
 void Player::stopShield() {
     shieldActive = false;
+    if (game && game->getAudioManager()) {
+        game->getAudioManager()->stopLoopingSound("fire_shield_loop");
+    }
 }
 
 void Player::gainExperience(int xp) {

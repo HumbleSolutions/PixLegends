@@ -52,7 +52,13 @@ void Game::initializeSystems() {
 
     // Initialize systems
     database = std::make_unique<Database>();
-    database->initialize("data");
+    // Use executable directory as base so saves are consistent regardless of working directory
+    std::string dataRootPath = "data";
+    if (const char* basePath = SDL_GetBasePath()) {
+        dataRootPath = std::string(basePath) + "data";
+        SDL_free((void*)basePath);
+    }
+    database->initialize(dataRootPath);
     // Preload remembered login if any
     {
         auto remember = database->loadRememberState();
@@ -90,10 +96,18 @@ void Game::initializeSystems() {
         audioManager->loadSound("player_projectile", "assets/Sound/Spells/fire_projectile.wav");
         audioManager->loadSound("potion_drink", "assets/Sound/Spells/potion_drink.wav");
         audioManager->loadSound("upgrade_sound", "assets/Sound/Spells/upgrade_sound.wav");
+        // EXP gather SFX
+        audioManager->loadSound("exp_gather", "assets/Sound/Effects/exp_gather_sound.wav");
+        // Fire shield looped SFX
+        audioManager->loadSound("fire_shield_loop", "assets/Sound/Spells/fire_sheild_sound.wav");
         // Try WAV first (works without SDL_mixer), then OGG (works when SDL_mixer is available)
         audioManager->loadMusic("main_theme", "assets/Sound/Music/main_theme.wav");
         audioManager->loadMusic("main_theme", "assets/Sound/Music/main_theme.ogg");
+        audioManager->loadMusic("fast_tempo", "assets/Sound/Music/fast_tempo_theme.wav");
         audioManager->loadMusic("boss_music", "assets/Sound/Music/boss_music.wav");
+        // Goblin SFX
+        audioManager->loadSound("goblin_melee", "assets/Sound/Melee/goblin_melee.wav");
+        audioManager->loadSound("goblin_death", "assets/Sound/Death/goblin_death_sound.wav");
     }
     
     // Create player after other systems are initialized
@@ -129,16 +143,35 @@ void Game::initializeSystems() {
 
     // Autotiling demo removed
 
-    // Spawn enemies: Demon and Wizard
+    // Spawn enemies: Demon and Wizard (elite), and a few Goblin minions (trash)
     if (world && assetManager) {
         // Demon near start
         float demonX = 26.0f * world->getTileSize();
         float demonY = 11.0f * world->getTileSize();
-        world->addEnemy(std::make_unique<Enemy>(demonX, demonY, assetManager.get(), EnemyKind::Demon));
+        {
+            auto e = std::make_unique<Enemy>(demonX, demonY, assetManager.get(), EnemyKind::Demon);
+            e->setPackRarity(PackRarity::Elite);
+            world->addEnemy(std::move(e));
+        }
         // Wizard nearby
         float wizX = 30.0f * world->getTileSize();
         float wizY = 14.0f * world->getTileSize();
-        world->addEnemy(std::make_unique<Enemy>(wizX, wizY, assetManager.get(), EnemyKind::Wizard));
+        {
+            auto e = std::make_unique<Enemy>(wizX, wizY, assetManager.get(), EnemyKind::Wizard);
+            e->setPackRarity(PackRarity::Elite);
+            world->addEnemy(std::move(e));
+        }
+
+        // Goblin minion pack (trash/grey): small cluster
+        const int ts = world->getTileSize();
+        for (int i = 0; i < 4; ++i) {
+            float gx = (20.0f + (i % 2) * 1.5f) * ts;
+            float gy = (16.0f + (i / 2) * 1.5f) * ts;
+            auto g = std::make_unique<Enemy>(gx, gy, assetManager.get(), EnemyKind::Goblin);
+            g->setPackRarity(PackRarity::Trash);
+            g->setRenderScale(0.75f); // smaller on-screen
+            world->addEnemy(std::move(g));
+        }
     }
     
     // Set initial visibility and generate initial visible chunks around player starting position
@@ -146,11 +179,11 @@ void Game::initializeSystems() {
         world->updateVisibility(player->getX(), player->getY());
         world->updateVisibleChunks(player->getX(), player->getY());
     }
-    // Start main theme at game start
-    // Start main theme at game start if available
-    if (audioManager && audioManager->hasMusic("main_theme")) {
-        audioManager->playMusic("main_theme");
-        currentMusicTrack = "main_theme";
+    // Start background theme at game start (user-selectable later)
+    backgroundMusicName = "main_theme";
+    if (audioManager && audioManager->hasMusic(backgroundMusicName)) {
+        audioManager->playMusic(backgroundMusicName);
+        currentMusicTrack = backgroundMusicName;
     } else {
         currentMusicTrack.clear();
     }
@@ -210,6 +243,163 @@ void Game::update(float deltaTime) {
     if (world) {
         bool playedPlayerMeleeSfx = false; // prevent boss melee SFX from overriding on the same frame
         world->update(deltaTime);
+
+        // Periodic goblin minion respawns near the player in waves; cap scales with player level
+        {
+            static float goblinSpawnTimer = 0.0f;
+            static int waveId = 0;
+            // Wave cadence
+            goblinSpawnTimer += deltaTime;
+            if (goblinSpawnTimer >= 8.0f) { // spawn cadence per wave tick
+                goblinSpawnTimer = 0.0f;
+                waveId++;
+
+                // Count alive goblins
+                int aliveGoblins = 0;
+                for (auto& e : world->getEnemies()) {
+                    if (e && std::string(e->getDisplayName()) == std::string("Goblin") && !e->isDead()) aliveGoblins++;
+                }
+
+                // Dynamic cap by player level
+                int level = player ? player->getLevel() : 1;
+                const int caps[10] = {5,8,11,14,17,20,23,26,28,30};
+                int maxGoblins = (level <= 0 ? 5 : (level >= 10 ? 30 : caps[level-1]));
+
+                // Prevent spawning while player is near the Magic Anvil
+                bool playerOnAnvil = false;
+                if (player) {
+                    int ts = world->getTileSize();
+                    int ptx = static_cast<int>(player->getX() / ts);
+                    int pty = static_cast<int>(player->getY() / ts);
+                    for (const auto& obj : world->getObjects()) {
+                        if (obj && obj->getType() == ObjectType::MAGIC_ANVIL) {
+                            int ax = obj->getX(); int ay = obj->getY();
+                            int dx = ptx - ax; int dy = pty - ay;
+                            if (dx*dx + dy*dy <= 3*3) { playerOnAnvil = true; break; }
+                        }
+                    }
+                }
+
+                if (!playerOnAnvil && aliveGoblins < maxGoblins) {
+                    // Wave size scales mildly with level and alternates per waveId
+                    int base = 2 + (level / 3); // grows slowly
+                    int variance = (waveId % 3); // 0..2
+                    int packSize = std::min(8, base + variance + static_cast<int>(SDL_GetTicks() % 3));
+                    int ts = world->getTileSize();
+                    // Spawn NEAR the player within a ring to make it noticeable
+                    int playerTileX = static_cast<int>(player->getX() / ts);
+                    int playerTileY = static_cast<int>(player->getY() / ts);
+                    int radiusTilesMin = 6;
+                    int radiusTilesMax = 14;
+                    int W = world->getWidth();
+                    int H = world->getHeight();
+                    for (int i = 0; i < packSize; ++i) {
+                        int tries = 0; bool placed = false;
+                        while (tries++ < 80 && !placed) {
+                            // Pick a random offset in an annulus around the player
+                            Uint32 rseed = SDL_GetTicks() + i * 1337 + tries * 31;
+                            int dx = static_cast<int>(static_cast<int>(rseed % (radiusTilesMax*2+1)) - radiusTilesMax);
+                            int dy = static_cast<int>(static_cast<int>((rseed/3) % (radiusTilesMax*2+1)) - radiusTilesMax);
+                            int dist2 = dx*dx + dy*dy;
+                            if (dist2 < radiusTilesMin*radiusTilesMin || dist2 > radiusTilesMax*radiusTilesMax) continue;
+                            int tx = std::max(0, std::min(W-1, playerTileX + dx));
+                            int ty = std::max(0, std::min(H-1, playerTileY + dy));
+                            if (!world->isSafeTile(tx, ty)) continue;
+                            // Avoid spawning within the anvil safe zone
+                            bool nearAnvil = false;
+                            for (const auto& obj : world->getObjects()) {
+                                if (obj && obj->getType() == ObjectType::MAGIC_ANVIL) {
+                                    int ax = obj->getX(); int ay = obj->getY();
+                                    int adx = tx - ax; int ady = ty - ay;
+                                    if (adx*adx + ady*ady <= 3*3) { nearAnvil = true; break; }
+                                }
+                            }
+                            if (nearAnvil) continue;
+                            float gx = tx * ts + ts * 0.5f;
+                            float gy = ty * ts + ts * 0.5f;
+                            auto g = std::make_unique<Enemy>(gx, gy, assetManager.get(), EnemyKind::Goblin);
+                            // Goblins are always trash mobs
+                            g->setPackRarity(PackRarity::Trash);
+                            g->setRenderScale(0.75f);
+                            world->addEnemy(std::move(g));
+                            placed = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        // EXP orb magnet and auto-pickup when walking over them
+        if (player) {
+            auto& objects = const_cast<std::vector<std::unique_ptr<Object>>&>(world->getObjects());
+            SDL_Rect playerRect = player->getCollisionRect();
+            const float playerCenterX = player->getX() + player->getWidth() * 0.5f;
+            const float playerCenterY = player->getY() + player->getHeight() * 0.5f;
+            const float activationRadius = 180.0f; // pixels
+            std::vector<std::pair<int,int>> pendingRemovals;
+
+            for (auto& objPtr : objects) {
+                if (!objPtr) continue;
+                Object* o = objPtr.get();
+                ObjectType t = o->getType();
+                if (t != ObjectType::EXP_ORB1 && t != ObjectType::EXP_ORB2 && t != ObjectType::EXP_ORB3) continue;
+
+                int ts = world->getTileSize();
+                o->setTileSizeHint(ts);
+                float ox = o->getPixelX();
+                float oy = o->getPixelY();
+                // Default to tile center if not initialized
+                if (ox <= 0.0f && oy <= 0.0f) {
+                    ox = o->getX() * ts + ts * 0.5f;
+                    oy = o->getY() * ts + ts * 0.5f;
+                    o->setPositionPixels(ox, oy);
+                }
+
+                float dx = playerCenterX - ox;
+                float dy = playerCenterY - oy;
+                float distSq = dx*dx + dy*dy;
+                // Respect 2s delay before beginning magnet
+                bool magnetActive = true;
+                Uint32 now = SDL_GetTicks();
+                float sinceSpawnSec = (now - o->getSpawnTicks()) / 1000.0f;
+                if (sinceSpawnSec < o->getMagnetDelaySeconds()) magnetActive = false;
+
+                if (magnetActive && distSq <= activationRadius * activationRadius) {
+                    float dist = std::max(1.0f, std::sqrt(distSq));
+                    float nx = dx / dist;
+                    float ny = dy / dist;
+                    // Speed increases as you get closer
+                    float base = 60.0f; // px/sec
+                    float bonus = 240.0f * (1.0f - std::min(1.0f, dist / activationRadius));
+                    float speed = base + bonus;
+                    ox += nx * speed * deltaTime;
+                    oy += ny * speed * deltaTime;
+                    o->setPositionPixels(ox, oy);
+                }
+
+                // Auto-pickup if touches player collision rect
+                SDL_Rect orbRect{ static_cast<int>(ox) - 6, static_cast<int>(oy) - 6, 12, 12 };
+                SDL_Rect inter;
+                if (SDL_IntersectRect(&playerRect, &orbRect, &inter)) {
+                    // Transfer XP loot
+                    if (o->hasLoot()) {
+                        auto loot = o->getLoot();
+                        for (const auto& item : loot) {
+                            if (item.type == LootType::EXPERIENCE) {
+                                player->gainExperience(item.amount);
+                                if (audioManager) audioManager->playSound("exp_gather");
+                            }
+                        }
+                    }
+                    o->setVisible(false);
+                    pendingRemovals.emplace_back(o->getX(), o->getY());
+                }
+            }
+
+            for (const auto& rc : pendingRemovals) {
+                world->removeObject(rc.first, rc.second);
+            }
+        }
         
         // Update chunks and visibility based on player position
         if (player) {
@@ -266,10 +456,25 @@ void Game::update(float deltaTime) {
                 SDL_Rect playerRect = player->getCollisionRect();
                 SDL_Rect inter;
                 if (SDL_IntersectRect(&playerRect, &eRect, &inter)) {
-                    if (enemyPtr->isAttackReady()) {
+                    // Only allow contact damage if enemy is fully overlapping the player center or has reached attack state
+                    bool deepOverlap = false;
+                    {
+                        int pcx = static_cast<int>(player->getX() + player->getWidth() * 0.5f);
+                        int pcy = static_cast<int>(player->getY() + player->getHeight() * 0.65f);
+                        if (pcx >= eRect.x && pcx <= eRect.x + eRect.w &&
+                            pcy >= eRect.y && pcy <= eRect.y + eRect.h) {
+                            deepOverlap = true;
+                        }
+                    }
+                    if ((enemyPtr->isAttackReady()) && deepOverlap) {
                         player->takeDamage(enemyPtr->getContactDamage());
                         if (audioManager && !playedPlayerMeleeSfx) { 
-                            audioManager->playSound("boss_melee");
+                            // Use goblin melee when minion; otherwise keep existing
+                            if (enemyPtr->getKind() == EnemyKind::Goblin) {
+                                audioManager->playSound("goblin_melee");
+                            } else {
+                                audioManager->playSound("boss_melee");
+                            }
                             audioManager->startMusicDuck(0.35f, 0.5f);
                         }
                         enemyPtr->consumeAttackCooldown();
@@ -293,7 +498,7 @@ void Game::update(float deltaTime) {
                 }
             }
 
-            // 2b) Loot drops from dead bosses (one-time)
+            // 2b) Loot drops and EXP orbs from dead enemies (one-time) + corpse despawn
             for (auto& enemyPtr : enemies) {
                 if (!enemyPtr) continue;
                 if (enemyPtr->isDead() && !enemyPtr->isLootDropped()) {
@@ -315,9 +520,62 @@ void Game::update(float deltaTime) {
                             else player->addElementScrolls("poison", 1);
                         }
                     }
+                    // EXP orbs by pack rarity
+                    if (world) {
+                        int ts = world->getTileSize();
+                        int tx = static_cast<int>(enemyPtr->getX()) / ts;
+                        int ty = static_cast<int>(enemyPtr->getY()) / ts;
+                        int xp = 0; const char* orbTex = nullptr; ObjectType orbType = ObjectType::EXP_ORB1;
+                        switch (enemyPtr->getPackRarity()) {
+                            case PackRarity::Trash: xp = 5;   orbTex = "assets/Textures/Objects/exp_orb1.png"; orbType = ObjectType::EXP_ORB1; break;
+                            case PackRarity::Common: xp = 5;   orbTex = "assets/Textures/Objects/exp_orb1.png"; orbType = ObjectType::EXP_ORB1; break;
+                            case PackRarity::Magic: xp = 50;  orbTex = "assets/Textures/Objects/exp_orb2.png"; orbType = ObjectType::EXP_ORB2; break;
+                            case PackRarity::Elite: xp = 250; orbTex = "assets/Textures/Objects/exp_orb3.png"; orbType = ObjectType::EXP_ORB3; break;
+                        }
+                        if (xp > 0 && orbTex) {
+                            auto orb = std::make_unique<Object>(orbType, tx, ty, orbTex);
+                            orb->setAssetManager(assetManager.get());
+                            orb->setTileSizeHint(ts);
+                            // Spawn with pixel precise position centered in tile
+                            orb->setPositionPixels(tx * ts + ts * 0.5f - 8.0f, ty * ts + ts * 0.5f - 8.0f);
+                            orb->setCollectible(true);
+                            // Delay magnet by 2 seconds
+                            orb->setSpawnTicks(SDL_GetTicks());
+                            orb->setMagnetDelaySeconds(2.0f);
+                            if (Texture* t = assetManager->getTexture(orbTex)) {
+                                orb->setTexture(t);
+                            }
+                            // Store XP in loot payload so pickup can grant it
+                            orb->addLoot(Loot(LootType::EXPERIENCE, xp, "exp_orb"));
+                            world->addObject(std::move(orb));
+                        }
+                    }
+
+                    // Rate-limit goblin death SFX so multiple goblins dying together don't spam
+                    if (audioManager && std::string(enemyPtr->getDisplayName()) == std::string("Goblin")) {
+                        static Uint32 lastGoblinDeathSoundTicks = 0;
+                        Uint32 nowTicks = SDL_GetTicks();
+                        const Uint32 cooldownMs = 200; // play at most once per 200ms
+                        if (nowTicks - lastGoblinDeathSoundTicks >= cooldownMs) {
+                            int prevSV = audioManager->getSoundVolume();
+                            audioManager->setSoundVolume(std::max(0, prevSV * 10 / 100));
+                            audioManager->playSound("goblin_death");
+                            audioManager->setSoundVolume(prevSV);
+                            lastGoblinDeathSoundTicks = nowTicks;
+                        }
+                    }
                     enemyPtr->markLootDropped();
                 }
+                // Despawn dead enemies after 60 seconds
+                if (enemyPtr->isDead()) {
+                    if (enemyPtr->isDespawnReady(SDL_GetTicks(), 60000)) {
+                        // Replace with nullptr; cleanup after loop
+                        enemyPtr.reset();
+                    }
+                }
             }
+            // Remove nulls
+            enemies.erase(std::remove_if(enemies.begin(), enemies.end(), [](const std::unique_ptr<Enemy>& e){ return !e; }), enemies.end());
         }
     }
 
@@ -512,11 +770,40 @@ void Game::render() {
                     }
                 }
                 player->respawn(player->getSpawnX(), player->getSpawnY());
+                // After respawn, enforce minion cap by player level to avoid sudden overpopulation
+                if (world && player) {
+                    int level = player->getLevel();
+                    const int caps[10] = {5,8,11,14,17,20,23,26,28,30};
+                    int maxGoblins = (level <= 0 ? 5 : (level >= 10 ? 30 : caps[level-1]));
+                    // Gather live goblin indices
+                    auto& enemies = world->getEnemies();
+                    int alive = 0;
+                    for (const auto& e : enemies) {
+                        if (e && std::string(e->getDisplayName()) == std::string("Goblin") && !e->isDead()) alive++;
+                    }
+                    if (alive > maxGoblins) {
+                        // Despawn extras starting from farthest from player
+                        struct GRef { size_t idx; float dist2; };
+                        std::vector<GRef> gobRefs; gobRefs.reserve(enemies.size());
+                        float pcx = player->getX(); float pcy = player->getY();
+                        for (size_t i = 0; i < enemies.size(); ++i) {
+                            auto& e = enemies[i];
+                            if (!e || std::string(e->getDisplayName()) != std::string("Goblin") || e->isDead()) continue;
+                            float dx = e->getX() - pcx; float dy = e->getY() - pcy; gobRefs.push_back({i, dx*dx + dy*dy});
+                        }
+                        std::sort(gobRefs.begin(), gobRefs.end(), [](const GRef& a, const GRef& b){ return a.dist2 > b.dist2; });
+                        int toRemove = alive - maxGoblins;
+                        for (int k = 0; k < toRemove && k < static_cast<int>(gobRefs.size()); ++k) {
+                            enemies[gobRefs[k].idx].reset();
+                        }
+                        enemies.erase(std::remove_if(enemies.begin(), enemies.end(), [](const std::unique_ptr<Enemy>& e){ return !e; }), enemies.end());
+                    }
+                }
                 deathPopupFade = 0.0f;
             }
         }
 
-        // Boss health bar while engaged (hide during modal anvil)
+        // Boss/Pack health bar while engaged (hide during modal anvil). Show for Magic and Elite only.
         if (world && player && !anvilOpen) {
             auto& enemies = world->getEnemies();
             // Prefer to show Demon bar if a Demon is engaged; otherwise show first engaged enemy
@@ -527,6 +814,8 @@ void Game::render() {
                 float pcx = player->getX() + player->getWidth() * 0.5f;
                 float pcy = player->getY() + player->getHeight() * 0.5f;
                 bool engaged = e->getIsAggroed() || e->isWithinAttackRange(pcx, pcy);
+                // Only Magic/Elite show top HP bar and gate boss music
+                if (engaged && !(e->getPackRarity() == PackRarity::Elite || e->getPackRarity() == PackRarity::Magic)) engaged = false;
                 if (!engaged) continue;
                 engagedEnemy = e.get();
                 if (std::string(engagedEnemy->getDisplayName()) == "Demon") break;
@@ -535,8 +824,8 @@ void Game::render() {
                     int outW = 0, outH = 0;
                     SDL_GetRendererOutputSize(sdlRenderer, &outW, &outH);
                 uiSystem->renderBossHealthBar(engagedEnemy->getDisplayName(), engagedEnemy->getHealth(), engagedEnemy->getMaxHealth(), (outW > 0 ? outW : WINDOW_WIDTH));
-                // Start boss music if available
-                if (audioManager && audioManager->hasMusic("boss_music") && currentMusicTrack != "boss_music") { 
+                // Start boss music if available (elites only)
+                if (engagedEnemy->getPackRarity() == PackRarity::Elite && audioManager && audioManager->hasMusic("boss_music") && currentMusicTrack != "boss_music") { 
                     audioManager->fadeToMusic("boss_music", 400, 300); 
                     currentMusicTrack = "boss_music"; 
                 }
@@ -565,11 +854,11 @@ void Game::render() {
                     }
                 } else {
                     // Not dead: handle disengage (no special hold)
-                    if (audioManager) {
-                        if (audioManager->hasMusic("main_theme")) {
-                            if (currentMusicTrack != "main_theme") {
-                                audioManager->fadeToMusic("main_theme", 500, 400);
-                                currentMusicTrack = "main_theme";
+                if (audioManager) {
+                        if (audioManager->hasMusic(backgroundMusicName)) {
+                            if (currentMusicTrack != backgroundMusicName) {
+                                audioManager->fadeToMusic(backgroundMusicName, 500, 400);
+                                currentMusicTrack = backgroundMusicName;
                             }
                         } else {
                             if (!currentMusicTrack.empty()) {
@@ -982,6 +1271,8 @@ void Game::renderOptionsMenuOverlay() {
     int master = audioManager ? audioManager->getMasterVolume() : 100;
     int music  = audioManager ? audioManager->getMusicVolume()  : 100;
     int sound  = audioManager ? audioManager->getSoundVolume()  : 100;
+    static int monsterVolCache = 100;
+    static int playerVolCache = 100;
     // Basic flags from window/renderer
     Uint32 winFlags = SDL_GetWindowFlags(window);
     bool fullscreen = (winFlags & SDL_WINDOW_FULLSCREEN) || (winFlags & SDL_WINDOW_FULLSCREEN_DESKTOP);
@@ -995,9 +1286,18 @@ void Game::renderOptionsMenuOverlay() {
         activeTab = static_cast<UISystem::OptionsTab>(hit.newTabIndex);
     }
     if (audioManager) {
-        if (hit.changedMaster) audioManager->setMasterVolume(hit.newMaster);
-        if (hit.changedMusic)  audioManager->setMusicVolume(hit.newMusic);
-        if (hit.changedSound)  audioManager->setSoundVolume(hit.newSound);
+        if (hit.changedMaster)  audioManager->setMasterVolume(hit.newMaster);
+        if (hit.changedMusic)   audioManager->setMusicVolume(hit.newMusic);
+        if (hit.changedSound)   audioManager->setSoundVolume(hit.newSound);
+        if (hit.changedMonster) { audioManager->setMonsterVolume(hit.newMonster); monsterVolCache = hit.newMonster; }
+        if (hit.changedPlayer)  { audioManager->setPlayerVolume(hit.newPlayer);  playerVolCache  = hit.newPlayer; }
+        if (hit.newThemeIndex == 0) {
+            backgroundMusicName = "main_theme";
+            if (audioManager->hasMusic(backgroundMusicName)) { audioManager->fadeToMusic(backgroundMusicName, 200, 200); currentMusicTrack = backgroundMusicName; }
+        } else if (hit.newThemeIndex == 1) {
+            backgroundMusicName = "fast_tempo";
+            if (audioManager->hasMusic(backgroundMusicName)) { audioManager->fadeToMusic(backgroundMusicName, 200, 200); currentMusicTrack = backgroundMusicName; }
+        }
     }
     if (hit.clickedReset) {
         // Reset world and player to initial state
@@ -1013,11 +1313,11 @@ void Game::renderOptionsMenuOverlay() {
             world->updateVisibility(player->getX(), player->getY());
             world->updateVisibleChunks(player->getX(), player->getY());
         }
-        // Also reset music to main theme
+        // Also reset music to selected background theme
         if (audioManager) {
-            if (audioManager->hasMusic("main_theme")) {
-                audioManager->fadeToMusic("main_theme", 400, 400);
-                currentMusicTrack = "main_theme";
+            if (audioManager->hasMusic(backgroundMusicName)) {
+                audioManager->fadeToMusic(backgroundMusicName, 400, 400);
+                currentMusicTrack = backgroundMusicName;
             }
         }
         optionsOpen = false;

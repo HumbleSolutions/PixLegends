@@ -15,6 +15,9 @@ public:
     
     // Audio playback
     void playSound(const std::string& soundName);
+    // Looped SFX (e.g., channeling spells). No-op fallback without SDL_mixer except for a single trigger.
+    void startLoopingSound(const std::string& soundName);
+    void stopLoopingSound(const std::string& soundName);
     void playMusic(const std::string& musicName);
     void stopMusic();
     void pauseMusic();
@@ -25,6 +28,12 @@ public:
     void setMasterVolume(int volume);
     void setMusicVolume(int volume);
     void setSoundVolume(int volume);
+    // Separate monster SFX volume (scales enemy-related sounds like goblin/death/melee)
+    void setMonsterVolume(int volume);
+    int getMonsterVolume() const { return monsterVolume; }
+    // Player melee SFX volume
+    void setPlayerVolume(int volume);
+    int getPlayerVolume() const { return playerVolume; }
 
     // Getters for UI
     int getMasterVolume() const { return masterVolume; }
@@ -50,6 +59,8 @@ private:
     int masterVolume;
     int musicVolume;
     int soundVolume;
+    int monsterVolume = 100; // additional scaler for enemy SFX
+    int playerVolume = 100; // player melee SFX scaler
     
     // Helper functions
     void initializeAudio();
@@ -74,6 +85,8 @@ private:
     int musicFadeOutMs = 0;
     int musicFadeInMs = 0;
     std::string musicFadeTarget;
+    // Track looped SFX channels by logical name
+    std::unordered_map<std::string, int> loopingChannelByName; // name -> channel index
 #endif
 
     // Ducking state (applies to both mixer and raw paths)

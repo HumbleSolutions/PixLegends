@@ -37,7 +37,11 @@ enum class ObjectType {
     WOOD_SIGN,
     BONFIRE,
     // Interactable upgrade station for equipment items
-    MAGIC_ANVIL
+    MAGIC_ANVIL,
+    // Experience orbs
+    EXP_ORB1,
+    EXP_ORB2,
+    EXP_ORB3
 };
 
 class Object {
@@ -48,6 +52,16 @@ public:
     // Core functions
     void update(float deltaTime);
     void render(SDL_Renderer* renderer, int cameraX, int cameraY, int tileSize, float zoom);
+    void setPositionPixels(float px, float py) { pixelX = px; pixelY = py; hasPixelPos = true; }
+    float getPixelX() const { return hasPixelPos ? pixelX : static_cast<float>(x *  tileSizeHint); }
+    float getPixelY() const { return hasPixelPos ? pixelY : static_cast<float>(y * tileSizeHint); }
+    void setTileSizeHint(int ts) { tileSizeHint = ts; }
+    bool isCollectible() const { return collectible; }
+    void setCollectible(bool c) { collectible = c; }
+    void setSpawnTicks(Uint32 t) { spawnTicksMs = t; }
+    Uint32 getSpawnTicks() const { return spawnTicksMs; }
+    void setMagnetDelaySeconds(float s) { magnetDelaySeconds = s; }
+    float getMagnetDelaySeconds() const { return magnetDelaySeconds; }
     
     // Getters
     int getX() const { return x; }
@@ -92,11 +106,19 @@ protected:
     Texture* texture;
     SpriteSheet* spriteSheet;  // For animated objects
     AssetManager* assetManager;  // Reference to asset manager for texture changes
+    // Optional pixel-precise placement for small orbs
+    bool hasPixelPos = false;
+    float pixelX = 0.0f;
+    float pixelY = 0.0f;
+    int tileSizeHint = 32;
     
     // Properties
     bool interactable;
     bool walkable;
     bool visible;
+    bool collectible = false; // auto-pickup on touch
+    Uint32 spawnTicksMs = 0;   // creation time (SDL ticks)
+    float magnetDelaySeconds = 0.0f; // delay before magnet can activate
     
     // Animation (for future use)
     float animationTime;

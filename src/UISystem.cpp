@@ -857,6 +857,7 @@ void UISystem::renderOptionsMenu(int selectedIndex,
                            int mouseX, int mouseY, bool mouseDown,
                            MenuHitResult& outResult) {
     if (!defaultFont) return;
+    static bool lastMouseDown = false; // edge-trigger for clicks
     int outW = 0, outH = 0;
     if (renderer) SDL_GetRendererOutputSize(renderer, &outW, &outH);
     if (outW <= 0) { outW = 1280; outH = 720; }
@@ -891,7 +892,7 @@ void UISystem::renderOptionsMenu(int selectedIndex,
         SDL_SetRenderDrawColor(renderer, 220,220,220,255);
         SDL_RenderDrawRect(renderer, &tr);
         renderTextCentered(tabNames[t], tr.x + tr.w/2, tr.y + tr.h/2, SDL_Color{255,255,255,255});
-        if (hovered && mouseDown && !active) outResult.newTabIndex = t;
+        if (hovered && mouseDown && !lastMouseDown && !active) outResult.newTabIndex = t;
     }
 
     const int startY = panel.y + 100;
@@ -913,7 +914,7 @@ void UISystem::renderOptionsMenu(int selectedIndex,
                 SDL_SetRenderDrawColor(renderer, 255,255,255,255);
                 SDL_RenderDrawRect(renderer, &action);
                 renderText("Resume", action.x + 12, action.y + 8, SDL_Color{255,255,255,255});
-                if (mouseDown && mouseX >= action.x && mouseX <= action.x + action.w && mouseY >= action.y && mouseY <= action.y + action.h) outResult.clickedResume = true;
+                if (mouseDown && !lastMouseDown && mouseX >= action.x && mouseX <= action.x + action.w && mouseY >= action.y && mouseY <= action.y + action.h) outResult.clickedResume = true;
             } else if (i == 1) {
                 renderText("Reset", rowRect.x + 10, rowRect.y + 12, SDL_Color{255,255,255,255});
                 SDL_SetRenderDrawColor(renderer, 200, 140, 60, 255);
@@ -921,7 +922,7 @@ void UISystem::renderOptionsMenu(int selectedIndex,
                 SDL_SetRenderDrawColor(renderer, 255,255,255,255);
                 SDL_RenderDrawRect(renderer, &action);
                 renderText("Reset", action.x + 12, action.y + 8, SDL_Color{255,255,255,255});
-                if (mouseDown && mouseX >= action.x && mouseX <= action.x + action.w && mouseY >= action.y && mouseY <= action.y + action.h) outResult.clickedReset = true;
+                if (mouseDown && !lastMouseDown && mouseX >= action.x && mouseX <= action.x + action.w && mouseY >= action.y && mouseY <= action.y + action.h) outResult.clickedReset = true;
             } else {
                 renderText("Logout", rowRect.x + 10, rowRect.y + 12, SDL_Color{255,255,255,255});
                 SDL_SetRenderDrawColor(renderer, 170, 70, 70, 255);
@@ -929,23 +930,26 @@ void UISystem::renderOptionsMenu(int selectedIndex,
                 SDL_SetRenderDrawColor(renderer, 255,255,255,255);
                 SDL_RenderDrawRect(renderer, &action);
                 renderText("Logout", action.x + 12, action.y + 8, SDL_Color{255,255,255,255});
-                if (mouseDown && mouseX >= action.x && mouseX <= action.x + action.w && mouseY >= action.y && mouseY <= action.y + action.h) outResult.clickedLogout = true;
+                if (mouseDown && !lastMouseDown && mouseX >= action.x && mouseX <= action.x + action.w && mouseY >= action.y && mouseY <= action.y + action.h) outResult.clickedLogout = true;
             }
         }
     } else if (activeTab == OptionsTab::Sound) {
-        // Sound: Master, Music, Sound sliders
-        for (int i = 0; i < 3; ++i) {
+        // Sound: Master, Music, Sound, Monster, Player sliders (with mute checkboxes)
+        const int sliders = 5;
+        for (int i = 0; i < sliders; ++i) {
             SDL_Rect rowRect{ panel.x + 30, startY + i * rowH, panelW - 60, rowH - 6 };
             bool selected = (mouseX >= rowRect.x && mouseX <= rowRect.x + rowRect.w && mouseY >= rowRect.y && mouseY <= rowRect.y + rowRect.h);
             SDL_SetRenderDrawColor(renderer, selected ? 70 : 50, selected ? 120 : 50, selected ? 180 : 70, 200);
             SDL_RenderFillRect(renderer, &rowRect);
             SDL_SetRenderDrawColor(renderer, 220,220,220,255);
             SDL_RenderDrawRect(renderer, &rowRect);
-            const char* labels[3] = { "Master Volume", "Music Volume", "Sound Volume" };
+            const char* labels[5] = { "Master Volume", "Music Volume", "Sound Volume", "Monster Volume", "Player Melee Volume" };
             renderText(labels[i], rowRect.x + 10, rowRect.y + 12);
             SDL_Rect valueArea{ rowRect.x + rowRect.w - 320, rowRect.y + 8, 300, rowRect.h - 16 };
             // Draw slider
-            int v = (i == 0 ? masterVolume : (i == 1 ? musicVolume : soundVolume));
+            static int monsterVolCache = 100; // temporary cache; Game will read and apply
+            static int playerVolCache = 100;
+            int v = (i == 0 ? masterVolume : (i == 1 ? musicVolume : (i == 2 ? soundVolume : (i == 3 ? monsterVolCache : playerVolCache))));
             v = std::max(0, std::min(100, v));
             SDL_SetRenderDrawColor(renderer, 60, 60, 60, 255);
             SDL_RenderFillRect(renderer, &valueArea);
@@ -964,8 +968,50 @@ void UISystem::renderOptionsMenu(int selectedIndex,
                 if (i == 0) { outResult.changedMaster = true; outResult.newMaster = newVal; }
                 if (i == 1) { outResult.changedMusic = true;  outResult.newMusic  = newVal; }
                 if (i == 2) { outResult.changedSound = true;  outResult.newSound  = newVal; }
+                if (i == 3) { outResult.changedMonster = true; outResult.newMonster = newVal; monsterVolCache = newVal; }
+                if (i == 4) { outResult.changedPlayer = true; outResult.newPlayer = newVal; playerVolCache = newVal; }
+            }
+            // Mute checkbox between label and slider
+            SDL_Rect chk{ rowRect.x + 180, rowRect.y + 10, 18, 18 };
+            SDL_SetRenderDrawColor(renderer, 240, 240, 240, 255); SDL_RenderDrawRect(renderer, &chk);
+            if (mouseDown && !lastMouseDown && mouseX >= chk.x && mouseX <= chk.x + chk.w && mouseY >= chk.y && mouseY <= chk.y + chk.h) {
+                if (i == 0) { outResult.changedMaster = true; outResult.newMaster = 0; }
+                if (i == 1) { outResult.changedMusic  = true; outResult.newMusic  = 0; }
+                if (i == 2) { outResult.changedSound  = true; outResult.newSound  = 0; }
+                if (i == 3) { outResult.changedMonster= true; outResult.newMonster= 0; monsterVolCache = 0; }
+                if (i == 4) { outResult.changedPlayer = true; outResult.newPlayer = 0; playerVolCache = 0; }
             }
         }
+        // Theme selection row as dropdown
+        SDL_Rect rowRect2{ panel.x + 30, startY + sliders * rowH, panelW - 60, rowH - 6 };
+        SDL_SetRenderDrawColor(renderer, 50, 80, 120, 200);
+        SDL_RenderFillRect(renderer, &rowRect2);
+        SDL_SetRenderDrawColor(renderer, 220, 220, 220, 255);
+        SDL_RenderDrawRect(renderer, &rowRect2);
+        renderText("Music Theme", rowRect2.x + 10, rowRect2.y + 12);
+        static bool themeOpen = false;
+        static int selectedThemeIndexUI = 0; // 0 Main, 1 Fast
+        SDL_Rect ddl{ rowRect2.x + rowRect2.w - 320, rowRect2.y + 8, 260, rowRect2.h - 16 };
+        SDL_SetRenderDrawColor(renderer, 60, 60, 100, 255); SDL_RenderFillRect(renderer, &ddl);
+        SDL_SetRenderDrawColor(renderer, 255,255,255,255); SDL_RenderDrawRect(renderer, &ddl);
+        renderText(selectedThemeIndexUI == 0 ? "Main" : "Fast", ddl.x + 10, ddl.y + 8);
+        if (mouseDown && !lastMouseDown && mouseX>=ddl.x && mouseX<=ddl.x+ddl.w && mouseY>=ddl.y && mouseY<=ddl.y+ddl.h) themeOpen = !themeOpen;
+        if (themeOpen) {
+            SDL_Rect opt1{ ddl.x, ddl.y + ddl.h + 4, ddl.w, ddl.h };
+            SDL_Rect opt2{ ddl.x, ddl.y + 2*ddl.h + 6, ddl.w, ddl.h };
+            SDL_SetRenderDrawColor(renderer, 70,120,170,255); SDL_RenderFillRect(renderer, &opt1);
+            SDL_SetRenderDrawColor(renderer, 255,255,255,255); SDL_RenderDrawRect(renderer, &opt1);
+            renderText("Main", opt1.x + 10, opt1.y + 8);
+            SDL_SetRenderDrawColor(renderer, 70,120,170,255); SDL_RenderFillRect(renderer, &opt2);
+            SDL_SetRenderDrawColor(renderer, 255,255,255,255); SDL_RenderDrawRect(renderer, &opt2);
+            renderText("Fast", opt2.x + 10, opt2.y + 8);
+            if (mouseDown && !lastMouseDown) {
+                if (mouseX>=opt1.x && mouseX<=opt1.x+opt1.w && mouseY>=opt1.y && mouseY<=opt1.y+opt1.h) { outResult.newThemeIndex = 0; selectedThemeIndexUI = 0; themeOpen = false; }
+                if (mouseX>=opt2.x && mouseX<=opt2.x+opt2.w && mouseY>=opt2.y && mouseY<=opt2.y+opt2.h) { outResult.newThemeIndex = 1; selectedThemeIndexUI = 1; themeOpen = false; }
+            }
+        }
+        // Update global mouse edge state at end of function
+        lastMouseDown = mouseDown;
     } else if (activeTab == OptionsTab::Video) {
         // Video: Fullscreen and VSync toggles
         const int rows = 2;

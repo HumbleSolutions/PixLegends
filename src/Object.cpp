@@ -56,6 +56,12 @@ Object::Object(ObjectType type, int xPos, int yPos, const std::string& texturePa
             totalFrames = 39;
             frameDuration = 0.08f;
             break;
+        case ObjectType::EXP_ORB1:
+        case ObjectType::EXP_ORB2:
+        case ObjectType::EXP_ORB3:
+            interactable = false;
+            walkable = true;
+            break;
     }
 }
 
@@ -95,8 +101,13 @@ void Object::render(SDL_Renderer* renderer, int cameraX, int cameraY, int tileSi
         float sy = (static_cast<float>(wy - cameraY)) * zoom;
         return SDL_Point{ static_cast<int>(std::floor(sx)), static_cast<int>(std::floor(sy)) };
     };
-    SDL_Point tl = scaledEdge(x * tileSize, y * tileSize);
-    SDL_Point br = scaledEdge(x * tileSize + tileSize, y * tileSize + tileSize);
+    // Allow pixel-precise position for small orbs
+    int worldLeft   = hasPixelPos ? static_cast<int>(pixelX) : x * tileSize;
+    int worldTop    = hasPixelPos ? static_cast<int>(pixelY) : y * tileSize;
+    int worldRight  = worldLeft + tileSize;
+    int worldBottom = worldTop  + tileSize;
+    SDL_Point tl = scaledEdge(worldLeft, worldTop);
+    SDL_Point br = scaledEdge(worldRight, worldBottom);
     int screenX = tl.x;
     int screenY = tl.y;
     
@@ -140,6 +151,15 @@ void Object::render(SDL_Renderer* renderer, int cameraX, int cameraY, int tileSi
             } else {
                 // Scale to cell via edges for grid alignment
                 dstRect = { screenX, screenY, std::max(1, br.x - tl.x), std::max(1, br.y - tl.y) };
+                // Make EXP orbs render even smaller (~1/10 tile)
+                if (type == ObjectType::EXP_ORB1 || type == ObjectType::EXP_ORB2 || type == ObjectType::EXP_ORB3) {
+                    int ow = std::max(2, dstRect.w / 10);
+                    int oh = std::max(2, dstRect.h / 10);
+                    dstRect.x += (dstRect.w - ow) / 2;
+                    dstRect.y += (dstRect.h - oh) / 2;
+                    dstRect.w = std::max(2, ow);
+                    dstRect.h = std::max(2, oh);
+                }
             }
         } else {
             // Regular textures sized to cell
@@ -292,6 +312,10 @@ std::string Object::getInteractionPrompt() const {
             return "Press E to warm up";
         case ObjectType::MAGIC_ANVIL:
             return "Press E to use The Magic Anvil";
+        case ObjectType::EXP_ORB1:
+        case ObjectType::EXP_ORB2:
+        case ObjectType::EXP_ORB3:
+            return ""; // Orbs are auto-picked; no prompt
         default:
             return "Press E to interact";
     }

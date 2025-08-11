@@ -355,6 +355,20 @@ void AssetManager::preloadAssets() {
     loadSpriteSheet(WIZARD_PATH + "HURT_RIGHT.png", 128, 78, 4, 4);
     loadSpriteSheet(WIZARD_PATH + "DEATH.png", 128, 78, 6, 6);
 
+    // Load goblin minion sprites (optional preload; they will auto-load on demand too)
+    std::cout << "Loading goblin sprites (minion)..." << std::endl;
+    const std::string GOBLIN_BASE = "assets/Goblin 2D Pixel Art v1.1/Sprites/without_outline/";
+    // Each sheet has fixed layout per your assets: attack 6, hurt 3, idle 3, death 10, run 6
+    loadSpriteSheet(GOBLIN_BASE + "LEFT_IDLE.png",   115, 78, 3, 3);
+    loadSpriteSheet(GOBLIN_BASE + "RIGHT_IDLE.png",  115, 78, 3, 3);
+    loadSpriteSheet(GOBLIN_BASE + "LEFT_RUN.png",    115, 78, 6, 6);
+    loadSpriteSheet(GOBLIN_BASE + "RIGHT_RUN.png",   115, 78, 6, 6);
+    loadSpriteSheet(GOBLIN_BASE + "LEFT_ATTACK1.png",115, 78, 6, 6);
+    loadSpriteSheet(GOBLIN_BASE + "RIGHT_ATTACK1.png",115, 78, 6, 6);
+    loadSpriteSheet(GOBLIN_BASE + "LEFT_HURT.png",   115, 78, 3, 3);
+    loadSpriteSheet(GOBLIN_BASE + "RIGHT_HURT.png",  115, 78, 3, 3);
+    loadSpriteSheet(GOBLIN_BASE + "LEFT_DEATH.png",  115, 78, 10, 10);
+
     // Load new main character 8-frame directional sheets
     // Files exist under assets/Main Character/{IDLE,RUN,ATTACK 1,ATTACK 2}/{idle_*.png, run_*.png, attack*.png}
     std::cout << "Loading main character sprites (player)..." << std::endl;
@@ -416,6 +430,10 @@ void AssetManager::preloadAssets() {
     loadTexture(OBJECTS_PATH + "wood_crate.png");
     loadTexture(OBJECTS_PATH + "steel_crate.png");
     loadTexture(OBJECTS_PATH + "wood_sign.png");
+    // Experience orbs
+    loadTexture(OBJECTS_PATH + "exp_orb1.png");
+    loadTexture(OBJECTS_PATH + "exp_orb2.png");
+    loadTexture(OBJECTS_PATH + "exp_orb3.png");
     // Load potion icons/sprite sheets for HUD
     // 8-frame sprite sheets for when potions have charges
     loadSpriteSheetAuto("assets/Textures/All Potions/HP potions/full_hp_potion.png", 8, 8);

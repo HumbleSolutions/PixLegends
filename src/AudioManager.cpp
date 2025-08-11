@@ -112,6 +112,15 @@ void AudioManager::playSound(const std::string& soundName) {
         auto itc = chunks.find(soundName);
         if (itc != chunks.end() && itc->second) {
             float extraScale = 1.0f;
+            // Category scaling: monster SFX
+            if (soundName == "goblin_death" || soundName == "goblin_melee" || soundName == "boss_melee") {
+                extraScale *= (monsterVolume / 100.0f);
+                if (soundName == "goblin_death") extraScale *= 0.1f; // base quietness
+            }
+            // Player melee scaling
+            if (soundName == "player_melee_1" || soundName == "player_melee_2") {
+                extraScale *= (playerVolume / 100.0f);
+            }
             if (soundName == "footstep_dirt") extraScale = 0.5f; // 50% quieter footsteps
             int vol = static_cast<int>(MIX_MAX_VOLUME * (soundVolume / 100.0f) * (masterVolume / 100.0f) * extraScale);
             Mix_Chunk* base = reinterpret_cast<Mix_Chunk*>(itc->second);
@@ -166,6 +175,51 @@ void AudioManager::playSound(const std::string& soundName) {
         }
         SDL_PauseAudioDevice(audioDevice, 0); // ensure playback is unpaused
     }
+}
+
+void AudioManager::startLoopingSound(const std::string& soundName) {
+#ifdef USE_SDL_MIXER
+    if (mixerInitialized) {
+        // If already looping, ensure channel is still valid
+        auto itExisting = loopingChannelByName.find(soundName);
+        if (itExisting != loopingChannelByName.end()) {
+            int ch = itExisting->second;
+            if (Mix_Playing(ch)) {
+                return; // already looping
+            } else {
+                loopingChannelByName.erase(itExisting);
+            }
+        }
+        auto itc = chunks.find(soundName);
+        if (itc == chunks.end() || !itc->second) return;
+        float extraScale = 1.0f;
+        int vol = static_cast<int>(MIX_MAX_VOLUME * (soundVolume / 100.0f) * (masterVolume / 100.0f) * extraScale);
+        Mix_Chunk* chnk = reinterpret_cast<Mix_Chunk*>(itc->second);
+        int channel = Mix_PlayChannel(-1, chnk, -1 /* loop forever */);
+        if (channel != -1) {
+            Mix_Volume(channel, std::max(0, std::min(MIX_MAX_VOLUME, vol)));
+            loopingChannelByName[soundName] = channel;
+        }
+        return;
+    }
+#endif
+    // Fallback without mixer: trigger once (no true loop available)
+    playSound(soundName);
+}
+
+void AudioManager::stopLoopingSound(const std::string& soundName) {
+#ifdef USE_SDL_MIXER
+    if (mixerInitialized) {
+        auto it = loopingChannelByName.find(soundName);
+        if (it != loopingChannelByName.end()) {
+            int ch = it->second;
+            Mix_HaltChannel(ch);
+            loopingChannelByName.erase(it);
+        }
+        return;
+    }
+#endif
+    // Raw SDL fallback: nothing to stop
 }
 
 void AudioManager::playMusic(const std::string& musicName) {
@@ -281,6 +335,15 @@ void AudioManager::setMusicVolume(int volume) {
 void AudioManager::setSoundVolume(int volume) {
     soundVolume = std::max(0, std::min(100, volume));
     applyMixerVolumes();
+}
+
+void AudioManager::setMonsterVolume(int volume) {
+    monsterVolume = std::max(0, std::min(100, volume));
+}
+
+// Added player melee SFX volume setter
+void AudioManager::setPlayerVolume(int volume) {
+    playerVolume = std::max(0, std::min(100, volume));
 }
 void AudioManager::applyMixerVolumes() {
 #ifdef USE_SDL_MIXER

@@ -39,6 +39,7 @@ public:
     UISystem* getUISystem() const { return uiSystem.get(); }
     AudioManager* getAudioManager() const { return audioManager.get(); }
     Database* getDatabase() const { return database.get(); }
+    bool isOptionsOpen() const { return optionsOpen; }
 
     // Magic Anvil UI state
     bool isAnvilOpen() const { return anvilOpen; }
@@ -110,6 +111,7 @@ private:
     int loggedInUserId = -1;
     int optionsSelectedIndex = 0; // 0..5
     std::string currentMusicTrack;
+    std::string backgroundMusicName = "main_theme"; // user-selected background theme
     // Boss music post-death handling
     bool bossWasDead = false;
     float bossMusicHoldTimerSec = 0.0f;

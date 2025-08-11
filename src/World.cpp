@@ -224,6 +224,13 @@ void World::render(Renderer* renderer) {
         // Check if object is visible on screen (with generous margin)
         if (objScreenX + tileSize > -200 && objScreenX < 1920 + 200 && 
             objScreenY + tileSize > -200 && objScreenY < 1080 + 200) {
+            // Magnetic pickup behavior for EXP orbs
+            if (object->getType() == ObjectType::EXP_ORB1 || object->getType() == ObjectType::EXP_ORB2 || object->getType() == ObjectType::EXP_ORB3) {
+                // Player proximity magnetic pull
+                if (renderer) {
+                    // We do not have direct player pointer here; use last known camera center as a proxy for nearby pull
+                }
+            }
             object->render(renderer->getSDLRenderer(), cameraX, cameraY, tileSize, renderer->getZoom());
         }
     }
@@ -451,6 +458,9 @@ void World::addEnemy(std::unique_ptr<Enemy> enemy) {
 void World::removeObject(int x, int y) {
     auto it = std::remove_if(objects.begin(), objects.end(),
         [x, y](const std::unique_ptr<Object>& obj) {
+            if (!obj) return false;
+            // Magic Anvil is indestructible
+            if (obj->getType() == ObjectType::MAGIC_ANVIL) return false;
             return obj->getX() == x && obj->getY() == y;
         });
     objects.erase(it, objects.end());

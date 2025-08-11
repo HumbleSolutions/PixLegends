@@ -26,7 +26,15 @@ enum class EnemyDirection {
 
 enum class EnemyKind {
     Demon,
-    Wizard
+    Wizard,
+    Goblin
+};
+
+enum class PackRarity {
+    Trash,   // grey
+    Common,  // white
+    Magic,   // blue
+    Elite    // gold
 };
 
 class Enemy {
@@ -55,10 +63,27 @@ public:
     void consumeAttackCooldown() { attackCooldownTimer = attackCooldownSeconds; }
     int getContactDamage() const { return contactDamage; }
     bool getIsAggroed() const { return isAggroed; }
-    const char* getDisplayName() const { return (kind == EnemyKind::Demon ? "Demon" : "Wizard"); }
+    const char* getDisplayName() const {
+        switch (kind) {
+            case EnemyKind::Demon: return "Demon";
+            case EnemyKind::Wizard: return "Wizard";
+            case EnemyKind::Goblin: return "Goblin";
+        }
+        return "Enemy";
+    }
+    PackRarity getPackRarity() const { return packRarity; }
+    void setPackRarity(PackRarity r) { packRarity = r; }
+    float getRenderScale() const { return renderScale; }
+    void setRenderScale(float s) { renderScale = s; }
+    EnemyKind getKind() const { return kind; }
     // Loot drop bookkeeping
     bool isLootDropped() const { return lootDropped; }
     void markLootDropped() { lootDropped = true; }
+    // Despawn timing
+    Uint32 getDeathTicksMs() const { return deathTicksMs; }
+    bool isDespawnReady(Uint32 nowTicks, Uint32 ttlMs = 60000) const {
+        return currentState == EnemyState::DEAD && deathTicksMs > 0 && (nowTicks - deathTicksMs) >= ttlMs;
+    }
 
     // Expose basic dimension for simple collision if needed
     int getRawWidth() const { return width; }
@@ -127,6 +152,8 @@ private:
 
     // Type/behavior
     EnemyKind kind;
+    PackRarity packRarity = PackRarity::Common;
+    float renderScale = 2.0f;
     // Ranged attack (wizard)
     float rangedCooldownSeconds = 1.2f;
     float rangedCooldownTimer = 0.0f;
@@ -134,6 +161,7 @@ private:
     std::vector<std::unique_ptr<Projectile>> projectiles;
 
     bool lootDropped = false;
+    Uint32 deathTicksMs = 0; // time of death for corpse despawn
 };
 
 
