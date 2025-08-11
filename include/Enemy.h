@@ -56,6 +56,9 @@ public:
     int getContactDamage() const { return contactDamage; }
     bool getIsAggroed() const { return isAggroed; }
     const char* getDisplayName() const { return (kind == EnemyKind::Demon ? "Demon" : "Wizard"); }
+    // Loot drop bookkeeping
+    bool isLootDropped() const { return lootDropped; }
+    void markLootDropped() { lootDropped = true; }
 
     // Expose basic dimension for simple collision if needed
     int getRawWidth() const { return width; }
@@ -129,6 +132,8 @@ private:
     float rangedCooldownTimer = 0.0f;
     float rangedRange = 600.0f;
     std::vector<std::unique_ptr<Projectile>> projectiles;
+
+    bool lootDropped = false;
 };
 
 

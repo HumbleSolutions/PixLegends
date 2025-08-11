@@ -12,6 +12,7 @@
 #include "AutotileDemo.h"
 #include "Database.h"
 #include <iostream>
+#include <random>
 
 Game::Game() : window(nullptr), sdlRenderer(nullptr), isRunning(false), isPaused(false), 
                lastFrameTime(0), accumulator(0.0f), frameTime(0), currentFPS(0.0f), averageFPS(0.0f) {
@@ -89,6 +90,7 @@ void Game::initializeSystems() {
         audioManager->loadSound("boss_melee", "assets/Sound/Melee/demon_melee.wav");
         audioManager->loadSound("player_projectile", "assets/Sound/Spells/fire_projectile.wav");
         audioManager->loadSound("potion_drink", "assets/Sound/Spells/potion_drink.wav");
+        audioManager->loadSound("upgrade_sound", "assets/Sound/Spells/upgrade_sound.wav");
         // Try WAV first (works without SDL_mixer), then OGG (works when SDL_mixer is available)
         audioManager->loadMusic("main_theme", "assets/Sound/Music/main_theme.wav");
         audioManager->loadMusic("main_theme", "assets/Sound/Music/main_theme.ogg");
@@ -202,9 +204,9 @@ void Game::update(float deltaTime) {
         if (uiSystem) uiSystem->update(deltaTime);
         return;
     }
-    // Update player
+    // Update player (keep world running while inventory/anvil are open; optionally lock movement when anvil only)
     if (player) {
-        player->update(deltaTime);
+        if (!anvilOpen) player->update(deltaTime);
     }
     
     // Update world
@@ -290,6 +292,32 @@ void Game::update(float deltaTime) {
                         player->takeDamage(12);
                         const_cast<Projectile*>(proj.get())->deactivate();
                     }
+                }
+            }
+
+            // 2b) Loot drops from dead bosses (one-time)
+            for (auto& enemyPtr : enemies) {
+                if (!enemyPtr) continue;
+                if (enemyPtr->isDead() && !enemyPtr->isLootDropped()) {
+                    // Basic drop table: Demon guaranteed Blessed upgrade scroll + random element; Wizard chance element only
+                    if (std::string(enemyPtr->getDisplayName()) == "Demon") {
+                        player->addUpgradeScrolls(1);
+                        // 50% chance one of fire/water/poison
+                        int r = SDL_GetTicks() % 3; // simple deterministic random-ish
+                        if (r == 0) player->addElementScrolls("fire", 1);
+                        else if (r == 1) player->addElementScrolls("water", 1);
+                        else player->addElementScrolls("poison", 1);
+                    } else if (std::string(enemyPtr->getDisplayName()) == "Wizard") {
+                        // 40% chance of one random element
+                        int t = SDL_GetTicks() % 10;
+                        if (t < 4) {
+                            int r = t % 3;
+                            if (r == 0) player->addElementScrolls("fire", 1);
+                            else if (r == 1) player->addElementScrolls("water", 1);
+                            else player->addElementScrolls("poison", 1);
+                        }
+                    }
+                    enemyPtr->markLootDropped();
                 }
             }
         }
@@ -405,6 +433,7 @@ void Game::render() {
     if (demoMode) {
         autotileDemo->render(renderer.get());
     } else if (world) {
+        // Keep rendering the world even while the anvil UI is open so the background remains visible
         world->render(renderer.get());
     }
     
@@ -469,7 +498,7 @@ void Game::render() {
         // Render FPS counter
         uiSystem->renderFPSCounter(currentFPS, averageFPS, frameTime);
         
-        // Render death popup with respawn button if dead
+        // Render death popup with respawn button if dead (still allow on top of world)
         if (player && player->isDead()) {
             // Wait for death animation to finish, then fade in popup
             static float deathPopupFade = 0.0f;
@@ -493,8 +522,8 @@ void Game::render() {
             }
         }
 
-        // Boss health bar while engaged
-        if (world && player) {
+        // Boss health bar while engaged (hide during modal anvil)
+        if (world && player && !anvilOpen) {
             auto& enemies = world->getEnemies();
             // Prefer to show Demon bar if a Demon is engaged; otherwise show first engaged enemy
             Enemy* engagedEnemy = nullptr;
@@ -560,7 +589,7 @@ void Game::render() {
         }
 
         // Debug draw melee, enemy, and player hitboxes (F3 toggle)
-        if (getDebugHitboxes() && player) {
+        if (getDebugHitboxes() && player && !anvilOpen) {
             SDL_SetRenderDrawBlendMode(sdlRenderer, SDL_BLENDMODE_BLEND);
             int camX = 0, camY = 0; renderer->getCamera(camX, camY);
             float z = renderer->getZoom();
@@ -603,8 +632,8 @@ void Game::render() {
             SDL_RenderDrawRect(sdlRenderer, &pr);
         }
         
-        // Render interaction prompt if player is near an interactable object
-        if (player) {
+        // Render interaction prompt
+        if (player && !anvilOpen) {
             std::string interactionPrompt = player->getCurrentInteractionPrompt();
             if (!interactionPrompt.empty()) {
                 // Render the prompt at the center of the screen, slightly above the bottom
@@ -629,6 +658,137 @@ void Game::render() {
                     player->clearLootNotification();
                     notificationTimer = 0;
                 }
+            }
+        }
+    }
+    // Inventory overlay (two bags) – does not pause the world. Process input first
+    if (inventoryOpen && uiSystem) {
+        int outW=0,outH=0; SDL_GetRendererOutputSize(sdlRenderer,&outW,&outH); if (outW<=0){outW=WINDOW_WIDTH;outH=WINDOW_HEIGHT;}
+        int mx=0,my=0; SDL_GetMouseState(&mx,&my); Uint32 ms = SDL_GetMouseState(nullptr,nullptr); bool md = (ms & SDL_BUTTON(SDL_BUTTON_LEFT))!=0; bool rd = (ms & SDL_BUTTON(SDL_BUTTON_RIGHT))!=0;
+        UISystem::InventoryHit ih;
+        uiSystem->renderInventory(player.get(), outW, outH, mx, my, md, rd, ih);
+        // Robust drag from inventory to anvil: remember drag while mouse is held down and feed payload to anvil all frames
+        if (ih.startedDrag && !ih.dragPayload.empty()) { draggingFromInventory = true; draggingPayload = ih.dragPayload; }
+        if (!md) { draggingFromInventory = false; draggingPayload.clear(); }
+        // Right-click quick-use: stage exactly one scroll in the anvil scroll slot (do not auto-apply)
+        if (anvilOpen && ih.rightClicked && !ih.rightClickedPayload.empty()) {
+            // Consume exactly one and place into anvil staged slot
+            bool consumed = false;
+            if (ih.rightClickedPayload == "upgrade_scroll") { consumed = player->consumeUpgradeScroll(); }
+            else { consumed = player->consumeElementScroll(ih.rightClickedPayload); }
+            if (consumed) { anvilStagedScrollKey = ih.rightClickedPayload; }
+        }
+    }
+
+    // Magic Anvil overlay after processing inventory so dragging payload is known
+    if (anvilOpen && uiSystem && player) {
+        int outW=0,outH=0; SDL_GetRendererOutputSize(sdlRenderer,&outW,&outH); if (outW<=0){outW=WINDOW_WIDTH;outH=WINDOW_HEIGHT;}
+        int mx=0,my=0; SDL_GetMouseState(&mx,&my);
+        Uint32 ms = SDL_GetMouseState(nullptr,nullptr);
+        bool mouseDown = (ms & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
+        UISystem::AnvilHit hit;
+        static std::string currentScrollPreview;
+        // Provide external payload while dragging from inventory (enables drop detection on release)
+        std::string external = (draggingFromInventory ? draggingPayload : std::string());
+        uiSystem->renderMagicAnvil(player.get(), outW, outH, mx, my, mouseDown, hit, external, anvilSelectedSlot, anvilStagedScrollKey);
+        if (hit.clickedSlot>=0) anvilSelectedSlot = hit.clickedSlot;
+        // Apply via button or drag-drop
+        static float upgradeFlashTimer = 0.0f; static bool lastUpgradeSuccess = false;
+        auto chanceForNext = [](int currentPlus) -> float {
+            static const float table[31] = {
+                0.0f, 100.0f, 95.0f, 90.0f, 80.0f, 75.0f, 70.0f, 65.0f, 55.0f, 50.0f,
+                45.0f, 40.0f, 35.0f, 30.0f, 28.0f, 25.0f, 20.0f, 18.0f, 15.0f, 13.0f,
+                12.0f, 10.0f, 8.0f, 7.0f, 6.0f, 5.0f, 4.5f, 4.0f, 3.5f, 3.0f, 2.5f
+            }; // index is next level; we pass current+1 later
+            int next = currentPlus + 1; if (next < 1) next = 1; if (next > 30) next = 30; return table[next];
+        };
+        static std::mt19937 rng(static_cast<unsigned int>(SDL_GetTicks()));
+        // Clicking upgrade button applies staged scroll (upgrade or element)
+        if (hit.clickedSideUpgrade && !anvilStagedScrollKey.empty()) {
+            anvilUpgradeAnimT = 0.0001f; // start sweep
+            if (anvilStagedScrollKey == "upgrade_scroll") {
+                const auto& eq = player->getEquipment(static_cast<Player::EquipmentSlot>(anvilSelectedSlot));
+                if (eq.plusLevel < 30) {
+                    std::uniform_real_distribution<float> dist(0.0f, 100.0f);
+                    float roll = dist(rng);
+                    float chance = chanceForNext(eq.plusLevel);
+                    if (roll <= chance) {
+                        player->upgradeEquipment(static_cast<Player::EquipmentSlot>(anvilSelectedSlot), 1);
+                        lastUpgradeSuccess = true;
+                    } else {
+                        lastUpgradeSuccess = false;
+                    }
+                    anvilLastSuccess = lastUpgradeSuccess;
+                    // Do NOT reveal immediately; start suspense sweep and reveal after it completes
+                    anvilStagedScrollKey.clear();
+                    Object::setMagicAnvilPulse(3.2f);
+                    if (audioManager) audioManager->playSound("upgrade_sound");
+                } else { lastUpgradeSuccess = false; upgradeFlashTimer = 0.8f; }
+            } else {
+                player->enchantEquipment(static_cast<Player::EquipmentSlot>(anvilSelectedSlot), anvilStagedScrollKey, 1);
+                lastUpgradeSuccess = true; anvilLastSuccess = true; anvilStagedScrollKey.clear();
+                Object::setMagicAnvilPulse(3.2f);
+                if (audioManager) audioManager->playSound("upgrade_sound");
+            }
+        }
+        // Dropping an element scroll into scroll slot stages it; clicking upgrade applies if element staged
+        if (hit.droppedScroll) {
+            anvilStagedScrollKey = hit.droppedScrollKey;
+        }
+        if (!hit.clickedElement.empty()) {
+            std::string elem = hit.clickedElement;
+            if (!anvilStagedScrollKey.empty() && anvilStagedScrollKey != elem) {
+                lastUpgradeSuccess = false; upgradeFlashTimer = 0.8f;
+            } else {
+                player->enchantEquipment(static_cast<Player::EquipmentSlot>(anvilSelectedSlot), elem, 1);
+                lastUpgradeSuccess = true; upgradeFlashTimer = 0.8f; anvilStagedScrollKey.clear();
+                Object::setMagicAnvilPulse(3.2f);
+            }
+        }
+        if (hit.droppedScroll) { currentScrollPreview = hit.droppedScrollKey; }
+        else if (!mouseDown) { currentScrollPreview = anvilStagedScrollKey; }
+        // Close via Escape handled in event loop; remove close button logic
+    }
+
+    // Upgrade success/fail flash overlay near anvil side panel, if any
+    static float upgradeFlashTimer = 0.0f; static bool lastUpgradeSuccess = false; // references above
+        if (anvilOpen && assetManager) {
+        // Sweep loading bar inside indicator: alternate succeed/failed image while sweeping
+        if (anvilUpgradeAnimT > 0.0f) {
+            anvilUpgradeAnimT = std::min(1.0f, anvilUpgradeAnimT + 2.0f * TARGET_FRAME_TIME); // ~0.5s sweep
+            Texture* panel = assetManager->getTexture("assets/Textures/UI/Item_inv.png");
+            int outW=0,outH=0; SDL_GetRendererOutputSize(sdlRenderer,&outW,&outH); if (outW<=0){outW=WINDOW_WIDTH;outH=WINDOW_HEIGHT;}
+            int pw = panel ? panel->getWidth() : 300; int ph = panel ? panel->getHeight() : 300;
+            int desiredX = outW / 2 + 260; int margin = 20; if (desiredX + pw > outW - margin) desiredX = std::max(margin, outW - pw - margin);
+            SDL_Rect panelDst{ desiredX, (outH - ph) / 2, pw, ph };
+            int sideX = panelDst.x + pw + 16; int sideY = panelDst.y + 8; int slotSize = 48; int sideBtnW = slotSize*2 + 16;
+            SDL_Rect indicatorDst{ sideX + 8, sideY + slotSize + 4, sideBtnW - 16, 22 };
+            // Alternate texture as it fills
+            bool alt = (static_cast<int>(anvilUpgradeAnimT * 10.0f) % 2) == 0;
+            Texture* tAlt = assetManager->getTexture(alt ? "assets/Textures/UI/upgrade_succeed.png" : "assets/Textures/UI/upgrade_failed.png");
+            if (tAlt) {
+                SDL_Rect src{0,0, static_cast<int>(tAlt->getWidth()*anvilUpgradeAnimT), tAlt->getHeight()};
+                SDL_Rect dst{ indicatorDst.x, indicatorDst.y, static_cast<int>(indicatorDst.w*anvilUpgradeAnimT), indicatorDst.h };
+                SDL_RenderCopy(sdlRenderer, tAlt->getTexture(), &src, &dst);
+            }
+                if (anvilUpgradeAnimT >= 1.0f) { anvilUpgradeAnimT = 0.0f; anvilResultFlashTimer = 1.2f; }
+        }
+    }
+    if (anvilOpen && assetManager) {
+        // Final reveal steady display
+        if (anvilResultFlashTimer > 0.0f) {
+            anvilResultFlashTimer = std::max(0.0f, anvilResultFlashTimer - TARGET_FRAME_TIME);
+            Texture* t = assetManager->getTexture(anvilLastSuccess ? "assets/Textures/UI/upgrade_succeed.png" : "assets/Textures/UI/upgrade_failed.png");
+            if (t) {
+                int outW=0,outH=0; SDL_GetRendererOutputSize(sdlRenderer,&outW,&outH); if (outW<=0){outW=WINDOW_WIDTH;outH=WINDOW_HEIGHT;}
+                Texture* panel = assetManager->getTexture("assets/Textures/UI/Item_inv.png");
+                int pw = panel ? panel->getWidth() : 300; int ph = panel ? panel->getHeight() : 300;
+                int desiredX = outW / 2 + 260; int margin = 20; if (desiredX + pw > outW - margin) desiredX = std::max(margin, outW - pw - margin);
+                SDL_Rect panelDst{ desiredX, (outH - ph) / 2, pw, ph };
+                int sideX = panelDst.x + pw + 16; int sideY = panelDst.y + 8; int slotSize = 48; int sideBtnW = slotSize*2 + 16;
+                SDL_Rect indicatorDst{ sideX + 8, sideY + slotSize + 4, sideBtnW - 16, 22 };
+                SDL_Rect s{0,0,t->getWidth(), t->getHeight()};
+                SDL_RenderCopy(sdlRenderer, t->getTexture(), &s, &indicatorDst);
             }
         }
     }
@@ -721,6 +881,19 @@ void Game::handleEvents() {
                 } else if (!optionsOpen && event.key.keysym.sym == SDLK_F5) {
                     setInfinitePotions(!getInfinitePotions());
                     std::cout << "Infinite potions: " << (getInfinitePotions() ? "ON" : "OFF") << std::endl;
+                } else if (!optionsOpen && event.key.keysym.sym == SDLK_i) {
+                    // Toggle inventory; does not pause world
+                    inventoryOpen = !inventoryOpen;
+                    break;
+                } else if (!optionsOpen && event.key.keysym.sym == SDLK_F9) {
+                    // Dev hotkey: grant large stacks of test scrolls
+                    if (player) {
+                        player->addItemToInventory("upgrade_scroll", 50);
+                        player->addItemToInventory("fire_scroll", 50);
+                        player->addItemToInventory("water_scroll", 50);
+                        player->addItemToInventory("poison_scroll", 50);
+                    }
+                    break;
                 }
                 // Only forward to game input when not on login screen
                 if (!optionsOpen && !loginScreenActive) inputManager->handleKeyDown(event.key);
@@ -728,6 +901,7 @@ void Game::handleEvents() {
                 
             case SDL_KEYUP:
                 if (event.key.keysym.sym == SDLK_ESCAPE) {
+                    if (anvilOpen) { anvilOpen = false; break; }
                     optionsOpen = !optionsOpen;
                     break;
                 }
@@ -785,6 +959,8 @@ void Game::handleEvents() {
                     } else {
                         loginActiveField = LoginField::None;
                     }
+                } else if (anvilOpen) {
+                    // While anvil is open, do not close on right-click; allow UI to handle quick-use from inventory
                 } else {
                     inputManager->handleMouseDown(event.button);
                 }
@@ -912,7 +1088,7 @@ void Game::initializeObjects() {
     // OPTIMIZATION: Reduced object count and implemented intelligent spawning
     // Only spawn objects in a reasonable area around the player starting position
     const int spawnRadius = 15; // Reduced from previous large area
-    const int maxObjects = 8;   // Limit total objects for performance
+    const int maxObjects = 9;   // Limit total objects for performance
     
     std::cout << "Initializing optimized object spawning..." << std::endl;
     
@@ -925,7 +1101,8 @@ void Game::initializeObjects() {
         {25, 10},  // Wood sign
         {15, 12},  // Clay pot
         {8, 15},   // Wood crate
-        {12, 18}   // Steel crate
+        {12, 18},  // Steel crate
+        {12, 26}   // Magic Anvil moved away from mobs
     };
     
     // Limit the number of objects to spawn
@@ -940,8 +1117,13 @@ void Game::initializeObjects() {
         if (std::abs(x - 20) <= spawnRadius && std::abs(y - 11) <= spawnRadius) {
             std::unique_ptr<Object> object;
             
-            // Create different object types based on position
-            if (x == 20 && y == 10) {
+            // Do not place any object on the Magic Anvil tile (12,26)
+            if (x == 12 && y == 26) {
+                // Magic Anvil (animated)
+                object = std::make_unique<Object>(ObjectType::MAGIC_ANVIL, x, y, "assets/Textures/Objects/magic_anvil.png");
+                object->setSpriteSheet(assetManager->getSpriteSheet("assets/Textures/Objects/magic_anvil.png"));
+            } else if (x == 20 && y == 10) {
+                // Create different object types based on position
                 // Nearby chest with good loot
                 object = std::make_unique<Object>(ObjectType::CHEST_UNOPENED, x, y, "assets/Textures/Objects/chest_unopened.png");
                 object->setTexture(assetManager->getTexture("assets/Textures/Objects/chest_unopened.png"));

@@ -38,6 +38,45 @@ public:
     // Death popup
     void renderDeathPopup(bool& outClickedRespawn, float fadeAlpha01);
 
+    // Equipment upgrade UI (Magic Anvil)
+    struct AnvilHit {
+        bool clickedClose = false;
+        int clickedSlot = -1; // 0..8 corresponds to ring..feet
+        bool clickedUpgrade = false; // upgrade button or drop action
+        std::string clickedElement; // e.g., "fire", "ice", "lightning", "poison"
+        // Drag/drop
+        bool startedDrag = false;
+        bool endedDrag = false;
+        SDL_Rect dragRect{0,0,0,0};
+        std::string dragPayload; // "upgrade_scroll" or element key
+        // Side panel hit tests
+        bool clickedSideUpgrade = false;
+        bool droppedItem = false; // dropped item into side item slot
+        bool droppedScroll = false; // dropped scroll into side scroll slot
+        std::string droppedScrollKey; // which scroll was dropped ("upgrade_scroll" or element)
+    };
+    // Renders the item grid and returns what was clicked based on mouse state
+    void renderMagicAnvil(const class Player* player,
+                          int screenW, int screenH,
+                          int mouseX, int mouseY, bool mouseDown,
+                          AnvilHit& outHit,
+                          const std::string& externalDragPayload = std::string(),
+                          int selectedSlotIdx = -1,
+                          const std::string& selectedScrollKey = std::string());
+
+    void setAssetManager(AssetManager* am) { assetManager = am; }
+
+    // Inventory UI (two bags) – modal overlay that does not pause the world
+    struct InventoryHit {
+        bool startedDrag = false;
+        std::string dragPayload; // key string for the item being dragged
+        bool rightClicked = false;
+        std::string rightClickedPayload;
+    };
+    void renderInventory(const class Player* player, int screenW, int screenH,
+                         int mouseX, int mouseY, bool leftDown, bool rightDown,
+                         InventoryHit& outHit);
+
     // Options menu (simple keyboard-driven UI). selectedIndex highlights current row.
     enum class OptionsTab { Main = 0, Sound = 1, Video = 2 };
     struct MenuHitResult {
@@ -89,6 +128,5 @@ private:
                            int width, int height,
                            float progress);
     // Dependency injection
-public:
-    void setAssetManager(AssetManager* am) { assetManager = am; }
+    // setAssetManager declared above
 };

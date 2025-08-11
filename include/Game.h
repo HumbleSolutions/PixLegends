@@ -41,6 +41,15 @@ public:
     AudioManager* getAudioManager() const { return audioManager.get(); }
     Database* getDatabase() const { return database.get(); }
 
+    // Magic Anvil UI state
+    bool isAnvilOpen() const { return anvilOpen; }
+    void openAnvil() { anvilOpen = true; inventoryOpen = true; }
+    void closeAnvil() { anvilOpen = false; }
+    int getAnvilSelectedSlot() const { return anvilSelectedSlot; }
+    void setAnvilSelectedSlot(int idx) { anvilSelectedSlot = idx; }
+    bool isInventoryOpen() const { return inventoryOpen; }
+    void toggleInventory() { inventoryOpen = !inventoryOpen; }
+
     // Game configuration
     static constexpr int WINDOW_WIDTH = 1280;
     static constexpr int WINDOW_HEIGHT = 720;
@@ -75,6 +84,18 @@ private:
     std::unique_ptr<AudioManager> audioManager;
     std::unique_ptr<AutotileDemo> autotileDemo;
     std::unique_ptr<Database> database;
+
+    // Modal UI state
+    bool anvilOpen = false;
+    bool inventoryOpen = false;
+    int anvilSelectedSlot = 3; // default sword
+    std::string anvilStagedScrollKey; // scroll currently placed in the anvil scroll slot
+    float anvilUpgradeAnimT = 0.0f; // 0..1 loading sweep for success/fail bar
+    float anvilResultFlashTimer = 0.0f; // steady display duration for final result
+    bool anvilLastSuccess = false; // last upgrade outcome
+    // Drag state for inventory -> anvil
+    bool draggingFromInventory = false;
+    std::string draggingPayload;
     bool demoMode = false;
     
     // Game state

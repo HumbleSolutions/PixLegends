@@ -4,6 +4,8 @@
 #include <memory>
 #include <vector>
 #include <string>
+#include <array>
+#include <unordered_map>
 
 // Forward declarations
 class Projectile;
@@ -62,6 +64,7 @@ public:
     // Combat
     void performMeleeAttack();
     void performRangedAttack();
+    bool hasFireWeapon() const { const auto& sw = equipment[static_cast<size_t>(EquipmentSlot::SWORD)]; const auto& sh = equipment[static_cast<size_t>(EquipmentSlot::SHIELD)]; return sw.fire > 0 || sh.fire > 0; }
     void takeDamage(int damage);
     bool isDead() const { return currentState == PlayerState::DEAD; }
     void respawn(float respawnX, float respawnY);
@@ -126,6 +129,39 @@ public:
     int getIntelligence() const { return intelligence; }
     int getGold() const { return gold; }
 
+    // Equipment and upgrades
+    enum class EquipmentSlot { RING, HELM, NECKLACE, SWORD, CHEST, SHIELD, GLOVE, WAIST, FEET, COUNT };
+    struct EquipmentItem {
+        std::string name;
+        int plusLevel = 0;        // +0..+N
+        int basePower = 0;        // contributes to stats
+        // Simple elemental modifiers (placeholder values)
+        int fire = 0;
+        int ice = 0;
+        int lightning = 0;
+        int poison = 0;
+        int resistFire = 0;
+        int resistIce = 0;
+        int resistLightning = 0;
+        int resistPoison = 0;
+    };
+    const EquipmentItem& getEquipment(EquipmentSlot slot) const { return equipment[static_cast<int>(slot)]; }
+    void upgradeEquipment(EquipmentSlot slot, int deltaPlus);
+    void enchantEquipment(EquipmentSlot slot, const std::string& element, int amount);
+
+    // Scrolls inventory
+    int getUpgradeScrolls() const { return upgradeScrolls; }
+    int getElementScrolls(const std::string& element) const;
+    void addUpgradeScrolls(int count) { upgradeScrolls += std::max(0, count); addItemToInventory("upgrade_scroll", count); }
+    void addElementScrolls(const std::string& element, int count);
+    bool consumeUpgradeScroll();
+    bool consumeElementScroll(const std::string& element);
+
+    // Simple inventory (two bags). Items are stackable by key string.
+    void addItemToInventory(const std::string& key, int amount);
+    int getInventoryCount(const std::string& key) const;
+    const std::array<std::unordered_map<std::string,int>,2>& getBags() const { return bags; }
+
     // Collision
     SDL_Rect getCollisionRect() const;
 
@@ -164,6 +200,13 @@ private:
     int experience, experienceToNext;
     int strength, intelligence;
     int gold;
+
+    // Equipment and upgrade resources
+    std::array<EquipmentItem, static_cast<size_t>(EquipmentSlot::COUNT)> equipment;
+    int upgradeScrolls = 0; // "Blessed upgrade scroll"
+    std::unordered_map<std::string,int> elementScrolls; // e.g., fire, ice, lightning, poison, resist_fire, etc.
+    // Two bags (0 and 1)
+    std::array<std::unordered_map<std::string,int>,2> bags;
 
     // Potions
     int healthPotionCharges;

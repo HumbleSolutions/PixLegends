@@ -320,6 +320,21 @@ bool Database::savePlayerState(int userId, const PlayerSave& s, std::string* out
         f << "gold=" << s.gold << "\n";
         f << "healthPotionCharges=" << s.healthPotionCharges << "\n";
         f << "manaPotionCharges=" << s.manaPotionCharges << "\n";
+        // Persist equipment +levels and elemental mods
+        for (int i = 0; i < 9; ++i) {
+            f << "equipPlus_" << i << "=" << s.equipPlus[i] << "\n";
+            f << "equipFire_" << i << "=" << s.equipFire[i] << "\n";
+            f << "equipIce_" << i << "=" << s.equipIce[i] << "\n";
+            f << "equipLightning_" << i << "=" << s.equipLightning[i] << "\n";
+            f << "equipPoison_" << i << "=" << s.equipPoison[i] << "\n";
+        }
+        // Persist inventory grid
+        for (int b = 0; b < 2; ++b) {
+            for (int i = 0; i < 9; ++i) {
+                f << "invKey_" << b << "_" << i << "=" << s.invKey[b][i] << "\n";
+                f << "invCnt_" << b << "_" << i << "=" << s.invCnt[b][i] << "\n";
+            }
+        }
     } catch (const std::exception& e) {
         if (outError) *outError = e.what();
         return false;
@@ -354,6 +369,16 @@ std::optional<PlayerSave> Database::loadPlayerState(int userId, std::string* out
             else if (key == "gold") s.gold = std::stoi(val);
             else if (key == "healthPotionCharges") s.healthPotionCharges = std::stoi(val);
             else if (key == "manaPotionCharges") s.manaPotionCharges = std::stoi(val);
+            else if (key.rfind("equipPlus_",0)==0) { int i = key[10]-'0'; if (i>=0&&i<9) s.equipPlus[i] = std::stoi(val); }
+            else if (key.rfind("equipFire_",0)==0) { int i = key[10]-'0'; if (i>=0&&i<9) s.equipFire[i] = std::stoi(val); }
+            else if (key.rfind("equipIce_",0)==0) { int i = key[9]-'0'; if (i>=0&&i<9) s.equipIce[i] = std::stoi(val); }
+            else if (key.rfind("equipLightning_",0)==0) { int i = key[15]-'0'; if (i>=0&&i<9) s.equipLightning[i] = std::stoi(val); }
+            else if (key.rfind("equipPoison_",0)==0) { int i = key[12]-'0'; if (i>=0&&i<9) s.equipPoison[i] = std::stoi(val); }
+            else if (key.rfind("invKey_",0)==0) {
+                int b = key[7]-'0'; int i = key[9]-'0'; if (b>=0&&b<2&&i>=0&&i<9) s.invKey[b][i] = val;
+            } else if (key.rfind("invCnt_",0)==0) {
+                int b = key[7]-'0'; int i = key[9]-'0'; if (b>=0&&b<2&&i>=0&&i<9) s.invCnt[b][i] = std::stoi(val);
+            }
         }
     } catch (const std::exception& e) {
         if (outError) *outError = e.what();

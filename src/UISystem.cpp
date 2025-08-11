@@ -69,6 +69,67 @@ void UISystem::update(float deltaTime) {
 void UISystem::render() {
     // Main UI rendering - this will be called by the game
 }
+void UISystem::renderInventory(const Player* player, int screenW, int screenH,
+                               int mouseX, int mouseY, bool leftDown, bool rightDown,
+                               InventoryHit& outHit) {
+    outHit = InventoryHit{};
+    if (!assetManager || !player) return;
+    Texture* bag = assetManager->getTexture("assets/Textures/UI/Inventory.png");
+    if (!bag) return;
+    int bw = bag->getWidth();
+    int bh = bag->getHeight();
+    int spacing = 12;
+    // Bottom-right positioning for the two bags
+    int y = screenH - bh - 20;
+    int x0 = screenW - (bw * 2 + 12 + 20);
+    // Draw two bags side by side
+    SDL_Rect d0{ x0, y, bw, bh };
+    SDL_Rect d1{ x0 + bw + spacing, y, bw, bh };
+    SDL_RenderCopy(renderer, bag->getTexture(), nullptr, &d0);
+    SDL_RenderCopy(renderer, bag->getTexture(), nullptr, &d1);
+    // Lay out a simple 3x3 grid per bag with icons and counts for known items
+    const int cols = 3, rows = 3;
+    int cell = bw / 3 - 10;
+    static bool lastRightDown = false;
+    auto drawStack = [&](int cx, int cy, const char* path, int count, const char* payloadKey){
+        Texture* t = assetManager->getTexture(path);
+        if (!t || count <= 0) return;
+        SDL_Rect s{0,0,t->getWidth(),t->getHeight()};
+        SDL_Rect d{ cx, cy, cell, cell };
+        SDL_RenderCopy(renderer, t->getTexture(), &s, &d);
+        renderText("x" + std::to_string(count), d.x + 4, d.y + cell - 14);
+        if (leftDown && mouseX>=d.x && mouseX<=d.x+d.w && mouseY>=d.y && mouseY<=d.y+d.h) {
+            outHit.startedDrag = true; outHit.dragPayload = payloadKey;
+        }
+        if (rightDown && !lastRightDown && mouseX>=d.x && mouseX<=d.x+d.w && mouseY>=d.y && mouseY<=d.y+d.h) {
+            outHit.rightClicked = true; outHit.rightClickedPayload = payloadKey;
+        }
+
+        // Tooltip for stack
+        if (mouseX>=d.x && mouseX<=d.x+d.w && mouseY>=d.y && mouseY<=d.y+d.h) {
+            const char* name = payloadKey;
+            if (std::strcmp(payloadKey, "upgrade_scroll") == 0) name = "Blessed Upgrade Scroll";
+            else if (std::strcmp(payloadKey, "fire") == 0) name = "Fire Enchant Scroll";
+            else if (std::strcmp(payloadKey, "water") == 0) name = "Water Enchant Scroll";
+            else if (std::strcmp(payloadKey, "poison") == 0) name = "Poison Enchant Scroll";
+            int w = 210, h = 56; SDL_Rect tip{ mouseX + 14, mouseY + 10, w, h };
+            SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+            SDL_SetRenderDrawColor(renderer, 20,20,24,220); SDL_RenderFillRect(renderer, &tip);
+            SDL_SetRenderDrawColor(renderer, 200,200,210,255); SDL_RenderDrawRect(renderer, &tip);
+            renderText(name, tip.x + 8, tip.y + 6, SDL_Color{255,255,180,255});
+            renderText("Count: " + std::to_string(count), tip.x + 8, tip.y + 24);
+            renderText("Right-click to use at Anvil", tip.x + 8, tip.y + 40, SDL_Color{150,200,255,255});
+        }
+    };
+    // simple mapping: show upgrade + fire/water/poison stacks in fixed slots
+    int sx0 = d0.x + 8, sy0 = d0.y + 8;
+    // Upgrade scrolls appear as a stack in the first cell using the upgrade_scroll.png asset
+    drawStack(sx0,             sy0,             "assets/Textures/Items/upgrade_scroll.png", player->getUpgradeScrolls(), "upgrade_scroll");
+    drawStack(sx0 + cell + 8,  sy0,             "assets/Textures/Items/fire_dmg_scroll.png", player->getElementScrolls("fire"), "fire");
+    drawStack(sx0 + 2*(cell+8),sy0,             "assets/Textures/Items/water_damage_scroll.png", player->getElementScrolls("water"), "water");
+    drawStack(sx0,             sy0 + cell + 8,  "assets/Textures/Items/Poison_dmg_scroll.png", player->getElementScrolls("poison"), "poison");
+    lastRightDown = rightDown;
+}
 
 void UISystem::renderTexturedBar(const char* texturePath,
                            int x, int y,
@@ -509,6 +570,245 @@ void UISystem::renderFPSCounter(float currentFPS, float averageFPS, Uint32 frame
     
     // Render the FPS counter
     renderText(fpsText, x, y, color);
+}
+
+// --- Magic Anvil UI ---
+void UISystem::renderMagicAnvil(const Player* player,
+                                int screenW, int screenH,
+                                int mouseX, int mouseY, bool mouseDown,
+                                AnvilHit& outHit,
+                                const std::string& externalDragPayload,
+                                int selectedSlotIdx,
+                                const std::string& selectedScrollKey) {
+    outHit = AnvilHit{};
+    if (!assetManager) return;
+    Texture* panel = assetManager->getTexture("assets/Textures/UI/Item_inv.png");
+    if (!panel) return;
+
+    // Position the panel to the right so it doesn't cover the big anvil sprite
+    int pw = panel->getWidth();
+    int ph = panel->getHeight();
+    int margin = 20;
+    int desiredX = screenW / 2 + 260; // push further right of center
+    if (desiredX + pw > screenW - margin) desiredX = std::max(margin, screenW - pw - margin);
+    SDL_Rect dst{ desiredX, (screenH - ph) / 2, pw, ph };
+    SDL_RenderCopy(renderer, panel->getTexture(), nullptr, &dst);
+
+    // Define 3x3 grid within panel with approximate padding inferred from art
+    const int gridX = dst.x + 20;
+    const int gridY = dst.y + 20;
+    const int cell = (std::min(pw, ph) - 40) / 3; // square cells
+
+    // Slot art per equipment
+    const char* slotArt[9] = {
+        "assets/Textures/UI/ring_upgrade_slot.png",
+        "assets/Textures/UI/helm_upgrade_slot.png",
+        "assets/Textures/UI/necklace_upgrade_slot.png",
+        "assets/Textures/UI/sword_upgrade_slot.png",
+        "assets/Textures/UI/chest_upgrade_slot.png",
+        "assets/Textures/UI/sheild_upgrade_slot.png",
+        "assets/Textures/UI/gloves_upgrade_slot.png",
+        "assets/Textures/UI/belt_upgrade_slot.png",
+        "assets/Textures/UI/boots_upgrade_slot.png"
+    };
+    for (int r = 0; r < 3; ++r) {
+        for (int c = 0; c < 3; ++c) {
+            int idx = r*3 + c; Texture* t = assetManager->getTexture(slotArt[idx]);
+            SDL_Rect d{ gridX + c*cell, gridY + r*cell, cell, cell };
+            if (t) {
+                SDL_Rect s{0,0,t->getWidth(),t->getHeight()};
+                SDL_RenderCopy(renderer, t->getTexture(), &s, &d);
+            } else {
+                SDL_SetRenderDrawColor(renderer, 60,60,80,200); SDL_RenderFillRect(renderer, &d);
+            }
+            const char* iconMap[9] = {
+                "assets/Textures/Items/ring_01.png",
+                "assets/Textures/Items/helmet_01.png",
+                "assets/Textures/Items/necklace_01.png",
+                "assets/Textures/Items/sword_01.png",
+                "assets/Textures/Items/chestpeice_01.png",
+                "assets/Textures/Items/sheild_01.png",
+                "assets/Textures/Items/gloves_01.png",
+                "assets/Textures/Items/waist_01.png",
+                "assets/Textures/Items/boots_01.png"
+            };
+            if (Texture* it = assetManager->getTexture(iconMap[idx])) {
+                int pad = std::max(6, cell / 6);
+                SDL_Rect si{0,0,it->getWidth(),it->getHeight()};
+                SDL_Rect di{ d.x + pad, d.y + pad, d.w - pad*2, d.h - pad*2 };
+                SDL_RenderCopy(renderer, it->getTexture(), &si, &di);
+                if (mouseDown && mouseX>=di.x && mouseX<=di.x+di.w && mouseY>=di.y && mouseY<=di.y+di.h) {
+                    outHit.clickedSlot = idx;
+                }
+            }
+            if (player) {
+                const Player::EquipmentItem& eq = player->getEquipment(static_cast<Player::EquipmentSlot>(idx));
+                renderText(std::string("+") + std::to_string(eq.plusLevel), d.x + d.w - 20, d.y + d.h - 18, SDL_Color{200,255,200,255});
+            }
+        }
+    }
+
+    // Hit test slots 0..8
+    int hovered = -1;
+    for (int r = 0; r < 3; ++r) {
+        for (int c = 0; c < 3; ++c) {
+            int idx = r * 3 + c;
+            SDL_Rect slot{ gridX + c * cell, gridY + r * cell, cell, cell };
+            // Draw subtle hover outline
+            if (mouseX >= slot.x && mouseX <= slot.x + slot.w && mouseY >= slot.y && mouseY <= slot.y + slot.h) {
+                hovered = idx;
+                SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+                SDL_SetRenderDrawColor(renderer, 255, 215, 100, 130);
+                SDL_RenderDrawRect(renderer, &slot);
+                if (mouseDown) { outHit.clickedSlot = idx; }
+            }
+        }
+    }
+
+    // Buttons at bottom: Upgrade icon + element scroll icons
+    // Close button removed; use Esc to close
+
+    // Side panel (to the right): item slot, scroll slot, and Upgrade button
+    int sideX = dst.x + pw + 16;
+    int sideY = dst.y + 8;
+    int slotSize = 48;
+    // Item slot (use art and selected slot icon if any)
+    SDL_Rect sideItem{ sideX, sideY, slotSize, slotSize };
+    if (Texture* t = assetManager->getTexture("assets/Textures/UI/item_upgrade_slot.png")) {
+        SDL_Rect s{0,0,t->getWidth(),t->getHeight()}; SDL_RenderCopy(renderer, t->getTexture(), &s, &sideItem);
+    } else { SDL_SetRenderDrawColor(renderer, 90,90,120,200); SDL_RenderFillRect(renderer, &sideItem); SDL_SetRenderDrawColor(renderer, 255,255,255,255); SDL_RenderDrawRect(renderer, &sideItem); }
+    // Scroll slot art
+    SDL_Rect sideScroll{ sideX + slotSize + 16, sideY, slotSize, slotSize };
+    if (Texture* t = assetManager->getTexture("assets/Textures/UI/scroll_slot.png")) {
+        SDL_Rect s{0,0,t->getWidth(),t->getHeight()}; SDL_RenderCopy(renderer, t->getTexture(), &s, &sideScroll);
+    } else { SDL_SetRenderDrawColor(renderer, 90,90,120,200); SDL_RenderFillRect(renderer, &sideScroll); SDL_SetRenderDrawColor(renderer, 255,255,255,255); SDL_RenderDrawRect(renderer, &sideScroll); }
+    // Upgrade button art with text
+    SDL_Rect sideBtn{ sideX, sideY + slotSize + 28, slotSize*2 + 16, 28 };
+    if (Texture* t = assetManager->getTexture("assets/Textures/UI/upgrade_button.png")) {
+        SDL_Rect s{0,0,t->getWidth(),t->getHeight()}; SDL_RenderCopy(renderer, t->getTexture(), &s, &sideBtn);
+    } else { SDL_SetRenderDrawColor(renderer, 80,60,40,230); SDL_RenderFillRect(renderer, &sideBtn); SDL_SetRenderDrawColor(renderer, 255,255,255,255); SDL_RenderDrawRect(renderer, &sideBtn); }
+    renderTextCentered("UPGRADE", sideBtn.x + sideBtn.w/2, sideBtn.y + sideBtn.h/2, SDL_Color{255,255,255,255});
+    if (mouseDown && mouseX>=sideBtn.x && mouseX<=sideBtn.x+sideBtn.w && mouseY>=sideBtn.y && mouseY<=sideBtn.y+sideBtn.h) {
+        outHit.clickedSideUpgrade = true;
+    }
+
+    // Remove scroll icons from anvil UI (scrolls live in bags)
+    // If dragging ends over a slot, convert to an action; allow external payload (from inventory)
+    static bool wasDown = false;
+    if (!mouseDown && wasDown) {
+        outHit.endedDrag = true;
+        // Check drop over a slot
+        for (int r = 0; r < 3; ++r) {
+            for (int c = 0; c < 3; ++c) {
+                int idx = r * 3 + c;
+                SDL_Rect slot{ gridX + c * cell, gridY + r * cell, cell, cell };
+                if (mouseX>=slot.x && mouseX<=slot.x+slot.w && mouseY>=slot.y && mouseY<=slot.y+slot.h) {
+                    outHit.clickedSlot = idx;
+                    std::string payload = externalDragPayload.empty()? outHit.dragPayload : externalDragPayload;
+                    if (payload == "upgrade_scroll") outHit.clickedUpgrade = true;
+                    else if (!payload.empty()) outHit.clickedElement = payload;
+                }
+            }
+        }
+        // Also allow dropping into side specific slots
+        std::string payload = externalDragPayload.empty()? outHit.dragPayload : externalDragPayload;
+        if (mouseX>=sideItem.x && mouseX<=sideItem.x+sideItem.w && mouseY>=sideItem.y && mouseY<=sideItem.y+sideItem.h) {
+            outHit.droppedItem = true;
+        }
+        if (mouseX>=sideScroll.x && mouseX<=sideScroll.x+sideScroll.w && mouseY>=sideScroll.y && mouseY<=sideScroll.y+sideScroll.h) {
+            if (payload == "upgrade_scroll" || payload=="fire" || payload=="water" || payload=="poison" || payload=="lightning") {
+                outHit.droppedScroll = true; outHit.droppedScrollKey = payload;
+                if (payload == "upgrade_scroll") outHit.clickedUpgrade = true; else outHit.clickedElement = payload;
+            }
+        }
+        outHit.dragPayload.clear();
+        outHit.dragRect = SDL_Rect{0,0,0,0};
+    }
+    wasDown = mouseDown;
+
+    // No explicit close button
+
+    // Tooltip / result indicator area (floating panel near mouse with stats and chance)
+    if (hovered >= 0 && player) {
+        const Player::EquipmentItem& heq = player->getEquipment(static_cast<Player::EquipmentSlot>(hovered));
+        // Use the custom upgrade table to preview chance
+        auto chanceForNext = [&](int currentPlus) -> float {
+            static const float table[31] = {
+                0.0f, 100.0f, 95.0f, 90.0f, 80.0f, 75.0f, 70.0f, 65.0f, 55.0f, 50.0f,
+                45.0f, 40.0f, 35.0f, 30.0f, 28.0f, 25.0f, 20.0f, 18.0f, 15.0f, 13.0f,
+                12.0f, 10.0f, 8.0f, 7.0f, 6.0f, 5.0f, 4.5f, 4.0f, 3.5f, 3.0f, 2.5f
+            };
+            int next = currentPlus + 1; if (next < 1) next = 1; if (next > 30) next = 30; return table[next];
+        };
+        int chance = static_cast<int>(std::round(chanceForNext(heq.plusLevel)));
+        bool hasPreview = !selectedScrollKey.empty();
+        int extraH = 0; if (heq.fire>0 || heq.ice>0 || heq.lightning>0 || heq.poison>0) extraH = 16;
+        int w = 240, h = (hasPreview ? 92 : 72) + extraH; SDL_Rect tip{ mouseX + 16, mouseY + 12, w, h };
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(renderer, 25,25,28,220); SDL_RenderFillRect(renderer, &tip);
+        SDL_SetRenderDrawColor(renderer, 220,220,230,255); SDL_RenderDrawRect(renderer, &tip);
+        static const char* names[9] = {"Ring","Helm","Necklace","Sword","Chest","Shield","Glove","Waist","Feet"};
+        renderText(names[hovered], tip.x + 8, tip.y + 6, SDL_Color{255,255,180,255});
+        renderText(std::string("+") + std::to_string(heq.plusLevel) + "  Base:" + std::to_string(heq.basePower), tip.x + 8, tip.y + 22);
+        renderText("Chance:" + std::to_string(chance) + "%", tip.x + 8, tip.y + 38, SDL_Color{140,200,255,255});
+        int yoff = 54;
+        if (heq.fire>0) { renderText("Fire: +" + std::to_string(heq.fire), tip.x + 8, tip.y + yoff, SDL_Color{255,140,80,255}); yoff += 16; }
+        if (heq.ice>0) { renderText("Water: +" + std::to_string(heq.ice), tip.x + 8, tip.y + yoff, SDL_Color{140,180,255,255}); yoff += 16; }
+        if (heq.poison>0) { renderText("Poison: +" + std::to_string(heq.poison), tip.x + 8, tip.y + yoff, SDL_Color{160,255,160,255}); yoff += 16; }
+        if (hasPreview) {
+            std::string pv;
+            SDL_Color green{120, 255, 120, 255};
+            if (selectedScrollKey == std::string("upgrade_scroll")) pv = "+1 level";
+            else if (selectedScrollKey == std::string("fire")) pv = "+1 fire";
+            else if (selectedScrollKey == std::string("water")) pv = "+1 water";
+            else if (selectedScrollKey == std::string("poison")) pv = "+1 poison";
+            if (!pv.empty()) renderText("Preview: " + pv, tip.x + 8, tip.y + yoff, green);
+        }
+    }
+
+    // Draw the selected slot icon in the side item slot for feedback
+    int selectedIdx = (selectedSlotIdx >= 0 ? selectedSlotIdx : hovered);
+    if (selectedIdx >= 0) {
+        const char* iconMap[9] = {
+            "assets/Textures/Items/ring_01.png",
+            "assets/Textures/Items/helmet_01.png",
+            "assets/Textures/Items/necklace_01.png",
+            "assets/Textures/Items/sword_01.png",
+            "assets/Textures/Items/chestpeice_01.png",
+            "assets/Textures/Items/sheild_01.png",
+            "assets/Textures/Items/gloves_01.png",
+            "assets/Textures/Items/waist_01.png",
+            "assets/Textures/Items/boots_01.png"
+        };
+        if (Texture* t = assetManager->getTexture(iconMap[selectedIdx])) {
+            SDL_Rect s{0,0,t->getWidth(),t->getHeight()}; SDL_Rect d{ sideX+4, sideY+4, slotSize-8, slotSize-8 };
+            SDL_RenderCopy(renderer, t->getTexture(), &s, &d);
+        }
+    }
+
+    // Draw staged scroll icon in the scroll slot if provided via selectedScrollKey
+    if (!selectedScrollKey.empty()) {
+        const char* icon = nullptr;
+        if (selectedScrollKey == std::string("upgrade_scroll")) icon = "assets/Textures/Items/upgrade_scroll.png";
+        else if (selectedScrollKey == std::string("fire")) icon = "assets/Textures/Items/fire_dmg_scroll.png";
+        else if (selectedScrollKey == std::string("water")) icon = "assets/Textures/Items/water_damage_scroll.png";
+        else if (selectedScrollKey == std::string("poison")) icon = "assets/Textures/Items/Poison_dmg_scroll.png";
+        if (icon) {
+            if (Texture* t = assetManager->getTexture(icon)) {
+                SDL_Rect s{0,0,t->getWidth(),t->getHeight()};
+                SDL_Rect d{ sideScroll.x + 6, sideScroll.y + 6, sideScroll.w - 12, sideScroll.h - 12 };
+                SDL_RenderCopy(renderer, t->getTexture(), &s, &d);
+            }
+        }
+    }
+
+    // Upgrade indicator anchored between item/scroll slots
+    SDL_Rect indicatorRect{ sideX + 8, sideY + slotSize + 4, sideBtn.w - 16, 22 };
+    if (Texture* ind = assetManager->getTexture("assets/Textures/UI/upgrade_indicator.png")) {
+        SDL_Rect s{0,0,ind->getWidth(), ind->getHeight()};
+        SDL_RenderCopy(renderer, ind->getTexture(), &s, &indicatorRect);
+    }
+    // Optionally overlay success/fail bars here when Game requests (Game renders them by computing the same rect)
 }
 
 void UISystem::renderOptionsMenu(int selectedIndex,

@@ -87,6 +87,8 @@ public:
     static const std::string TILESET_PATH;
     static const std::string UI_PATH;
     static const std::string OBJECTS_PATH;
+    // Convenience helpers to expose renderer (needed for UI draw utils)
+    SDL_Renderer* getSDLRenderer() const { return renderer; }
     // Optional: base path for enemies
     static constexpr const char* DEMON_BOSS_PATH = "assets/Demon Boss 2D Pixel Art/Sprites/without_outline/";
 

@@ -22,7 +22,7 @@ Player::Player(Game* game) : game(game), x(Game::WINDOW_WIDTH / 2.0f - 32.0f), y
                             meleeAttackTimer(0.0f), rangedAttackTimer(0.0f), meleeDamage(20), rangedDamage(15),
                             health(BASE_HEALTH), maxHealth(BASE_HEALTH), mana(BASE_MANA), maxMana(BASE_MANA),
                             level(1), experience(0), experienceToNext(100), strength(BASE_STRENGTH), intelligence(BASE_INTELLIGENCE),
-                            gold(0),
+                             gold(0),
                             healthPotionCharges(POTION_MAX_CHARGES), manaPotionCharges(POTION_MAX_CHARGES),
                             idleLeftSpriteSheet(nullptr), idleRightSpriteSheet(nullptr), idleUpSpriteSheet(nullptr), idleDownSpriteSheet(nullptr),
                             walkLeftSpriteSheet(nullptr), walkRightSpriteSheet(nullptr), walkUpSpriteSheet(nullptr), walkDownSpriteSheet(nullptr),
@@ -38,6 +38,28 @@ Player::Player(Game* game) : game(game), x(Game::WINDOW_WIDTH / 2.0f - 32.0f), y
     int startTileY = static_cast<int>(y / 32);
     std::cout << "Player starting position: pixel(" << x << ", " << y << ") tile(" << startTileX << ", " << startTileY << ")" << std::endl;
     std::cout << "Objects placed at: Chest(10,10), ClayPot(15,12), Flag(20,8), WoodCrate(8,15), SteelCrate(12,18), WoodFence(5,5), BrokenFence(6,5), WoodSign(25,10), Bonfire(18,20)" << std::endl;
+
+    // Initialize baseline equipment
+    auto initEquip = [&](EquipmentSlot slot, const char* name, int basePower){
+        size_t idx = static_cast<size_t>(slot);
+        equipment[idx].name = name;
+        equipment[idx].basePower = basePower;
+        equipment[idx].plusLevel = 0;
+    };
+    initEquip(EquipmentSlot::RING,     "Simple Ring", 1);
+    initEquip(EquipmentSlot::HELM,     "Leather Helm", 2);
+    initEquip(EquipmentSlot::NECKLACE, "Old Necklace", 1);
+    initEquip(EquipmentSlot::SWORD,    "Rusty Sword", 3);
+    initEquip(EquipmentSlot::CHEST,    "Leather Armor", 4);
+    initEquip(EquipmentSlot::SHIELD,   "Wooden Shield", 2);
+    initEquip(EquipmentSlot::GLOVE,    "Cloth Gloves", 1);
+    initEquip(EquipmentSlot::WAIST,    "Rope Belt", 1);
+    initEquip(EquipmentSlot::FEET,     "Worn Boots", 2);
+    // Testing: give 6 of each scroll type by default (upgrade + elements)
+    addUpgradeScrolls(6);
+    addElementScrolls("fire", 6);
+    addElementScrolls("water", 6);
+    addElementScrolls("poison", 6);
 }
 
 void Player::loadSprites() {
@@ -144,7 +166,7 @@ void Player::handleInput(const InputManager* inputManager) {
         performMeleeAttack();
     }
     
-    if (inputManager->isActionHeld(InputAction::ATTACK_RANGED) && canAttack()) {
+    if (inputManager->isActionHeld(InputAction::ATTACK_RANGED) && canAttack() && hasFireWeapon()) {
         std::cout << "Ranged attack triggered!" << std::endl;
         performRangedAttack();
     }
@@ -408,7 +430,12 @@ void Player::interact() {
     Object* nearbyObject = getNearbyInteractableObject();
     if (nearbyObject) {
         std::cout << "Interacting with " << nearbyObject->getInteractionPrompt() << std::endl;
-        nearbyObject->interact();
+        // Special-case Magic Anvil: open modal UI
+        if (game && nearbyObject->getType() == ObjectType::MAGIC_ANVIL) {
+            game->openAnvil();
+        } else {
+            nearbyObject->interact();
+        }
         
         // Collect loot if any
         if (nearbyObject->hasLoot()) {
@@ -636,6 +663,85 @@ void Player::gainExperience(int xp) {
     }
 }
 
+// --- Equipment upgrades and enchants ---
+void Player::upgradeEquipment(EquipmentSlot slot, int deltaPlus) {
+    size_t idx = static_cast<size_t>(slot);
+    int before = equipment[idx].plusLevel;
+    equipment[idx].plusLevel = std::max(0, before + deltaPlus);
+    // Scale base stats per +: +1 STR/INT, +5 HP, +3 MP per plus across the board
+    strength += std::max(0, deltaPlus);
+    intelligence += std::max(0, deltaPlus);
+    maxHealth += 5 * std::max(0, deltaPlus);
+    maxMana += 3 * std::max(0, deltaPlus);
+    health = std::min(health, maxHealth);
+    mana = std::min(mana, maxMana);
+    // Recalculate derived damage: sword + adds 2 dmg per plus level
+    int weaponBonus = equipment[static_cast<size_t>(EquipmentSlot::SWORD)].plusLevel * 2;
+    meleeDamage = strength * 2 + weaponBonus;
+}
+
+void Player::enchantEquipment(EquipmentSlot slot, const std::string& element, int amount) {
+    size_t idx = static_cast<size_t>(slot);
+    auto setElem = [&](int& ref){ ref = std::max(0, ref + amount); };
+    if (element == "fire") setElem(equipment[idx].fire);
+    else if (element == "ice" || element == "water") setElem(equipment[idx].ice);
+    else if (element == "lightning") setElem(equipment[idx].lightning);
+    else if (element == "poison") setElem(equipment[idx].poison);
+    else if (element == "resist_fire") setElem(equipment[idx].resistFire);
+    else if (element == "resist_ice") setElem(equipment[idx].resistIce);
+    else if (element == "resist_lightning") setElem(equipment[idx].resistLightning);
+    else if (element == "resist_poison") setElem(equipment[idx].resistPoison);
+}
+
+int Player::getElementScrolls(const std::string& element) const {
+    auto it = elementScrolls.find(element);
+    if (it == elementScrolls.end()) return 0;
+    return it->second;
+}
+
+void Player::addElementScrolls(const std::string& element, int count) {
+    if (count <= 0) return;
+    elementScrolls[element] += count;
+    // Also add to inventory bag 0 as a stackable item
+    addItemToInventory(element + "_scroll", count);
+}
+
+bool Player::consumeUpgradeScroll() {
+    if (upgradeScrolls <= 0) return false;
+    upgradeScrolls--; return true;
+}
+
+bool Player::consumeElementScroll(const std::string& element) {
+    auto it = elementScrolls.find(element);
+    if (it == elementScrolls.end() || it->second <= 0) return false;
+    it->second -= 1; return true;
+}
+
+void Player::addItemToInventory(const std::string& key, int amount) {
+    if (amount <= 0) return;
+    // Prefer bag 0; if key not present use bag 0 else keep stacking where present
+    for (int i = 0; i < 2; ++i) {
+        auto it = bags[i].find(key);
+        if (it != bags[i].end()) { it->second += amount; return; }
+    }
+    bags[0][key] += amount;
+    // Keep the special counters in sync for canonical keys
+    if (key == "upgrade_scroll") {
+        upgradeScrolls += amount;
+    } else if (key == "fire_scroll" || key == "fire") {
+        elementScrolls["fire"] += amount;
+    } else if (key == "water_scroll" || key == "water") {
+        elementScrolls["water"] += amount;
+    } else if (key == "poison_scroll" || key == "poison") {
+        elementScrolls["poison"] += amount;
+    }
+}
+
+int Player::getInventoryCount(const std::string& key) const {
+    int total = 0; for (int i = 0; i < 2; ++i) { auto it = bags[i].find(key); if (it != bags[i].end()) total += it->second; }
+    return total;
+}
+
 void Player::levelUp() {
     level++;
     experience -= experienceToNext;
@@ -693,6 +799,41 @@ void Player::applySaveState(const PlayerSave& s) {
     // Consumables
     healthPotionCharges = std::clamp(s.healthPotionCharges, 0, POTION_MAX_CHARGES);
     manaPotionCharges = std::clamp(s.manaPotionCharges, 0, POTION_MAX_CHARGES);
+    // Upgrades (will be recomputed from bags below to stay in sync)
+    upgradeScrolls = std::max(0, s.upgradeScrolls);
+    elementScrolls.clear();
+    // Apply saved +levels and elemental mods to equipment
+    for (int i = 0; i < 9; ++i) {
+        equipment[i].plusLevel = std::max(0, s.equipPlus[i]);
+        equipment[i].fire = std::max(0, s.equipFire[i]);
+        equipment[i].ice = std::max(0, s.equipIce[i]);
+        equipment[i].lightning = std::max(0, s.equipLightning[i]);
+        equipment[i].poison = std::max(0, s.equipPoison[i]);
+    }
+    // Recompute melee damage with sword +
+    int weaponBonus = equipment[static_cast<size_t>(EquipmentSlot::SWORD)].plusLevel * 2;
+    meleeDamage = strength * 2 + weaponBonus;
+    // Inventory persistence (exact grid)
+    for (int b = 0; b < 2; ++b) {
+        bags[b].clear();
+        for (int i = 0; i < 9; ++i) {
+            const std::string& key = s.invKey[b][i];
+            int cnt = s.invCnt[b][i];
+            if (!key.empty() && cnt > 0) bags[b][key] += cnt;
+        }
+    }
+    // Recompute scroll counters from current bag contents so UI and consumption align
+    upgradeScrolls = 0;
+    elementScrolls.clear();
+    for (int b = 0; b < 2; ++b) {
+        for (const auto& kv : bags[b]) {
+            const std::string& k = kv.first; int c = kv.second;
+            if (k == "upgrade_scroll") upgradeScrolls += c;
+            else if (k == "fire_scroll" || k == "fire") elementScrolls["fire"] += c;
+            else if (k == "water_scroll" || k == "water") elementScrolls["water"] += c;
+            else if (k == "poison_scroll" || k == "poison") elementScrolls["poison"] += c;
+        }
+    }
 }
 
 PlayerSave Player::makeSaveState() const {
@@ -704,6 +845,26 @@ PlayerSave Player::makeSaveState() const {
     s.strength = strength; s.intelligence = intelligence;
     s.gold = gold;
     s.healthPotionCharges = healthPotionCharges; s.manaPotionCharges = manaPotionCharges;
+    s.upgradeScrolls = upgradeScrolls;
+    // Persist equipment +levels and element mods
+    for (int i = 0; i < 9; ++i) {
+        s.equipPlus[i] = equipment[i].plusLevel;
+        s.equipFire[i] = equipment[i].fire;
+        s.equipIce[i] = equipment[i].ice;
+        s.equipLightning[i] = equipment[i].lightning;
+        s.equipPoison[i] = equipment[i].poison;
+    }
+    // Inventory persistence (exact grid snapshot - distribute first 9 items per bag)
+    for (int b = 0; b < 2; ++b) {
+        int idx = 0;
+        for (const auto& kv : bags[b]) {
+            if (idx >= 9) break;
+            s.invKey[b][idx] = kv.first;
+            s.invCnt[b][idx] = kv.second;
+            idx++;
+        }
+        for (; idx < 9; ++idx) { s.invKey[b][idx].clear(); s.invCnt[b][idx] = 0; }
+    }
     return s;
 }
 

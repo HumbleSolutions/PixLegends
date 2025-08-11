@@ -40,6 +40,18 @@ struct PlayerSave {
     // Consumables
     int healthPotionCharges = 0;
     int manaPotionCharges = 0;
+    // Upgrades (minimal persistence)
+    int upgradeScrolls = 0;
+    // Equipment +levels per slot (0..8 = ring..feet)
+    int equipPlus[9] = {};
+    // Elemental mods (fire/ice/lightning/poison) per slot
+    int equipFire[9] = {};
+    int equipIce[9] = {};
+    int equipLightning[9] = {};
+    int equipPoison[9] = {};
+    // Inventory stacks per bag slot: invKey[b][i], invCnt[b][i]
+    std::string invKey[2][9];
+    int         invCnt[2][9] = {};
 };
 
 struct ItemRecord {

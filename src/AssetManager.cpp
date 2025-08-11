@@ -431,6 +431,8 @@ void AssetManager::preloadAssets() {
     
     // Load bonfire as spritesheet with 6 frames
     loadSpriteSheet(OBJECTS_PATH + "Bonfire.png", 32, 48, 6, 6);
+    // Load Magic Anvil spritesheet with 39 frames
+    loadSpriteSheetAuto(OBJECTS_PATH + "magic_anvil.png", 39, 0);
     
     // Preload primary UI/game font
     loadFont("assets/Fonts/retganon.ttf", 16);
@@ -443,6 +445,46 @@ void AssetManager::preloadAssets() {
   loadTexture(UI_PATH + "exp_bar.png");
   // Optional: full composite UI sheet if we want to use it later
   loadTexture(UI_PATH + "hp_mana_bar_ui.png");
+  // Upgrade inventory panel
+  loadTexture(UI_PATH + "Item_inv.png");
+  // Upgrade UI slots and indicators
+  loadTexture(UI_PATH + "ring_upgrade_slot.png");
+  loadTexture(UI_PATH + "helm_upgrade_slot.png");
+  loadTexture(UI_PATH + "necklace_upgrade_slot.png");
+  loadTexture(UI_PATH + "sword_upgrade_slot.png");
+  loadTexture(UI_PATH + "chest_upgrade_slot.png");
+  loadTexture(UI_PATH + "sheild_upgrade_slot.png"); // filename spelled as provided
+  loadTexture(UI_PATH + "gloves_upgrade_slot.png");
+  loadTexture(UI_PATH + "belt_upgrade_slot.png");
+  loadTexture(UI_PATH + "boots_upgrade_slot.png");
+  loadTexture(UI_PATH + "scrol slot.png");
+  loadTexture(UI_PATH + "upgrade_indicator.png");
+  loadTexture(UI_PATH + "upgrade_succeed.png");
+  loadTexture(UI_PATH + "upgrade_failed.png");
+  loadTexture(UI_PATH + "item_upgrade_slot.png");
+  loadTexture(UI_PATH + "scroll_slot.png");
+  loadTexture(UI_PATH + "upgrade_button.png");
+  // Inventory panel (bag)
+  loadTexture(UI_PATH + "Inventory.png");
+
+  // Item scrolls (for upgrades and enchants)
+  loadTexture("assets/Textures/Items/upgrade_scroll.png");
+  loadTexture("assets/Textures/Items/fire_dmg_scroll.png");
+  loadTexture("assets/Textures/Items/water_damage_scroll.png");
+  loadTexture("assets/Textures/Items/Poison_dmg_scroll.png");
+  // Additional variants (not yet used directly in UI but available)
+  loadTexture("assets/Textures/Items/armor_enchant_scroll.png");
+  loadTexture("assets/Textures/Items/jewellery_upgrade_scroll.png");
+  // Item icons used in anvil side item slot
+  loadTexture("assets/Textures/Items/ring_01.png");
+  loadTexture("assets/Textures/Items/helmet_01.png");
+  loadTexture("assets/Textures/Items/necklace_01.png");
+  loadTexture("assets/Textures/Items/sword_01.png");
+  loadTexture("assets/Textures/Items/chestpeice_01.png");
+  loadTexture("assets/Textures/Items/sheild_01.png");
+  loadTexture("assets/Textures/Items/gloves_01.png");
+  loadTexture("assets/Textures/Items/waist_01.png");
+  loadTexture("assets/Textures/Items/boots_01.png");
     
     std::cout << "Asset preloading complete! Loaded " << textureCache.size() << " textures and " << spriteSheetCache.size() << " sprite sheets." << std::endl;
 }

@@ -3,6 +3,8 @@
 #include <iostream>
 #include <cmath>
 
+static float g_magicAnvilPulseTimer = 0.0f;
+
 Object::Object(ObjectType type, int xPos, int yPos, const std::string& texturePath)
     : type(type), x(xPos), y(yPos), texturePath(texturePath), texture(nullptr), spriteSheet(nullptr), assetManager(nullptr),
       interactable(false), walkable(true), visible(true),
@@ -47,11 +49,31 @@ Object::Object(ObjectType type, int xPos, int yPos, const std::string& texturePa
             totalFrames = 6;
             frameDuration = 0.2f;
             break;
+        case ObjectType::MAGIC_ANVIL:
+            interactable = true;
+            walkable = false;
+            // Magic Anvil has 39 frames; idle at frame 0 unless pulsing
+            totalFrames = 39;
+            frameDuration = 0.08f;
+            break;
     }
 }
 
 void Object::update(float deltaTime) {
-    // Update animation if this object has multiple frames
+    // Update animation; Magic Anvil animates only when pulsed
+    if (type == ObjectType::MAGIC_ANVIL) {
+        if (g_magicAnvilPulseTimer > 0.0f) {
+            g_magicAnvilPulseTimer = std::max(0.0f, g_magicAnvilPulseTimer - deltaTime);
+            animationTime += deltaTime;
+            if (animationTime >= frameDuration) {
+                animationTime = 0.0f;
+                currentFrame = (currentFrame + 1) % totalFrames;
+            }
+        } else {
+            currentFrame = 0;
+        }
+        return;
+    }
     if (totalFrames > 1) {
         animationTime += deltaTime;
         if (animationTime >= frameDuration) {
@@ -105,8 +127,20 @@ void Object::render(SDL_Renderer* renderer, int cameraX, int cameraY, int tileSi
         // Destination rectangle - use actual frame dimensions for spritesheets
         SDL_Rect dstRect;
         if (spriteSheet) {
-            // Scale to cell via edges for grid alignment
-            dstRect = { screenX, screenY, std::max(1, br.x - tl.x), std::max(1, br.y - tl.y) };
+            // Default spritesheet objects scale to tile; Magic Anvil is rendered massive
+            if (type == ObjectType::MAGIC_ANVIL) {
+                // Render huge: 6x6 tiles area centered over the object tile
+                int tilesW = 6;
+                int tilesH = 6;
+                int w = std::max(1, (br.x - tl.x) * tilesW);
+                int h = std::max(1, (br.y - tl.y) * tilesH);
+                int cx = screenX + (br.x - tl.x) / 2;
+                int cy = screenY + (br.y - tl.y) / 2;
+                dstRect = { cx - w/2, cy - h/2, w, h };
+            } else {
+                // Scale to cell via edges for grid alignment
+                dstRect = { screenX, screenY, std::max(1, br.x - tl.x), std::max(1, br.y - tl.y) };
+            }
         } else {
             // Regular textures sized to cell
             dstRect = { screenX, screenY, std::max(1, br.x - tl.x), std::max(1, br.y - tl.y) };
@@ -256,7 +290,13 @@ std::string Object::getInteractionPrompt() const {
             return "Press E to read sign";
         case ObjectType::BONFIRE:
             return "Press E to warm up";
+        case ObjectType::MAGIC_ANVIL:
+            return "Press E to use The Magic Anvil";
         default:
             return "Press E to interact";
     }
+}
+
+void Object::setMagicAnvilPulse(float seconds) {
+    g_magicAnvilPulseTimer = std::max(g_magicAnvilPulseTimer, seconds);
 }

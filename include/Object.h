@@ -35,7 +35,9 @@ enum class ObjectType {
     WOOD_FENCE,
     WOOD_FENCE_BROKEN,
     WOOD_SIGN,
-    BONFIRE
+    BONFIRE,
+    // Interactable upgrade station for equipment items
+    MAGIC_ANVIL
 };
 
 class Object {
@@ -79,6 +81,9 @@ public:
     SpriteSheet* getSpriteSheet() const { return spriteSheet; }
     void changeTexture(const std::string& newTexturePath);
     void setAssetManager(AssetManager* manager) { assetManager = manager; }
+
+    // Global pulse to play Magic Anvil animation once when upgrades happen
+    static void setMagicAnvilPulse(float seconds);
 
 protected:
     ObjectType type;
