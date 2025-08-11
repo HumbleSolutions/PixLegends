@@ -9,7 +9,6 @@
 #include "UISystem.h"
 #include "AudioManager.h"
 #include "Object.h"
-#include "AutotileDemo.h"
 #include "Database.h"
 #include <iostream>
 #include <random>
@@ -128,9 +127,7 @@ void Game::initializeSystems() {
     // Initialize objects in the world
     initializeObjects();
 
-    // Autotiling demo: press F1 to toggle; default off
-    demoMode = false;
-    autotileDemo = std::make_unique<AutotileDemo>(assetManager.get(), 20, 12, 32);
+    // Autotiling demo removed
 
     // Spawn enemies: Demon and Wizard
     if (world && assetManager) {
@@ -359,9 +356,7 @@ void Game::render() {
     SDL_RenderClear(sdlRenderer);
     
     // Set camera (center on player using actual renderer output size and zoom)
-    if (demoMode) {
-        renderer->setCamera(0, 0);
-    } else if (player) {
+    if (player) {
         int playerX = static_cast<int>(player->getX());
         int playerY = static_cast<int>(player->getY());
         int outW = 0, outH = 0; SDL_GetRendererOutputSize(sdlRenderer, &outW, &outH);
@@ -430,10 +425,8 @@ void Game::render() {
         return;
     }
 
-        // Render world or autotile demo
-    if (demoMode) {
-        autotileDemo->render(renderer.get());
-    } else if (world) {
+    // Render world
+    if (world) {
         // Keep rendering the world even while the anvil UI is open so the background remains visible
         world->render(renderer.get());
     }
@@ -875,8 +868,6 @@ void Game::handleEvents() {
                     }
                 } else if (!optionsOpen && event.key.keysym.sym == SDLK_p) {
                     isPaused = !isPaused;
-                } else if (!optionsOpen && event.key.keysym.sym == SDLK_F1) {
-                    demoMode = !demoMode;
                 } else if (!optionsOpen && event.key.keysym.sym == SDLK_F3) {
                     setDebugHitboxes(!getDebugHitboxes());
                 } else if (!optionsOpen && event.key.keysym.sym == SDLK_F5) {

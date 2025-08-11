@@ -41,28 +41,6 @@ void World::initializeDefaultWorld() {
     defaultConfig.worldHeight = height;
     defaultConfig.chunkSize = 64;
     defaultConfig.renderDistance = 3; // Render current chunk and neighbors (reduces edge void)
-    // New stone-first priority system
-    defaultConfig.stoneWeight = 40.0f;         // stone_tile.png - highest priority
-    defaultConfig.grassWeight = 20.0f;         // grass_tile.png - lower priority
-    defaultConfig.stoneGrassWeight = 2.0f;     // stone_grass_tile.png
-    defaultConfig.stoneGrass2Weight = 2.0f;    // stone_grass_tile_2.png
-    defaultConfig.stoneGrass3Weight = 2.0f;    // stone_grass_tile_3.png
-    defaultConfig.stoneGrass4Weight = 2.0f;    // stone_grass_tile_4.png
-    defaultConfig.stoneGrass5Weight = 2.0f;    // stone_grass_tile_5.png
-    defaultConfig.stoneGrass6Weight = 2.0f;    // stone_grass_tile_6.png
-    defaultConfig.stoneGrass7Weight = 2.0f;    // stone_grass_tile_7.png
-    defaultConfig.stoneGrass8Weight = 2.0f;    // stone_grass_tile_8.png
-    defaultConfig.stoneGrass9Weight = 2.0f;    // stone_grass_tile_9.png
-    defaultConfig.stoneGrass10Weight = 2.0f;   // stone_grass_tile_10.png
-    defaultConfig.stoneGrass11Weight = 2.0f;   // stone_grass_tile_11.png
-    defaultConfig.stoneGrass12Weight = 2.0f;   // stone_grass_tile_12.png
-    defaultConfig.stoneGrass13Weight = 2.0f;   // stone_grass_tile_13.png
-    defaultConfig.stoneGrass14Weight = 2.0f;   // stone_grass_tile_14.png
-    defaultConfig.stoneGrass15Weight = 2.0f;   // stone_grass_tile_15.png
-    defaultConfig.stoneGrass16Weight = 2.0f;   // stone_grass_tile_16.png
-    defaultConfig.stoneGrass17Weight = 2.0f;   // stone_grass_tile_17.png
-    defaultConfig.stoneGrass18Weight = 2.0f;   // stone_grass_tile_18.png
-    defaultConfig.stoneGrass19Weight = 2.0f;   // stone_grass_tile_19.png
     defaultConfig.useFixedSeed = false;
     defaultConfig.useNoiseDistribution = true;
     defaultConfig.noiseScale = 0.05f;
@@ -266,8 +244,8 @@ void World::render(Renderer* renderer) {
     }
 }
 
-void World::renderMinimap(Renderer* renderer, int x, int y, int width, int height, float playerX, float playerY) const {
-    if (!renderer || width <= 0 || height <= 0) return;
+void World::renderMinimap(Renderer* renderer, int x, int y, int panelWidth, int panelHeight, float playerX, float playerY) const {
+    if (!renderer || panelWidth <= 0 || panelHeight <= 0) return;
     SDL_Renderer* sdl = renderer->getSDLRenderer();
     if (!sdl) return;
 
@@ -276,8 +254,8 @@ void World::renderMinimap(Renderer* renderer, int x, int y, int width, int heigh
     // Inner drawing area (fit inside border)
     const int margin = 8;
     int ix = x + margin, iy = y + margin;
-    int iw = std::max(1, width - margin * 2);
-    int ih = std::max(1, height - margin * 2);
+    int iw = std::max(1, panelWidth - margin * 2);
+    int ih = std::max(1, panelHeight - margin * 2);
     SDL_Rect inner{ ix, iy, iw, ih };
     SDL_SetRenderDrawColor(sdl, 0, 0, 0, 200);
     SDL_RenderFillRect(sdl, &inner);
@@ -412,39 +390,9 @@ void World::loadTileTextures() {
     lavaSpriteSheet = assetManager->loadSpriteSheet("assets/Textures/Tiles/Lava/lava.png", 32, 32, 9, 9);
 }
 
-bool World::isGrassAt(int tx, int ty) {
-    auto [chunkX, chunkY] = worldToChunkCoords(tx, ty);
-    Chunk* c = getChunk(chunkX, chunkY);
-    if (!c) return false;
-    const int s = tileGenConfig.chunkSize;
-    int lx = tx - chunkX * s;
-    int ly = ty - chunkY * s;
-    if (lx < 0 || ly < 0 || lx >= s || ly >= s) return false;
-    return c->tiles[ly][lx].id == TILE_GRASS;
-}
+// (legacy isGrassAt / buildMaskFromNeighbors removed)
 
-std::string World::buildMaskFromNeighbors(int tx, int ty) {
-    // Only for stone center tiles
-    std::string m;
-    if (isGrassAt(tx, ty - 1)) m += 'T';
-    if (isGrassAt(tx, ty + 1)) m += 'B';
-    if (isGrassAt(tx - 1, ty)) m += 'L';
-    if (isGrassAt(tx + 1, ty)) m += 'R';
-    if (m.empty()) return "";
-    if (m.size() == 4) return "ALL";
-    return m;
-}
-
-Texture* World::getEdgeTextureForMask(const std::string& mask) {
-    if (mask.empty()) return tileTextures[TILE_STONE];
-    auto it = edgeTextures.find(mask);
-    if (it != edgeTextures.end() && it->second) return it->second;
-    if (mask == "R") {
-        auto itLR = edgeTextures.find("LR");
-        if (itLR != edgeTextures.end() && itLR->second) return itLR->second;
-    }
-    return tileTextures[TILE_STONE];
-}
+// (legacy getEdgeTextureForMask removed)
 
 void World::loadTilemap(const std::string& filename) {
     // TODO: Implement tilemap loading from file
@@ -529,55 +477,7 @@ int World::getPrioritizedTileType(int x, int y) {
     return TILE_DIRT;
 }
 
-bool World::shouldPlaceStone(int x, int y) {
-    // Stone placement logic - place stone in clusters
-    std::uniform_real_distribution<float> dist(0.0f, 1.0f);
-    float randomValue = dist(rng);
-    
-    // Check if nearby tiles are stone to create clusters
-    int stoneCount = 0;
-    for (int dy = -1; dy <= 1; dy++) {
-        for (int dx = -1; dx <= 1; dx++) {
-            int nx = x + dx;
-            int ny = y + dy;
-            if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-                int tileId = tiles[ny][nx].id;
-                if (tileId == TILE_STONE) {
-                    stoneCount++;
-                }
-            }
-        }
-    }
-    
-    // Higher chance of stone if nearby tiles are also stone
-    float stoneProbability = 0.2f + (stoneCount * 0.1f);
-    return randomValue < stoneProbability;
-}
-
-bool World::shouldPlaceStoneGrass(int x, int y) {
-    // Stone grass placement logic - place near stone tiles
-    std::uniform_real_distribution<float> dist(0.0f, 1.0f);
-    float randomValue = dist(rng);
-    
-    // Check if nearby tiles are stone to create transitions
-    int stoneCount = 0;
-    for (int dy = -1; dy <= 1; dy++) {
-        for (int dx = -1; dx <= 1; dx++) {
-            int nx = x + dx;
-            int ny = y + dy;
-            if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-                int tileId = tiles[ny][nx].id;
-                if (tileId == TILE_STONE) {
-                    stoneCount++;
-                }
-            }
-        }
-    }
-    
-    // Higher chance of stone grass if nearby tiles are stone
-    float stoneGrassProbability = 0.15f + (stoneCount * 0.05f);
-    return randomValue < stoneGrassProbability;
-}
+// (legacy shouldPlaceStone / shouldPlaceStoneGrass removed)
 
 // New tilemap generation methods
 
@@ -594,8 +494,7 @@ void World::generateTilemap(const TileGenerationConfig& config) {
     // Initialize RNG with fixed seed if specified
     initializeRNG();
     
-    // Validate tile weights
-    validateTileWeights();
+    // (legacy weight validation removed)
     
     // Initialize tile grid
     tiles.resize(height, std::vector<Tile>(width));
@@ -607,11 +506,8 @@ void World::generateTilemap(const TileGenerationConfig& config) {
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
             int tileType;
-            if (tileGenConfig.useNoiseDistribution) {
-                tileType = generateNoiseBasedTileType(x, y);
-            } else {
-                tileType = generateWeightedTileType(x, y);
-            }
+            // Always use noise-based generation (legacy weighted path removed)
+            tileType = generateNoiseBasedTileType(x, y);
             
             // Set tile properties based on type
             bool walkable = true;
@@ -709,41 +605,7 @@ void World::initializeRNG() {
     }
 }
 
-int World::generateWeightedTileType(int x, int y) {
-    // Generate a random value between 0 and 100
-    std::uniform_real_distribution<float> dist(0.0f, 100.0f);
-    float randomValue = dist(rng);
-    
-    // Apply weights in order - stone is now highest priority
-    float cumulativeWeight = 0.0f;
-    
-    // Stone (highest priority - 40%)
-    cumulativeWeight += tileGenConfig.stoneWeight;
-    if (randomValue < cumulativeWeight) {
-        return TILE_STONE;
-    }
-    
-    // Grass (lower priority - 20%)
-    cumulativeWeight += tileGenConfig.grassWeight;
-    if (randomValue < cumulativeWeight) {
-        return TILE_GRASS;
-    }
-    
-    // Stone grass variants (40% total, distributed evenly)
-    // Each variant gets approximately 2.1% chance
-    float stoneGrassWeight = tileGenConfig.stoneGrassWeight;
-    float stoneGrass2Weight = tileGenConfig.stoneGrass2Weight;
-    float stoneGrass3Weight = tileGenConfig.stoneGrass3Weight;
-    float stoneGrass4Weight = tileGenConfig.stoneGrass4Weight;
-    float stoneGrass5Weight = tileGenConfig.stoneGrass5Weight;
-    float stoneGrass6Weight = tileGenConfig.stoneGrass6Weight;
-    // No stone_grass variants anymore; fallback sequence
-    if (randomValue < cumulativeWeight + stoneGrassWeight) {
-        return TILE_DIRT;
-    }
-    // Otherwise return grass as low-priority
-    return TILE_GRASS;
-}
+// (legacy generateWeightedTileType removed)
 
 int World::generateNoiseBasedTileType(int x, int y) {
     // Generate noise value for this position
@@ -752,9 +614,9 @@ int World::generateNoiseBasedTileType(int x, int y) {
     // Use noise to determine tile type with weighted distribution
     float normalizedNoise = (noiseValue + 1.0f) / 2.0f; // Normalize to 0-1
     
-    // Simplified thresholds for legacy path
-    float stoneThreshold = tileGenConfig.stoneWeight / 100.0f;
-    float grassThreshold = stoneThreshold + (tileGenConfig.grassWeight / 100.0f);
+    // Fixed thresholds (legacy weight-based system removed)
+    const float stoneThreshold = 0.4f;
+    const float grassThreshold = 0.7f;
     
     // Determine tile type based on noise value
     if (normalizedNoise < stoneThreshold) {
@@ -780,7 +642,7 @@ float World::generateNoise(float x, float y) const {
         frequency *= 2.0f;
     }
     
-    return noise / (1.0f - pow(persistence, octaves));
+    return static_cast<float>(noise / (1.0 - std::pow(persistence, static_cast<double>(octaves))));
 }
 
 void World::applyStoneClustering() {
@@ -844,55 +706,11 @@ void World::applyStoneClustering() {
     }
 }
 
-void World::validateTileWeights() {
-    float totalWeight = tileGenConfig.stoneWeight + tileGenConfig.grassWeight + 
-                       tileGenConfig.stoneGrassWeight + tileGenConfig.stoneGrass2Weight +
-                       tileGenConfig.stoneGrass3Weight + tileGenConfig.stoneGrass4Weight +
-                       tileGenConfig.stoneGrass5Weight + tileGenConfig.stoneGrass6Weight +
-                       tileGenConfig.stoneGrass7Weight + tileGenConfig.stoneGrass8Weight +
-                       tileGenConfig.stoneGrass9Weight + tileGenConfig.stoneGrass10Weight +
-                       tileGenConfig.stoneGrass11Weight + tileGenConfig.stoneGrass12Weight +
-                       tileGenConfig.stoneGrass13Weight + tileGenConfig.stoneGrass14Weight +
-                       tileGenConfig.stoneGrass15Weight + tileGenConfig.stoneGrass16Weight +
-                       tileGenConfig.stoneGrass17Weight + tileGenConfig.stoneGrass18Weight +
-                       tileGenConfig.stoneGrass19Weight;
-    
-    if (std::abs(totalWeight - 100.0f) > 0.01f) {
-        std::cout << "Warning: Tile weights do not sum to 100% (current sum: " << totalWeight << "%)" << std::endl;
-        std::cout << "Normalizing weights..." << std::endl;
-        
-        // Normalize weights
-        tileGenConfig.stoneWeight = (tileGenConfig.stoneWeight / totalWeight) * 100.0f;
-        tileGenConfig.grassWeight = (tileGenConfig.grassWeight / totalWeight) * 100.0f;
-        tileGenConfig.stoneGrassWeight = (tileGenConfig.stoneGrassWeight / totalWeight) * 100.0f;
-        tileGenConfig.stoneGrass2Weight = (tileGenConfig.stoneGrass2Weight / totalWeight) * 100.0f;
-        tileGenConfig.stoneGrass3Weight = (tileGenConfig.stoneGrass3Weight / totalWeight) * 100.0f;
-        tileGenConfig.stoneGrass4Weight = (tileGenConfig.stoneGrass4Weight / totalWeight) * 100.0f;
-        tileGenConfig.stoneGrass5Weight = (tileGenConfig.stoneGrass5Weight / totalWeight) * 100.0f;
-        tileGenConfig.stoneGrass6Weight = (tileGenConfig.stoneGrass6Weight / totalWeight) * 100.0f;
-        tileGenConfig.stoneGrass7Weight = (tileGenConfig.stoneGrass7Weight / totalWeight) * 100.0f;
-        tileGenConfig.stoneGrass8Weight = (tileGenConfig.stoneGrass8Weight / totalWeight) * 100.0f;
-        tileGenConfig.stoneGrass9Weight = (tileGenConfig.stoneGrass9Weight / totalWeight) * 100.0f;
-        tileGenConfig.stoneGrass10Weight = (tileGenConfig.stoneGrass10Weight / totalWeight) * 100.0f;
-        tileGenConfig.stoneGrass11Weight = (tileGenConfig.stoneGrass11Weight / totalWeight) * 100.0f;
-        tileGenConfig.stoneGrass12Weight = (tileGenConfig.stoneGrass12Weight / totalWeight) * 100.0f;
-        tileGenConfig.stoneGrass13Weight = (tileGenConfig.stoneGrass13Weight / totalWeight) * 100.0f;
-        tileGenConfig.stoneGrass14Weight = (tileGenConfig.stoneGrass14Weight / totalWeight) * 100.0f;
-        tileGenConfig.stoneGrass15Weight = (tileGenConfig.stoneGrass15Weight / totalWeight) * 100.0f;
-        tileGenConfig.stoneGrass16Weight = (tileGenConfig.stoneGrass16Weight / totalWeight) * 100.0f;
-        tileGenConfig.stoneGrass17Weight = (tileGenConfig.stoneGrass17Weight / totalWeight) * 100.0f;
-        tileGenConfig.stoneGrass18Weight = (tileGenConfig.stoneGrass18Weight / totalWeight) * 100.0f;
-        tileGenConfig.stoneGrass19Weight = (tileGenConfig.stoneGrass19Weight / totalWeight) * 100.0f;
-        
-        std::cout << "Normalized weights - Stone: " << tileGenConfig.stoneWeight 
-                  << "%, Grass: " << tileGenConfig.grassWeight 
-                  << "%, StoneGrass variants: 40% total (2% each)" << std::endl;
-    }
-}
+// (legacy validateTileWeights removed)
 
 void World::printTileDistribution() {
     int grassCount = 0, stoneCount = 0;
-    int stoneGrassCounts[19] = {0}; // Legacy, unused with new materials
+    // (legacy stoneGrassCounts removed)
     
     // Count tile types
     for (int y = 0; y < height; y++) {
@@ -1221,7 +1039,7 @@ int World::pickRegionGroupForBiome(int wx, int wy, int biomeType) const {
     }
 }
 
-int World::pickBaseMaterialForGroup(int groupId, float noiseVal) const {
+int World::pickBaseMaterialForGroup(int groupId, float /*noiseVal*/) const {
     switch (groupId) {
         // Use 06-08 biased materials by default; transitions are added later by applyTransitionBuffers
         case 0: return TILE_GRASS; // variants 06-08 are prioritized at load
@@ -1298,10 +1116,10 @@ void World::addAccents(Chunk* chunk) {
     }
 }
 
-int World::getPreferredVariantIndex(int tileType, int worldX, int worldY) const {
+int World::getPreferredVariantIndex(int /*tileType*/, int worldX, int worldY) const {
     // Prefer variants 06-08 using very low-frequency noise to form large blobs.
     float base = tileGenConfig.regionNoiseScale * 0.75f;
-    float f = (generateNoise(worldX * base, worldY * base) + 1.0f) * 0.5f; // 0..1
+    float f = (generateNoise(static_cast<float>(worldX) * base, static_cast<float>(worldY) * base) + 1.0f) * 0.5f; // 0..1
     if (f < 0.66f) return 5; // -> index 5 (frame 06)
     if (f < 0.85f) return 6; // -> index 6 (frame 07)
     return 7;                // -> index 7 (frame 08)
@@ -1495,28 +1313,7 @@ void World::applyTransitionBuffers(Chunk* chunk) {
     }
 }
 
-void World::carveRandomGrassPatches(Chunk* chunk) {
-    const int s = tileGenConfig.chunkSize;
-    // Deterministic seed per chunk for stability
-    std::mt19937 prng(static_cast<unsigned int>((chunk->chunkX * 73856093) ^ (chunk->chunkY * 19349663)));
-    std::uniform_int_distribution<int> patchCountDist(4, 12);
-    std::uniform_int_distribution<int> sizeDist(1, 9);
-
-    int patches = patchCountDist(prng);
-    for (int i = 0; i < patches; ++i) {
-        int size = std::min(sizeDist(prng), s);
-        if (size <= 0) continue;
-        std::uniform_int_distribution<int> xDist(0, std::max(0, s - size));
-        std::uniform_int_distribution<int> yDist(0, std::max(0, s - size));
-        int ox = xDist(prng);
-        int oy = yDist(prng);
-        for (int y = oy; y < oy + size; ++y) {
-            for (int x = ox; x < ox + size; ++x) {
-                chunk->tiles[y][x].id = TILE_GRASS;
-            }
-        }
-    }
-}
+// (legacy carveRandomGrassPatches removed)
 
 void World::placeWaterLakes(Chunk* chunk) {
     const int s = tileGenConfig.chunkSize;
@@ -1642,28 +1439,4 @@ int World::getBiomeType(int x, int y) const {
     return 4;                     // Tundra
 }
 
-int World::generateBiomeBasedTile(int x, int y, int biomeType) const {
-    float n = (generateNoise(x * tileGenConfig.noiseScale, y * tileGenConfig.noiseScale) + 1.0f) * 0.5f;
-    switch (biomeType) {
-        case 0: // Plains
-            if (n < 0.75f) return TILE_GRASS;
-            if (n < 0.90f) return TILE_DIRT;
-            return TILE_STONE;
-        case 1: // Hills
-            if (n < 0.5f) return TILE_STONE;
-            if (n < 0.75f) return TILE_STONY_DIRT;
-            return TILE_GRASS;
-        case 2: // Mountains
-            if (n < 0.8f) return TILE_STONE;
-            return TILE_STONY_DIRT;
-        case 3: // Arid
-            if (n < 0.7f) return TILE_SAND;
-            if (n < 0.85f) return TILE_SANDY_DIRT;
-            return TILE_SANDY_STONE;
-        case 4: // Tundra
-            if (n < 0.7f) return TILE_SNOW;
-            return TILE_SNOWY_STONE;
-        default:
-            return TILE_GRASS;
-    }
-}
+// (unused generateBiomeBasedTile removed)

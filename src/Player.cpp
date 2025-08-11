@@ -547,8 +547,9 @@ Object* Player::getNearbyInteractableObject() const {
     }
     
     int tileSize = game->getWorld()->getTileSize();
-    int playerTileX = static_cast<int>((x + width * 0.5f) / tileSize);
-    int playerTileY = static_cast<int>((y + height * 0.9f) / tileSize);
+    // Compute player tile for potential future use (not currently used)
+    // int playerTileX = static_cast<int>((x + width * 0.5f) / tileSize);
+    // int playerTileY = static_cast<int>((y + height * 0.9f) / tileSize);
     
     // Check all objects in the world
     for (const auto& object : game->getWorld()->getObjects()) {
@@ -724,10 +725,10 @@ void Player::render(Renderer* renderer) {
         int fH = fireShieldSpriteSheet->getFrameHeight();
         int fx = static_cast<int>(x + width/2 - fW/2);
         int fy = static_cast<int>(y + height/2 - fH/2 - 5); // nudge up 5px
-        int camX2=0, camY2=0; renderer->getCamera(camX2, camY2); float z = renderer->getZoom();
-        auto scaled = [camX2, camY2, z](int wx, int wy) -> SDL_Point {
-            float sx = (static_cast<float>(wx - camX2)) * z;
-            float sy = (static_cast<float>(wy - camY2)) * z;
+        int camX2=0, camY2=0; renderer->getCamera(camX2, camY2); float z2 = renderer->getZoom();
+        auto scaled = [camX2, camY2, z2](int wx, int wy) -> SDL_Point {
+            float sx = (static_cast<float>(wx - camX2)) * z2;
+            float sy = (static_cast<float>(wy - camY2)) * z2;
             return SDL_Point{ static_cast<int>(std::floor(sx)), static_cast<int>(std::floor(sy)) };
         };
         SDL_Point tl2 = scaled(fx, fy);
@@ -859,7 +860,7 @@ void Player::levelUp() {
     
     // Recalculate damage
     meleeDamage = strength * 2;
-    rangedDamage = intelligence * 1.5f;
+    rangedDamage = static_cast<int>(std::round(intelligence * 1.5f));
     
     calculateExperienceToNext();
     

@@ -61,28 +61,7 @@ struct TileGenerationConfig {
     int chunkSize = 64;     // 64x64 tiles per chunk
     int renderDistance = 3; // Render chunks within 3 chunks of player
     
-    // Tile distribution weights
-    float stoneWeight = 40.0f;
-    float grassWeight = 20.0f;
-    float stoneGrassWeight = 2.0f;
-    float stoneGrass2Weight = 2.0f;
-    float stoneGrass3Weight = 2.0f;
-    float stoneGrass4Weight = 2.0f;
-    float stoneGrass5Weight = 2.0f;
-    float stoneGrass6Weight = 2.0f;
-    float stoneGrass7Weight = 2.0f;
-    float stoneGrass8Weight = 2.0f;
-    float stoneGrass9Weight = 2.0f;
-    float stoneGrass10Weight = 2.0f;
-    float stoneGrass11Weight = 2.0f;
-    float stoneGrass12Weight = 2.0f;
-    float stoneGrass13Weight = 2.0f;
-    float stoneGrass14Weight = 2.0f;
-    float stoneGrass15Weight = 2.0f;
-    float stoneGrass16Weight = 2.0f;
-    float stoneGrass17Weight = 2.0f;
-    float stoneGrass18Weight = 2.0f;
-    float stoneGrass19Weight = 2.0f;
+    // (legacy weight-based distribution removed)
     
     // Noise generation
     bool useFixedSeed = false;
@@ -148,7 +127,7 @@ public:
     void render(Renderer* renderer);
     void updateEnemies(float deltaTime, float playerX, float playerY);
     // UI overlays
-    void renderMinimap(Renderer* renderer, int x, int y, int width, int height, float playerX, float playerY) const;
+    void renderMinimap(Renderer* renderer, int x, int y, int panelWidth, int panelHeight, float playerX, float playerY) const;
     
     // Tilemap management
     void loadTilemap(const std::string& filename);
@@ -173,7 +152,7 @@ public:
     std::vector<std::unique_ptr<Enemy>>& getEnemies() { return enemies; }
 
     // Asset management
-    void setAssetManager(AssetManager* assetManager) { this->assetManager = assetManager; }
+    void setAssetManager(AssetManager* newAssetManager) { this->assetManager = newAssetManager; }
     
     // Tilemap generation
     void generateTilemap(const TileGenerationConfig& config = TileGenerationConfig());
@@ -230,8 +209,6 @@ private:
     // Animated tiles
     SpriteSheet* deepWaterSpriteSheet = nullptr;
     SpriteSheet* lavaSpriteSheet = nullptr;
-    // Edge textures for autotiling (stone with grass edges)
-    std::unordered_map<std::string, Texture*> edgeTextures;
     
     // Random number generation for tile placement
     std::mt19937 rng;
@@ -248,24 +225,18 @@ private:
     // Helper functions
     void initializeDefaultWorld();
     void loadTileTextures();
-    // Autotiling helpers (tile coordinates, not pixels)
-    std::string buildMaskFromNeighbors(int tx, int ty);
-    Texture* getEdgeTextureForMask(const std::string& mask);
-    bool isGrassAt(int tx, int ty);
-    void carveRandomGrassPatches(Chunk* chunk);
+    // (legacy autotiling helpers removed)
     void placeLavaLakes(Chunk* chunk);
     void placeWaterLakes(Chunk* chunk);
     void carveRivers(Chunk* chunk);
     void pruneRiverStubs(Chunk* chunk);
     int getPrioritizedTileType(int x, int y);
-    bool shouldPlaceStone(int x, int y);
-    bool shouldPlaceStoneGrass(int x, int y);
     void applyTransitionBuffers(Chunk* chunk);
     void addAccents(Chunk* chunk);
-    int getPreferredVariantIndex(int tileType, int worldX, int worldY) const;
+    int getPreferredVariantIndex(int /*tileType*/, int worldX, int worldY) const;
     void smoothRegions(Chunk* chunk);
     int pickRegionGroupForBiome(int wx, int wy, int biomeType) const;
-    int pickBaseMaterialForGroup(int groupId, float noiseVal) const;
+    int pickBaseMaterialForGroup(int groupId, float /*noiseVal*/) const;
     int getMaterialGroupId(int tileId) const;
     bool areMaterialsCloseInColor(int a, int b) const;
     struct TileColor {
@@ -278,11 +249,9 @@ private:
     
     // New tilemap generation functions
     void initializeRNG();
-    int generateWeightedTileType(int x, int y);
     int generateNoiseBasedTileType(int x, int y);
     float generateNoise(float x, float y) const;
     void applyStoneClustering();
-    void validateTileWeights();
     void printTileDistribution();
     
     // Chunk generation
@@ -291,11 +260,9 @@ private:
     
     // Biome system
     int getBiomeType(int x, int y) const;
-    int generateBiomeBasedTile(int x, int y, int biomeType) const;
-    int generateStonefieldTile(int x, int y) const; // reserved
+    // (unused biome generator stubs removed)
 
-    // Query helpers
-    int getTileIdAt(int tileX, int tileY);
+    // (unused query helpers removed)
     
     // Visibility calculation
     void calculateVisibility(float playerX, float playerY);

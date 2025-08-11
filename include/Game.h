@@ -15,7 +15,6 @@ class Player;
 class World;
 class UISystem;
 class AudioManager;
-class AutotileDemo;
 class Database;
 
 class Game {
@@ -82,7 +81,6 @@ private:
     std::unique_ptr<World> world;
     std::unique_ptr<UISystem> uiSystem;
     std::unique_ptr<AudioManager> audioManager;
-    std::unique_ptr<AutotileDemo> autotileDemo;
     std::unique_ptr<Database> database;
 
     // Modal UI state
@@ -96,7 +94,6 @@ private:
     // Drag state for inventory -> anvil
     bool draggingFromInventory = false;
     std::string draggingPayload;
-    bool demoMode = false;
     
     // Game state
     bool isRunning;
