@@ -212,6 +212,8 @@ void Renderer::worldToScreen(int worldX, int worldY, int& screenX, int& screenY)
 }
 
 void Renderer::screenToWorld(int screenX, int screenY, int& worldX, int& worldY) const {
-    worldX = screenX + cameraX;
-    worldY = screenY + cameraY;
+    // Inverse of worldToScreen, account for zoom and camera offset
+    float invZoom = (std::fabs(zoom) < 0.0001f) ? 1.0f : (1.0f / zoom);
+    worldX = static_cast<int>(std::floor(static_cast<float>(screenX) * invZoom)) + cameraX;
+    worldY = static_cast<int>(std::floor(static_cast<float>(screenY) * invZoom)) + cameraY;
 }

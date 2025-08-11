@@ -416,21 +416,58 @@ void Game::render() {
     
     // Render UI
     if (uiSystem) {
+        // Minimap first, so HUD frame overlays on top of it
+        if (world && player && assetManager) {
+            Texture* uiFrame = assetManager->getTexture("assets/Textures/UI/hp_mana_bar_ui.png");
+            if (uiFrame) {
+                // HUD frame position and size (matches UISystem::renderPlayerStats)
+                const int frameX = 10;
+                const int frameY = 10;
+                const int texW = uiFrame->getWidth();
+                const int texH = uiFrame->getHeight();
+
+                // Define the inner UI square in the HUD art using base pixel measurements
+                // Base texture reference dimensions (approximate): 399x108
+                const float BASE_W = 399.0f;
+                const float BASE_H = 108.0f;
+                const float scaleX = texW / BASE_W;
+                const float scaleY = texH / BASE_H;
+
+                // Inner square top-left and size in base pixels (estimated to match the frame art)
+                const float SQ_LEFT = 8.0f;   // px from left
+                const float SQ_TOP  = 8.0f;   // px from top
+                const float SQ_SIZE = 94.0f;  // square side length
+
+                const int squareX = frameX + static_cast<int>(std::round(SQ_LEFT * scaleX));
+                const int squareY = frameY + static_cast<int>(std::round(SQ_TOP * scaleY));
+                const int squareW = static_cast<int>(std::round(SQ_SIZE * scaleX));
+                const int squareH = static_cast<int>(std::round(SQ_SIZE * scaleY));
+
+                // Fit minimap centered inside the square with a small padding
+                const int pad = static_cast<int>(std::round(2.0f * std::min(scaleX, scaleY)));
+                const int mmSize = std::max(1, std::min(squareW, squareH) - pad * 2);
+                const int mmX = squareX + (squareW - mmSize) / 2;
+                const int mmY = squareY + (squareH - mmSize) / 2;
+
+                // Stretch request: right +16, down +0, left +12, up +12 (relative to current rect)
+                const int addRight = 16;
+                const int addDown = 10; // stretch down 10px
+                const int addLeft = 12;
+                const int addUp = 12;
+
+                const int mmW = mmSize + addLeft + addRight;
+                const int mmH = mmSize + addUp + addDown;
+                const int mmXAdj = mmX - addLeft;
+                const int mmYAdj = mmY - addUp;
+
+                world->renderMinimap(renderer.get(), mmXAdj, mmYAdj, mmW, mmH, player->getX(), player->getY());
+            }
+        }
+        // Draw HUD frame and stats above the minimap
         uiSystem->renderPlayerStats(player.get());
         uiSystem->renderDebugInfo(player.get());
-        
         // Render FPS counter
         uiSystem->renderFPSCounter(currentFPS, averageFPS, frameTime);
-
-        // Minimap (top-right), 150x150 pixels, centered on player
-        if (world && player) {
-            int outW = 0, outH = 0; SDL_GetRendererOutputSize(sdlRenderer, &outW, &outH);
-            if (outW <= 0) { outW = WINDOW_WIDTH; outH = WINDOW_HEIGHT; }
-            int mmW = 150, mmH = 150;
-            int mmX = outW - mmW - 12;
-            int mmY = 12;
-            world->renderMinimap(renderer.get(), mmX, mmY, mmW, mmH, player->getX(), player->getY());
-        }
         
         // Render death popup with respawn button if dead
         if (player && player->isDead()) {

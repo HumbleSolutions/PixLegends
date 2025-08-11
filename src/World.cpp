@@ -272,9 +272,7 @@ void World::renderMinimap(Renderer* renderer, int x, int y, int width, int heigh
     if (!sdl) return;
 
     SDL_SetRenderDrawBlendMode(sdl, SDL_BLENDMODE_BLEND);
-    // Border first so content draws on top of any opaque center
-    Texture* borderTex = nullptr;
-    if (assetManager) borderTex = assetManager->getTexture("assets/Textures/Objects/mini_map_border.png");
+    // No external border; minimap will be embedded within HUD frame
     // Inner drawing area (fit inside border)
     const int margin = 8;
     int ix = x + margin, iy = y + margin;
@@ -323,15 +321,7 @@ void World::renderMinimap(Renderer* renderer, int x, int y, int width, int heigh
     int cy = iy + ih / 2;
     SDL_RenderDrawPoint(sdl, cx, cy);
 
-    // Draw border on top last
-    if (borderTex && borderTex->getTexture()) {
-        SDL_Rect dst{ x, y, width, height };
-        SDL_RenderCopy(sdl, borderTex->getTexture(), nullptr, &dst);
-    } else {
-        SDL_SetRenderDrawColor(sdl, 220, 220, 220, 255);
-        SDL_Rect outline{ x, y, width, height };
-        SDL_RenderDrawRect(sdl, &outline);
-    }
+    // Border removed: HUD art provides enclosing frame
 }
 
 World::TileColor World::getMinimapColor(int tileId) const {

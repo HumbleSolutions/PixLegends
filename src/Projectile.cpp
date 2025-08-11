@@ -11,7 +11,12 @@ Projectile::Projectile(float x, float y, ProjectileDirection direction, AssetMan
     // Load the projectile sprite sheet
     // AssetManager may be null for enemy-fired projectiles; rely on preloaded cache in that case
     if (assetManager) {
-        spriteSheet = assetManager->getSpriteSheet(AssetManager::WIZARD_PATH + "Projectile.png");
+        const std::string path = AssetManager::WIZARD_PATH + std::string("Projectile.png");
+        spriteSheet = assetManager->getSpriteSheet(path);
+        if (!spriteSheet) {
+            // Lazy-load if not preloaded
+            spriteSheet = assetManager->loadSpriteSheet(path, 32, 32, 5, 5);
+        }
     } else {
         // Attempt to fetch from global cache via static accessor is not available; use a safe nullptr check later
         // Enemy.cpp uses nullptr; assume preloaded by AssetManager::preloadAssets
@@ -37,11 +42,7 @@ void Projectile::update(float deltaTime) {
     x += direction.x * speed * deltaTime;
     y += direction.y * speed * deltaTime;
     
-    // Check if projectile is off screen
-    if (x < -width || x > 800 + width) { // Assuming 800 is screen width
-        active = false;
-        return;
-    }
+    // Do not deactivate based on hardcoded screen bounds; world is chunked and camera can move.
     
     // Update animation
     updateAnimation(deltaTime);

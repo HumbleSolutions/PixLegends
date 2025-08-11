@@ -322,18 +322,23 @@ void Player::performRangedAttack() {
         game->getAudioManager()->startMusicDuck(0.2f, 0.7f);
     }
     
-    // Create projectile
-    float projectileX = x + width / 2.0f; // Center of player
-    float projectileY = y + height / 2.0f; // Center of player
-    
-    // Get mouse position
+    // Create projectile from player center (world coords)
+    float projectileX = x + width / 2.0f;
+    float projectileY = y + height / 2.0f;
+
+    // Get mouse position (screen), convert to world using renderer camera and zoom
     InputManager* inputManager = game->getInputManager();
-    int mouseX = inputManager->getMouseX();
-    int mouseY = inputManager->getMouseY();
+    int mouseScreenX = inputManager->getMouseX();
+    int mouseScreenY = inputManager->getMouseY();
+    int mouseWorldX = mouseScreenX;
+    int mouseWorldY = mouseScreenY;
+    if (auto* renderer = game->getRenderer()) {
+        renderer->screenToWorld(mouseScreenX, mouseScreenY, mouseWorldX, mouseWorldY);
+    }
     
-    // Calculate direction from player to mouse
-    float dirX = static_cast<float>(mouseX) - projectileX;
-    float dirY = static_cast<float>(mouseY) - projectileY;
+    // Calculate direction from player to mouse (world space)
+    float dirX = static_cast<float>(mouseWorldX) - projectileX;
+    float dirY = static_cast<float>(mouseWorldY) - projectileY;
     
     // Create normalized direction vector
     ProjectileDirection direction(dirX, dirY);
