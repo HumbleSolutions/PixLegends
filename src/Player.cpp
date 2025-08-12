@@ -27,8 +27,9 @@ Player::Player(Game* game) : game(game), x(Game::WINDOW_WIDTH / 2.0f - 32.0f), y
                             idleLeftSpriteSheet(nullptr), idleRightSpriteSheet(nullptr), idleUpSpriteSheet(nullptr), idleDownSpriteSheet(nullptr),
                             walkLeftSpriteSheet(nullptr), walkRightSpriteSheet(nullptr), walkUpSpriteSheet(nullptr), walkDownSpriteSheet(nullptr),
                             meleeAttackLeftSpriteSheet(nullptr), meleeAttackRightSpriteSheet(nullptr), meleeAttackUpSpriteSheet(nullptr), meleeAttackDownSpriteSheet(nullptr),
-                            rangedAttackLeftSpriteSheet(nullptr), rangedAttackRightSpriteSheet(nullptr), rangedAttackUpSpriteSheet(nullptr), rangedAttackDownSpriteSheet(nullptr),
-                            hurtLeftSpriteSheet(nullptr), hurtRightSpriteSheet(nullptr), deathSpriteSheet(nullptr) {
+                             rangedAttackLeftSpriteSheet(nullptr), rangedAttackRightSpriteSheet(nullptr), rangedAttackUpSpriteSheet(nullptr), rangedAttackDownSpriteSheet(nullptr),
+                             hurtLeftSpriteSheet(nullptr), hurtRightSpriteSheet(nullptr), hurtUpSpriteSheet(nullptr), hurtDownSpriteSheet(nullptr),
+                             deathLeftSpriteSheet(nullptr), deathRightSpriteSheet(nullptr), deathUpSpriteSheet(nullptr), deathDownSpriteSheet(nullptr) {
     
     loadSprites();
     calculateExperienceToNext();
@@ -51,7 +52,7 @@ Player::Player(Game* game) : game(game), x(Game::WINDOW_WIDTH / 2.0f - 32.0f), y
     initEquip(EquipmentSlot::NECKLACE, "Old Necklace", 1);
     initEquip(EquipmentSlot::SWORD,    "Rusty Sword", 3);
     initEquip(EquipmentSlot::CHEST,    "Leather Armor", 4);
-    initEquip(EquipmentSlot::SHIELD,   "Wooden Shield", 2);
+    initEquip(EquipmentSlot::SHIELD,   "Recurve Bow", 2);
     initEquip(EquipmentSlot::GLOVE,    "Cloth Gloves", 1);
     initEquip(EquipmentSlot::WAIST,    "Rope Belt", 1);
     initEquip(EquipmentSlot::FEET,     "Worn Boots", 2);
@@ -68,31 +69,73 @@ Player::Player(Game* game) : game(game), x(Game::WINDOW_WIDTH / 2.0f - 32.0f), y
 void Player::loadSprites() {
     AssetManager* assetManager = game->getAssetManager();
     
-    // Load new main character directional 8-frame sprite sheets
-    idleLeftSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "IDLE/idle_left.png");
-    idleRightSpriteSheet = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "IDLE/idle_right.png");
-    idleUpSpriteSheet    = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "IDLE/idle_up.png");
-    idleDownSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "IDLE/idle_down.png");
+    // Load new main character directional sprite sheets (Idle/Run 6 frames @128, Hurt 6, Death 12)
+    idleLeftSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "IDLE/Sword_Idle_Left.png");
+    idleRightSpriteSheet = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "IDLE/Sword_Idle_Right.png");
+    idleUpSpriteSheet    = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "IDLE/Sword_Idle_Up.png");
+    idleDownSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "IDLE/Sword_Idle_Down.png");
 
-    walkLeftSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "RUN/run_left.png");
-    walkRightSpriteSheet = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "RUN/run_right.png");
-    walkUpSpriteSheet    = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "RUN/run_up.png");
-    walkDownSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "RUN/run_down.png");
+    walkLeftSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "RUN/Sword_Run_Left.png");
+    walkRightSpriteSheet = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "RUN/Sword_Run_Right.png");
+    walkUpSpriteSheet    = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "RUN/Sword_Run_Up.png");
+    walkDownSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "RUN/Sword_Run_Down.png");
 
-    meleeAttackLeftSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "ATTACK 1/attack1_left.png");
-    meleeAttackRightSpriteSheet = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "ATTACK 1/attack1_right.png");
-    meleeAttackUpSpriteSheet    = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "ATTACK 1/attack1_up.png");
-    meleeAttackDownSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "ATTACK 1/attack1_down.png");
+    meleeAttackLeftSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "ATTACK 1/Sword_Attack_1_Left.png");
+    meleeAttackRightSpriteSheet = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "ATTACK 1/Sword_Attack_1_Right.png");
+    meleeAttackUpSpriteSheet    = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "ATTACK 1/Sword_Attack_1_Up.png");
+    meleeAttackDownSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "ATTACK 1/Sword_Attack_1_Down.png");
 
-    rangedAttackLeftSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "ATTACK 2/attack2_left.png");
-    rangedAttackRightSpriteSheet = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "ATTACK 2/attack2_right.png");
-    rangedAttackUpSpriteSheet    = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "ATTACK 2/attack2_up.png");
-    rangedAttackDownSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "ATTACK 2/attack2_down.png");
+    // Do not load Sword_Attack_2 yet; reserve for future ability
+    rangedAttackLeftSpriteSheet  = nullptr;
+    rangedAttackRightSpriteSheet = nullptr;
+    rangedAttackUpSpriteSheet    = nullptr;
+    rangedAttackDownSpriteSheet  = nullptr;
 
-    // No hurt/death sheets for the new set; fall back to right/left idle to keep flow consistent
-    hurtLeftSpriteSheet  = idleLeftSpriteSheet;
-    hurtRightSpriteSheet = idleRightSpriteSheet;
-    deathSpriteSheet     = idleDownSpriteSheet; // placeholder single loop
+    // Attack end sheets (sword 4 frames, bow end may be 2 frames but reused via ATTACK_END logic)
+    attackEndLeftSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "End Sword Animation/Sword_Attack_End_Left.png");
+    attackEndRightSpriteSheet = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "End Sword Animation/Sword_Attack_End_Right.png");
+    attackEndUpSpriteSheet    = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "End Sword Animation/Sword_Attack_End_Up.png");
+    attackEndDownSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "End Sword Animation/Sword_Attack_End_Down.png");
+    // Bow idle/run
+    bowIdleLeftSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "IDLE/Bow_Idle_Left.png");
+    bowIdleRightSpriteSheet = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "IDLE/Bow_Idle_Right.png");
+    bowIdleUpSpriteSheet    = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "IDLE/Bow_Idle_Up.png");
+    bowIdleDownSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "IDLE/Bow_Idle_Down.png");
+    bowRunLeftSpriteSheet   = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "RUN/Bow_Run_Left.png");
+    bowRunRightSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "RUN/Bow_Run_Right.png");
+    bowRunUpSpriteSheet     = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "RUN/Bow_Run_Up.png");
+    bowRunDownSpriteSheet   = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "RUN/Bow_Run_Down.png");
+    // Bow attack
+    bowAttackLeftSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "BOW ATTACK 1/Bow_Attack_1_Left.png");
+    bowAttackRightSpriteSheet = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "BOW ATTACK 1/Bow_Attack_1_Right.png");
+    bowAttackUpSpriteSheet    = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "BOW ATTACK 1/Bow_Attack_1_Up.png");
+    bowAttackDownSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "BOW ATTACK 1/Bow_Attack_1_Down.png");
+    // Bow end
+    bowEndLeftSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "BOW ATTACK 1/Bow_Attack_End_Left.png");
+    bowEndRightSpriteSheet = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "BOW ATTACK 1/Bow_Attack_End_Right.png");
+    bowEndUpSpriteSheet    = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "BOW ATTACK 1/Bow_Attack_End_Up.png");
+    bowEndDownSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "BOW ATTACK 1/Bow_Attack_End_Down.png");
+    // Dash sheets (8 frames)
+    dashLeftSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "DASH/Dash_Left.png");
+    dashRightSpriteSheet = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "DASH/Dash_Right.png");
+    dashUpSpriteSheet    = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "DASH/Dash_Up.png");
+    dashDownSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "DASH/Dash_Down.png");
+
+    // Hurt (take damage) sheets: 6 frames each
+    // Hurt sheets: try Damage_* then fallback to hurt_*
+    hurtLeftSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "TAKE_DMG/Damage_Left.png");
+    if (!hurtLeftSpriteSheet)  hurtLeftSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "TAKE_DMG/hurt_left.png");
+    hurtRightSpriteSheet = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "TAKE_DMG/Damage_Right.png");
+    if (!hurtRightSpriteSheet) hurtRightSpriteSheet = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "TAKE_DMG/hurt_right.png");
+    hurtUpSpriteSheet    = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "TAKE_DMG/Damage_Up.png");
+    if (!hurtUpSpriteSheet)    hurtUpSpriteSheet    = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "TAKE_DMG/hurt_up.png");
+    hurtDownSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "TAKE_DMG/Damage_Down.png");
+    if (!hurtDownSpriteSheet)  hurtDownSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "TAKE_DMG/hurt_down.png");
+    // Death sheets: 12 frames each, choose by direction during DEAD state
+    deathLeftSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "DEATH/Death_Left.png");
+    deathRightSpriteSheet = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "DEATH/Death_Right.png");
+    deathUpSpriteSheet    = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "DEATH/Death_Up.png");
+    deathDownSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "DEATH/Death_Down.png");
     // Fire shield sheet: 8 frames, 48x48; use auto loader and treat as looping overlay
     fireShieldSpriteSheet = assetManager->loadSpriteSheetAuto("assets/Textures/Spells/fire_sheild.png", 8, 8);
     
@@ -111,6 +154,13 @@ void Player::update(float deltaTime) {
     
     // Update movement
     move(deltaTime);
+
+    // Dash cooldown
+    if (dashCooldownTimer > 0.0f) {
+        dashCooldownTimer = std::max(0.0f, dashCooldownTimer - deltaTime);
+    }
+
+    // Removed diagonal animation flip logic per request
     
     // Update attack cooldowns
     updateAttackCooldowns(deltaTime);
@@ -141,8 +191,20 @@ void Player::update(float deltaTime) {
     // Update projectiles
     updateProjectiles(deltaTime);
 
-    // Update fire shield if active
-    if (shieldActive && fireShieldSpriteSheet) {
+    // Handle delayed second melee SFX (does not re-trigger animation)
+    if (meleeSecondSfxPending && game && game->getAudioManager()) {
+        meleeSecondSfxTimer -= deltaTime;
+        if (meleeSecondSfxTimer <= 0.0f) {
+            meleeSecondSfxPending = false;
+            meleeSecondSfxTimer = 0.0f;
+            static bool alt2 = true;
+            game->getAudioManager()->playSound(alt2 ? "player_melee_2" : "player_melee_1");
+            alt2 = !alt2;
+        }
+    }
+
+    // Update fire shield if active (disabled during dash for visuals)
+    if (shieldActive && currentState != PlayerState::DASHING && fireShieldSpriteSheet) {
         if (mana <= 0) { stopShield(); }
         if (!shieldActive) {
             // Early out if we just stopped due to 0 mana
@@ -194,6 +256,7 @@ void Player::handleInput(const InputManager* inputManager) {
     // Handle movement input
     float moveX, moveY;
     inputManager->getMovementVector(moveX, moveY);
+    // Removed diagonal flip tracking
     
     // Update facing directly from most recent input, favoring last non-zero axis to avoid sticky directions
     if (currentState != PlayerState::ATTACKING_MELEE && currentState != PlayerState::ATTACKING_RANGED && (std::fabs(moveX) >= 0.1f || std::fabs(moveY) >= 0.1f)) {
@@ -207,7 +270,7 @@ void Player::handleInput(const InputManager* inputManager) {
     }
     
     if (moveX != 0.0f || moveY != 0.0f) {
-        if (currentState != PlayerState::ATTACKING_MELEE && currentState != PlayerState::ATTACKING_RANGED) {
+        if (currentState != PlayerState::ATTACKING_MELEE && currentState != PlayerState::ATTACKING_RANGED && currentState != PlayerState::DASHING) {
             setState(PlayerState::WALKING);
         }
     } else if (currentState == PlayerState::WALKING) {
@@ -215,14 +278,22 @@ void Player::handleInput(const InputManager* inputManager) {
     }
     
     // Handle attack input
-    if (inputManager->isActionHeld(InputAction::ATTACK_MELEE) && canAttack()) {
+    // Melee on left click: trigger on press to avoid double-playing while held
+    if (inputManager->isActionPressed(InputAction::ATTACK_MELEE) && canAttack()) {
         std::cout << "Melee attack triggered!" << std::endl;
         performMeleeAttack();
     }
     
-    if (inputManager->isActionHeld(InputAction::ATTACK_RANGED) && canAttack() && hasFireWeapon()) {
-        std::cout << "Ranged attack triggered!" << std::endl;
+    // Right-click: bow shoot (regardless of fire weapon). Sword fireball moved to melee context below
+    if (inputManager->isActionHeld(InputAction::ATTACK_RANGED) && canAttack()) {
+        std::cout << "Bow shot triggered!" << std::endl;
+        setWeaponVisual(WeaponVisual::BOW);
         performRangedAttack();
+    }
+
+    // Dash ability on F (press)
+    if (inputManager->isActionPressed(InputAction::DASH) && canDash()) {
+        performDash();
     }
 
     // Shield hold: while held, keep active; on release, stop
@@ -267,7 +338,28 @@ void Player::move(float deltaTime) {
     if (currentState == PlayerState::DEAD) {
         return; // Can't move when dead
     }
-    
+    // During dash: move along dash velocity and consume remaining distance
+    if (currentState == PlayerState::DASHING) {
+        float stepX = dashVelocityX * deltaTime;
+        float stepY = dashVelocityY * deltaTime;
+        float stepDist = std::sqrt(stepX * stepX + stepY * stepY);
+        if (stepDist > dashRemainingDistance) {
+            // Clamp last step
+            if (stepDist > 0.0f) {
+                float scale = dashRemainingDistance / stepDist;
+                stepX *= scale;
+                stepY *= scale;
+            }
+        }
+        x += stepX;
+        y += stepY;
+        dashRemainingDistance = std::max(0.0f, dashRemainingDistance - stepDist);
+        if (dashRemainingDistance <= 0.0f) {
+            setState(PlayerState::IDLE);
+        }
+        return;
+    }
+
     InputManager* inputManager = game->getInputManager();
     float moveX, moveY;
     inputManager->getMovementVector(moveX, moveY);
@@ -331,6 +423,25 @@ void Player::performMeleeAttack() {
     meleeHitConsumedThisSwing = false;
     // Ensure attack animation uses the correct sheet for current direction
     currentSpriteSheet = getSpriteSheetForState(PlayerState::ATTACKING_MELEE);
+    // If fire weapon equipped, also emit a fire projectile toward mouse
+    if (hasFireWeapon() && game && game->getAssetManager()) {
+        float projectileX = x + width / 2.0f;
+        float projectileY = y + height / 2.0f;
+        InputManager* input = game->getInputManager();
+        int mx = input->getMouseX();
+        int my = input->getMouseY();
+        int wx = mx, wy = my;
+        if (auto* r = game->getRenderer()) { r->screenToWorld(mx, my, wx, wy); }
+        float dirX = static_cast<float>(wx) - projectileX;
+        float dirY = static_cast<float>(wy) - projectileY;
+        ProjectileDirection direction(dirX, dirY); direction.normalize();
+        auto* am = game->getAssetManager();
+        // Use the fireball projectile sprite (single frame)
+        // Animate 5-frame 32x32 projectile sheet
+        projectiles.push_back(std::make_unique<Projectile>(
+            projectileX, projectileY, direction, am, static_cast<int>(rangedDamage),
+            std::string("assets/Textures/Spells/Projectile.png"), 5, 5, false));
+    }
     // Play melee swing SFX at attack start (alternating variants), regardless of hit
     if (game && game->getAudioManager()) {
         static bool altSwing = false;
@@ -393,20 +504,21 @@ bool Player::consumeMeleeHitIfActive() {
 }
 
 void Player::performRangedAttack() {
-    if (rangedAttackTimer > 0.0f || mana < 10) {
-        return; // Still on cooldown or not enough mana
+    if (rangedAttackTimer > 0.0f) {
+        return; // Still on cooldown
     }
     
+    // Enter ranged attack state (bow). No mana cost for bow basic shot
     setState(PlayerState::ATTACKING_RANGED);
     rangedAttackTimer = rangedAttackCooldown;
-    useMana(10);
     currentFrame = 0;
     frameTimer = 0.0f;
     
     std::cout << "Ranged attack! Damage: " << rangedDamage << std::endl;
     // Play projectile fire SFX immediately on shoot
     if (game && game->getAudioManager()) {
-        game->getAudioManager()->playSound("player_projectile");
+        // Play bow fire SFX
+        game->getAudioManager()->playSound("bow_fire");
         game->getAudioManager()->startMusicDuck(0.2f, 0.7f);
     }
     
@@ -432,12 +544,34 @@ void Player::performRangedAttack() {
     ProjectileDirection direction(dirX, dirY);
     direction.normalize();
     
+    // Spawn arrow at player center without scaling; rotation enabled
     projectiles.push_back(std::make_unique<Projectile>(
-        projectileX, projectileY, direction, game->getAssetManager(), static_cast<int>(rangedDamage)));
+        projectileX, projectileY, direction, game->getAssetManager(), static_cast<int>(rangedDamage),
+        std::string("assets/Main Character/BOW ATTACK 1/arrow.png"), 1, 1, true));
+}
+
+void Player::performDash() {
+    // Initiate dash in current facing direction, total distance 200 units while playing 8-frame animation
+    setState(PlayerState::DASHING);
+    // Lock current dash duration to 8 frames worth of dashFrameDuration
+    float totalTime = dashFrameDuration * std::max(1, getSpriteSheetForState(PlayerState::DASHING)->getTotalFrames());
+    float speed = (totalTime > 0.0f ? 200.0f / totalTime : 0.0f);
+    dashRemainingDistance = 200.0f;
+    dashVelocityX = 0.0f;
+    dashVelocityY = 0.0f;
+    switch (currentDirection) {
+        case Direction::LEFT:  dashVelocityX = -speed; break;
+        case Direction::RIGHT: dashVelocityX =  speed; break;
+        case Direction::UP:    dashVelocityY = -speed; break;
+        case Direction::DOWN:  dashVelocityY =  speed; break;
+    }
+    // Set cooldown
+    dashCooldownTimer = DASH_COOLDOWN_SECONDS;
 }
 
 void Player::takeDamage(int damage) {
-    if (currentState == PlayerState::DEAD) {
+    // I-frames during dash: ignore damage
+    if (currentState == PlayerState::DEAD || currentState == PlayerState::DASHING) {
         return;
     }
     // Fire shield immunity
@@ -609,11 +743,14 @@ void Player::updateAnimation(float deltaTime) {
             currentFrameDuration = 1.0f;  // Much slower idle animation to make it clearly visible
             break;
         case PlayerState::WALKING:
-            currentFrameDuration = 0.15f; // Faster walking animation
+            currentFrameDuration = 0.15f; // standard walking animation speed
             break;
         case PlayerState::ATTACKING_MELEE:
         case PlayerState::ATTACKING_RANGED:
             currentFrameDuration = 0.1f;  // Fast attack animation
+            break;
+        case PlayerState::DASHING:
+            currentFrameDuration = dashFrameDuration;
             break;
         case PlayerState::HURT:
             currentFrameDuration = 0.2f;  // Medium hurt animation
@@ -637,10 +774,17 @@ void Player::updateAnimation(float deltaTime) {
         if (currentFrame >= currentSpriteSheet->getTotalFrames()) {
             if (currentState == PlayerState::ATTACKING_MELEE || 
                 currentState == PlayerState::ATTACKING_RANGED) {
-                // End attack animation
-                setState(PlayerState::IDLE);
+                // End attack animation → transition into attack end wind-down
+                setState(PlayerState::ATTACK_END);
                 meleeHitConsumedThisSwing = false;
                 
+            } else if (currentState == PlayerState::ATTACK_END) {
+                // End of wind-down → return to idle
+                setState(PlayerState::IDLE);
+            } else if (currentState == PlayerState::DASHING) {
+                // End of dash animation: stop dash and return to idle
+                dashRemainingDistance = 0.0f;
+                setState(PlayerState::IDLE);
             } else if (currentState == PlayerState::HURT) {
                 // End hurt animation
                 setState(PlayerState::IDLE);
@@ -662,6 +806,9 @@ void Player::setState(PlayerState newState) {
         return;
     }
 
+    if (newState == PlayerState::DEAD) {
+        deathDirectionAtDeath = currentDirection;
+    }
     currentState = newState;
     currentFrame = 0;
     frameTimer = 0.0f;
@@ -680,7 +827,7 @@ void Player::setState(PlayerState newState) {
 
 void Player::setDirection(Direction newDirection) {
     // Ignore direction changes during attack animations to prevent visual double-swing glitches
-    if (currentState == PlayerState::ATTACKING_MELEE || currentState == PlayerState::ATTACKING_RANGED) {
+    if (currentState == PlayerState::ATTACKING_MELEE || currentState == PlayerState::ATTACKING_RANGED || currentState == PlayerState::ATTACK_END || currentState == PlayerState::DEAD) {
         return;
     }
     if (currentDirection == newDirection) return;
@@ -711,6 +858,7 @@ void Player::render(Renderer* renderer) {
     int dstW = static_cast<int>(64 * renderScale); // upscale visual width
     int dstH = static_cast<int>(std::round(dstW * (static_cast<float>(frameHeight) / std::max(1, frameWidth))));
     int spriteOffsetY = std::max(0, (dstH - height) / 2);
+    int spriteOffsetX = std::max(0, (dstW - width) / 2); // center horizontally over gameplay width
 
     int camX = 0, camY = 0; renderer->getCamera(camX, camY);
     float z = renderer->getZoom();
@@ -719,8 +867,8 @@ void Player::render(Renderer* renderer) {
         float sy = (static_cast<float>(wy - camY)) * z;
         return SDL_Point{ static_cast<int>(std::floor(sx)), static_cast<int>(std::floor(sy)) };
     };
-    SDL_Point tl = scaledEdge(static_cast<int>(x), static_cast<int>(y - spriteOffsetY));
-    SDL_Point br = scaledEdge(static_cast<int>(x + dstW), static_cast<int>(y - spriteOffsetY + dstH));
+    SDL_Point tl = scaledEdge(static_cast<int>(x - spriteOffsetX), static_cast<int>(y - spriteOffsetY));
+    SDL_Point br = scaledEdge(static_cast<int>(x - spriteOffsetX + dstW), static_cast<int>(y - spriteOffsetY + dstH));
     SDL_Rect dstRect = { tl.x, tl.y, std::max(1, br.x - tl.x), std::max(1, br.y - tl.y) };
     
     // Render the sprite
@@ -1041,31 +1189,73 @@ void Player::addManaPotionCharges(int charges) {
 SpriteSheet* Player::getSpriteSheetForState(PlayerState state) {
     switch (state) {
         case PlayerState::IDLE:
-            if (currentDirection == Direction::LEFT) return idleLeftSpriteSheet;
-            if (currentDirection == Direction::RIGHT) return idleRightSpriteSheet;
-            if (currentDirection == Direction::UP) return idleUpSpriteSheet;
-            return idleDownSpriteSheet;
+            if (lastWeaponVisual == WeaponVisual::BOW) {
+                if (currentDirection == Direction::LEFT) return bowIdleLeftSpriteSheet;
+                if (currentDirection == Direction::RIGHT) return bowIdleRightSpriteSheet;
+                if (currentDirection == Direction::UP) return bowIdleUpSpriteSheet;
+                return bowIdleDownSpriteSheet;
+            } else {
+                if (currentDirection == Direction::LEFT) return idleLeftSpriteSheet;
+                if (currentDirection == Direction::RIGHT) return idleRightSpriteSheet;
+                if (currentDirection == Direction::UP) return idleUpSpriteSheet;
+                return idleDownSpriteSheet;
+            }
         case PlayerState::WALKING:
-            if (currentDirection == Direction::LEFT) return walkLeftSpriteSheet;
-            if (currentDirection == Direction::RIGHT) return walkRightSpriteSheet;
-            if (currentDirection == Direction::UP) return walkUpSpriteSheet;
-            return walkDownSpriteSheet;
+            if (lastWeaponVisual == WeaponVisual::BOW) {
+                if (currentDirection == Direction::LEFT) return bowRunLeftSpriteSheet;
+                if (currentDirection == Direction::RIGHT) return bowRunRightSpriteSheet;
+                if (currentDirection == Direction::UP) return bowRunUpSpriteSheet;
+                return bowRunDownSpriteSheet;
+            } else {
+                if (currentDirection == Direction::LEFT) return walkLeftSpriteSheet;
+                if (currentDirection == Direction::RIGHT) return walkRightSpriteSheet;
+                if (currentDirection == Direction::UP) return walkUpSpriteSheet;
+                return walkDownSpriteSheet;
+            }
+        case PlayerState::DASHING:
+            if (currentDirection == Direction::LEFT) return dashLeftSpriteSheet;
+            if (currentDirection == Direction::RIGHT) return dashRightSpriteSheet;
+            if (currentDirection == Direction::UP) return dashUpSpriteSheet;
+            return dashDownSpriteSheet;
         case PlayerState::ATTACKING_MELEE:
             if (currentDirection == Direction::LEFT) return meleeAttackLeftSpriteSheet;
             if (currentDirection == Direction::RIGHT) return meleeAttackRightSpriteSheet;
             if (currentDirection == Direction::UP) return meleeAttackUpSpriteSheet;
             return meleeAttackDownSpriteSheet;
         case PlayerState::ATTACKING_RANGED:
-            if (currentDirection == Direction::LEFT) return rangedAttackLeftSpriteSheet;
-            if (currentDirection == Direction::RIGHT) return rangedAttackRightSpriteSheet;
-            if (currentDirection == Direction::UP) return rangedAttackUpSpriteSheet;
-            return rangedAttackDownSpriteSheet;
+            if (lastWeaponVisual == WeaponVisual::BOW) {
+                if (currentDirection == Direction::LEFT) return bowAttackLeftSpriteSheet;
+                if (currentDirection == Direction::RIGHT) return bowAttackRightSpriteSheet;
+                if (currentDirection == Direction::UP) return bowAttackUpSpriteSheet;
+                return bowAttackDownSpriteSheet;
+            } else {
+                if (currentDirection == Direction::LEFT) return rangedAttackLeftSpriteSheet;
+                if (currentDirection == Direction::RIGHT) return rangedAttackRightSpriteSheet;
+                if (currentDirection == Direction::UP) return rangedAttackUpSpriteSheet;
+                return rangedAttackDownSpriteSheet;
+            }
+        case PlayerState::ATTACK_END:
+            if (lastWeaponVisual == WeaponVisual::BOW) {
+                if (currentDirection == Direction::LEFT) return bowEndLeftSpriteSheet;
+                if (currentDirection == Direction::RIGHT) return bowEndRightSpriteSheet;
+                if (currentDirection == Direction::UP) return bowEndUpSpriteSheet;
+                return bowEndDownSpriteSheet;
+            } else {
+                if (currentDirection == Direction::LEFT) return attackEndLeftSpriteSheet;
+                if (currentDirection == Direction::RIGHT) return attackEndRightSpriteSheet;
+                if (currentDirection == Direction::UP) return attackEndUpSpriteSheet;
+                return attackEndDownSpriteSheet;
+            }
         case PlayerState::HURT:
             if (currentDirection == Direction::LEFT) return hurtLeftSpriteSheet;
             if (currentDirection == Direction::RIGHT) return hurtRightSpriteSheet;
-            return (currentDirection == Direction::UP ? idleUpSpriteSheet : idleDownSpriteSheet);
+            if (currentDirection == Direction::UP) return hurtUpSpriteSheet;
+            return hurtDownSpriteSheet;
         case PlayerState::DEAD:
-            return deathSpriteSheet;
+            if (deathDirectionAtDeath == Direction::LEFT) return deathLeftSpriteSheet;
+            if (deathDirectionAtDeath == Direction::RIGHT) return deathRightSpriteSheet;
+            if (deathDirectionAtDeath == Direction::UP) return deathUpSpriteSheet;
+            return deathDownSpriteSheet;
         default:
             return idleLeftSpriteSheet;
     }
@@ -1082,9 +1272,17 @@ void Player::updateAttackCooldowns(float deltaTime) {
 }
 
 bool Player::canAttack() const {
-    return currentState != PlayerState::DEAD && 
-           meleeAttackTimer <= 0.0f && 
+    // Disallow starting a new attack while any attack or end-attack animation is playing
+    if (currentState == PlayerState::ATTACKING_MELEE || currentState == PlayerState::ATTACKING_RANGED || currentState == PlayerState::ATTACK_END) {
+        return false;
+    }
+    return currentState != PlayerState::DEAD &&
+           meleeAttackTimer <= 0.0f &&
            rangedAttackTimer <= 0.0f;
+}
+
+bool Player::isAttackAnimationPlaying() const {
+    return currentState == PlayerState::ATTACKING_MELEE || currentState == PlayerState::ATTACKING_RANGED || currentState == PlayerState::ATTACK_END;
 }
 
 void Player::calculateExperienceToNext() {

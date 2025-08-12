@@ -369,28 +369,72 @@ void AssetManager::preloadAssets() {
     loadSpriteSheet(GOBLIN_BASE + "RIGHT_HURT.png",  115, 78, 3, 3);
     loadSpriteSheet(GOBLIN_BASE + "LEFT_DEATH.png",  115, 78, 10, 10);
 
-    // Load new main character 8-frame directional sheets
-    // Files exist under assets/Main Character/{IDLE,RUN,ATTACK 1,ATTACK 2}/{idle_*.png, run_*.png, attack*.png}
+    // Load new main character directional sheets
+    // Files exist under assets/Main Character/{IDLE,RUN,TAKE_DMG,DEATH,ATTACK 1,ATTACK 2}/
     std::cout << "Loading main character sprites (player)..." << std::endl;
-    // IDLE (8 frames each)
-    loadSpriteSheetAuto(MAIN_CHAR_PATH + "IDLE/idle_left.png", 8, 8);
-    loadSpriteSheetAuto(MAIN_CHAR_PATH + "IDLE/idle_right.png", 8, 8);
-    loadSpriteSheetAuto(MAIN_CHAR_PATH + "IDLE/idle_up.png", 8, 8);
-    loadSpriteSheetAuto(MAIN_CHAR_PATH + "IDLE/idle_down.png", 8, 8);
-    // RUN (8 frames each)
-    loadSpriteSheetAuto(MAIN_CHAR_PATH + "RUN/run_left.png", 8, 8);
-    loadSpriteSheetAuto(MAIN_CHAR_PATH + "RUN/run_right.png", 8, 8);
-    loadSpriteSheetAuto(MAIN_CHAR_PATH + "RUN/run_up.png", 8, 8);
-    loadSpriteSheetAuto(MAIN_CHAR_PATH + "RUN/run_down.png", 8, 8);
-    // ATTACK 1 (melee) and ATTACK 2 (alt) - use 8 frames
-    loadSpriteSheetAuto(MAIN_CHAR_PATH + "ATTACK 1/attack1_left.png", 8, 8);
-    loadSpriteSheetAuto(MAIN_CHAR_PATH + "ATTACK 1/attack1_right.png", 8, 8);
-    loadSpriteSheetAuto(MAIN_CHAR_PATH + "ATTACK 1/attack1_up.png", 8, 8);
-    loadSpriteSheetAuto(MAIN_CHAR_PATH + "ATTACK 1/attack1_down.png", 8, 8);
-    loadSpriteSheetAuto(MAIN_CHAR_PATH + "ATTACK 2/attack2_left.png", 8, 8);
-    loadSpriteSheetAuto(MAIN_CHAR_PATH + "ATTACK 2/attack2_right.png", 8, 8);
-    loadSpriteSheetAuto(MAIN_CHAR_PATH + "ATTACK 2/attack2_up.png", 8, 8);
-    loadSpriteSheetAuto(MAIN_CHAR_PATH + "ATTACK 2/attack2_down.png", 8, 8);
+    // SWORD: IDLE/RUN (6 frames each, 128 or 384 px frames depending on sheet)
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "IDLE/Sword_Idle_Left.png", 6, 6);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "IDLE/Sword_Idle_Right.png", 6, 6);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "IDLE/Sword_Idle_Up.png", 6, 6);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "IDLE/Sword_Idle_Down.png", 6, 6);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "RUN/Sword_Run_Left.png", 6, 6);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "RUN/Sword_Run_Right.png", 6, 6);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "RUN/Sword_Run_Up.png", 6, 6);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "RUN/Sword_Run_Down.png", 6, 6);
+    // BOW: IDLE/RUN (6 frames)
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "IDLE/Bow_Idle_Left.png", 6, 6);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "IDLE/Bow_Idle_Right.png", 6, 6);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "IDLE/Bow_Idle_Up.png", 6, 6);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "IDLE/Bow_Idle_Down.png", 6, 6);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "RUN/Bow_Run_Left.png", 6, 6);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "RUN/Bow_Run_Right.png", 6, 6);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "RUN/Bow_Run_Up.png", 6, 6);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "RUN/Bow_Run_Down.png", 6, 6);
+    // TAKE DAMAGE (6 frames each, 128x128) - support both naming schemes
+    // Newer set may be named Damage_*.png or hurt_*.png
+    auto tryLoadHurt = [&](const std::string& a, const std::string& b){
+        // try A then B; only loads if exists
+        if (!loadSpriteSheetAuto(a, 6, 6)) {
+            loadSpriteSheetAuto(b, 6, 6);
+        }
+    };
+    tryLoadHurt(MAIN_CHAR_PATH + "TAKE_DMG/Damage_Left.png",  MAIN_CHAR_PATH + "TAKE_DMG/hurt_left.png");
+    tryLoadHurt(MAIN_CHAR_PATH + "TAKE_DMG/Damage_Right.png", MAIN_CHAR_PATH + "TAKE_DMG/hurt_right.png");
+    tryLoadHurt(MAIN_CHAR_PATH + "TAKE_DMG/Damage_Up.png",    MAIN_CHAR_PATH + "TAKE_DMG/hurt_up.png");
+    tryLoadHurt(MAIN_CHAR_PATH + "TAKE_DMG/Damage_Down.png",  MAIN_CHAR_PATH + "TAKE_DMG/hurt_down.png");
+    // DEATH (12 frames each, 128x128)
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "DEATH/Death_Left.png", 12, 12);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "DEATH/Death_Right.png", 12, 12);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "DEATH/Death_Up.png", 12, 12);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "DEATH/Death_Down.png", 12, 12);
+    // ATTACKS: Sword (melee) and Bow (ranged)
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "ATTACK 1/Sword_Attack_1_Left.png", 8, 8);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "ATTACK 1/Sword_Attack_1_Right.png", 8, 8);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "ATTACK 1/Sword_Attack_1_Up.png", 8, 8);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "ATTACK 1/Sword_Attack_1_Down.png", 8, 8);
+    // (Sword_Attack_2 reserved for future ability)
+    // Bow attack 1 (6 frames)
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "BOW ATTACK 1/Bow_Attack_1_Left.png", 6, 6);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "BOW ATTACK 1/Bow_Attack_1_Right.png", 6, 6);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "BOW ATTACK 1/Bow_Attack_1_Up.png", 6, 6);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "BOW ATTACK 1/Bow_Attack_1_Down.png", 6, 6);
+    // End-of-attack wind-down (sword 4 frames)
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "End Sword Animation/Sword_Attack_End_Left.png", 4, 4);
+    // Bow end attack (2 frames) - optional
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "BOW ATTACK 1/Bow_Attack_End_Left.png", 2, 2);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "BOW ATTACK 1/Bow_Attack_End_Right.png", 2, 2);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "BOW ATTACK 1/Bow_Attack_End_Up.png", 2, 2);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "BOW ATTACK 1/Bow_Attack_End_Down.png", 2, 2);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "End Sword Animation/Sword_Attack_End_Right.png", 4, 4);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "End Sword Animation/Sword_Attack_End_Up.png", 4, 4);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "End Sword Animation/Sword_Attack_End_Down.png", 4, 4);
+    // DASH (8 frames)
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "DASH/Dash_Left.png", 8, 8);
+    // Bow arrow sprite (single frame)
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "BOW ATTACK 1/arrow.png", 1, 1);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "DASH/Dash_Right.png", 8, 8);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "DASH/Dash_Up.png", 8, 8);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "DASH/Dash_Down.png", 8, 8);
     
     // Load new tile textures by folder groups (variants are loaded lazily by World)
     std::cout << "Loading tile textures..." << std::endl;
@@ -499,7 +543,7 @@ void AssetManager::preloadAssets() {
   loadTexture("assets/Textures/Items/necklace_01.png");
   loadTexture("assets/Textures/Items/sword_01.png");
   loadTexture("assets/Textures/Items/chestpeice_01.png");
-  loadTexture("assets/Textures/Items/sheild_01.png");
+  loadTexture("assets/Textures/Items/bow_01.png");
   loadTexture("assets/Textures/Items/gloves_01.png");
   loadTexture("assets/Textures/Items/waist_01.png");
   loadTexture("assets/Textures/Items/boots_01.png");

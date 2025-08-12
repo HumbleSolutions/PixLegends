@@ -3,6 +3,7 @@
 #include <SDL2/SDL.h>
 #include <memory>
 #include <cmath>
+#include <string>
 
 // Forward declarations
 class Renderer;
@@ -27,7 +28,16 @@ struct ProjectileDirection {
 
 class Projectile {
 public:
-    Projectile(float x, float y, ProjectileDirection direction, AssetManager* assetManager, int damage);
+    // Optional sprite override: if spritePath is provided, that sheet will be used with the given frame data.
+    // Set rotateByDirection=true to rotate the sprite to match flight direction (e.g., arrows).
+    Projectile(float x, float y,
+              ProjectileDirection direction,
+              AssetManager* assetManager,
+              int damage,
+              const std::string& spritePath = std::string(),
+              int totalFrames = 0,
+              int framesPerRow = 0,
+              bool rotateByDirection = false);
     ~Projectile() = default;
 
     // Core update and render
@@ -61,6 +71,7 @@ private:
     int currentFrame;
     float frameTimer;
     float frameDuration;
+    bool rotateByDir;
     
     // State
     bool active;

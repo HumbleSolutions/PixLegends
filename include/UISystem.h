@@ -26,6 +26,7 @@ public:
     void renderBossHealthBar(const std::string& name, int current, int max, int screenW);
     void renderGoldDisplay(int x, int y, int gold);
     void renderPlayerStats(const Player* player);
+    void renderDashCooldown(const Player* player);
     void renderDebugInfo(const Player* player);
     void renderPotions(const Player* player);
     
@@ -100,6 +101,7 @@ public:
 
     void renderOptionsMenu(int selectedIndex,
                            int masterVolume, int musicVolume, int soundVolume,
+                           int monsterVolume, int playerMeleeVolume,
                            bool fullscreenEnabled, bool vsyncEnabled,
                            OptionsTab activeTab,
                            // mouse for hit testing

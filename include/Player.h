@@ -24,6 +24,8 @@ enum class PlayerState {
     WALKING,
     ATTACKING_MELEE,
     ATTACKING_RANGED,
+    ATTACK_END,
+    DASHING,
     HURT,
     DEAD
 };
@@ -66,12 +68,17 @@ public:
     // Combat
     void performMeleeAttack();
     void performRangedAttack();
+    void performDash();
+    bool isDashing() const { return currentState == PlayerState::DASHING; }
+    float getDashCooldownRemaining() const { return dashCooldownTimer; }
+    float getDashCooldownMax() const { return DASH_COOLDOWN_SECONDS; }
     void startShield();
     void stopShield();
     bool hasFireWeapon() const { const auto& sw = equipment[static_cast<size_t>(EquipmentSlot::SWORD)]; const auto& sh = equipment[static_cast<size_t>(EquipmentSlot::SHIELD)]; return sw.fire > 0 || sh.fire > 0; }
     void takeDamage(int damage);
     bool isShieldActive() const { return shieldActive; }
-    bool hasFireShield() const { return equipment[static_cast<size_t>(EquipmentSlot::SHIELD)].fire > 0; }
+    // Fire shield now depends on belt (waist) enchant with fire
+    bool hasFireShield() const { return equipment[static_cast<size_t>(EquipmentSlot::WAIST)].fire > 0; }
     bool isDead() const { return currentState == PlayerState::DEAD; }
     void respawn(float respawnX, float respawnY);
     void setSpawnPoint(float sx, float sy) { spawnX = sx; spawnY = sy; }
@@ -122,6 +129,7 @@ public:
     int getHeight() const { return height; }
     PlayerState getState() const { return currentState; }
     Direction getDirection() const { return currentDirection; }
+    Direction getDeathDirection() const { return deathDirectionAtDeath; }
     
     // Stats
     int getHealth() const { return health; }
@@ -158,6 +166,7 @@ public:
         int maxDurability = 0;          // cap for durability
     };
     const EquipmentItem& getEquipment(EquipmentSlot slot) const { return equipment[static_cast<int>(slot)]; }
+    EquipmentItem& getEquipmentMutable(EquipmentSlot slot) { return equipment[static_cast<int>(slot)]; }
     void upgradeEquipment(EquipmentSlot slot, int deltaPlus);
     void enchantEquipment(EquipmentSlot slot, const std::string& element, int amount);
 
@@ -189,6 +198,7 @@ private:
     // State
     PlayerState currentState;
     Direction currentDirection;
+    Direction deathDirectionAtDeath = Direction::DOWN;
     
     // Animation
     SpriteSheet* currentSpriteSheet;
@@ -196,6 +206,12 @@ private:
     float frameTimer;
     float frameDuration;
     bool deathAnimationFinished = false;
+    // Dash state
+    float dashRemainingDistance = 0.0f;
+    float dashVelocityX = 0.0f;
+    float dashVelocityY = 0.0f;
+    float dashFrameDuration = 0.06f; // 8 frames ≈ 0.48s
+    float dashCooldownTimer = 0.0f;
     
     // Combat
     float meleeAttackCooldown;
@@ -244,9 +260,42 @@ private:
     SpriteSheet* rangedAttackRightSpriteSheet;
     SpriteSheet* rangedAttackUpSpriteSheet;
     SpriteSheet* rangedAttackDownSpriteSheet;
+    // Bow-specific idle/run and attack
+    SpriteSheet* bowIdleLeftSpriteSheet = nullptr;
+    SpriteSheet* bowIdleRightSpriteSheet = nullptr;
+    SpriteSheet* bowIdleUpSpriteSheet = nullptr;
+    SpriteSheet* bowIdleDownSpriteSheet = nullptr;
+    SpriteSheet* bowRunLeftSpriteSheet = nullptr;
+    SpriteSheet* bowRunRightSpriteSheet = nullptr;
+    SpriteSheet* bowRunUpSpriteSheet = nullptr;
+    SpriteSheet* bowRunDownSpriteSheet = nullptr;
+    SpriteSheet* bowAttackLeftSpriteSheet = nullptr;
+    SpriteSheet* bowAttackRightSpriteSheet = nullptr;
+    SpriteSheet* bowAttackUpSpriteSheet = nullptr;
+    SpriteSheet* bowAttackDownSpriteSheet = nullptr;
+    // Bow end (2 frames)
+    SpriteSheet* bowEndLeftSpriteSheet = nullptr;
+    SpriteSheet* bowEndRightSpriteSheet = nullptr;
+    SpriteSheet* bowEndUpSpriteSheet = nullptr;
+    SpriteSheet* bowEndDownSpriteSheet = nullptr;
+    // 4-frame end-of-attack wind-down animation (plays after melee or ranged)
+    SpriteSheet* attackEndLeftSpriteSheet;
+    SpriteSheet* attackEndRightSpriteSheet;
+    SpriteSheet* attackEndUpSpriteSheet;
+    SpriteSheet* attackEndDownSpriteSheet;
+    // Dash sheets (8 frames)
+    SpriteSheet* dashLeftSpriteSheet;
+    SpriteSheet* dashRightSpriteSheet;
+    SpriteSheet* dashUpSpriteSheet;
+    SpriteSheet* dashDownSpriteSheet;
     SpriteSheet* hurtLeftSpriteSheet;
     SpriteSheet* hurtRightSpriteSheet;
-    SpriteSheet* deathSpriteSheet;
+    SpriteSheet* hurtUpSpriteSheet;
+    SpriteSheet* hurtDownSpriteSheet;
+    SpriteSheet* deathLeftSpriteSheet;
+    SpriteSheet* deathRightSpriteSheet;
+    SpriteSheet* deathUpSpriteSheet;
+    SpriteSheet* deathDownSpriteSheet;
     // Fire shield visuals
     SpriteSheet* fireShieldSpriteSheet = nullptr;
     int fireShieldFrame = 0;
@@ -269,6 +318,12 @@ private:
     std::vector<std::unique_ptr<Projectile>> projectiles;
     void updateAttackCooldowns(float deltaTime);
     bool canAttack() const;
+    bool isAttackAnimationPlaying() const;
+    bool canDash() const { return currentState != PlayerState::DEAD && currentState != PlayerState::DASHING && !isAttackAnimationPlaying() && dashCooldownTimer <= 0.0f; }
+    // Weapon visual mode (last used skill): sword vs bow
+    enum class WeaponVisual { SWORD, BOW };
+    void setWeaponVisual(WeaponVisual w) { lastWeaponVisual = w; }
+    WeaponVisual getWeaponVisual() const { return lastWeaponVisual; }
     void calculateExperienceToNext();
     
     // Constants
@@ -276,6 +331,7 @@ private:
     static constexpr float MELEE_ATTACK_COOLDOWN = 0.5f;
     static constexpr float RANGED_ATTACK_COOLDOWN = 1.0f;
     static constexpr float FRAME_DURATION = 0.2f;  // Slower animation for better visibility
+    static constexpr float DASH_COOLDOWN_SECONDS = 10.0f;
     static constexpr int BASE_HEALTH = 100;
     static constexpr int BASE_MANA = 50;
     static constexpr int BASE_STRENGTH = 10;
@@ -286,6 +342,10 @@ private:
 
     // Melee swing state
     bool meleeHitConsumedThisSwing = false;
+    // Schedule a second melee SFX after a delay (does not re-trigger animation)
+    bool meleeSecondSfxPending = false;
+    float meleeSecondSfxTimer = 0.0f;
+    static constexpr float MELEE_SECOND_SFX_DELAY = 1.75f;
 
     // Footstep timing
     float footstepTimer = 0.0f;
@@ -297,7 +357,8 @@ private:
     static constexpr float POTION_COOLDOWN_SECONDS = 5.0f;
 
     // Render scale for the player sprite (1.0 = original). Upscales visual size only.
-    float renderScale = 1.0f;
+    float renderScale = 1.75f;
+    WeaponVisual lastWeaponVisual = WeaponVisual::SWORD;
 
     // Equipment helpers
     void updateSwordNameByPlus();

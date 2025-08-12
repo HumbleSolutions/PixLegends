@@ -318,6 +318,12 @@ bool Database::savePlayerState(int userId, const PlayerSave& s, std::string* out
         f << "strength=" << s.strength << "\n";
         f << "intelligence=" << s.intelligence << "\n";
         f << "gold=" << s.gold << "\n";
+        // Audio
+        f << "masterVolume=" << s.masterVolume << "\n";
+        f << "musicVolume=" << s.musicVolume << "\n";
+        f << "soundVolume=" << s.soundVolume << "\n";
+        f << "monsterVolume=" << s.monsterVolume << "\n";
+        f << "playerMeleeVolume=" << s.playerMeleeVolume << "\n";
         f << "healthPotionCharges=" << s.healthPotionCharges << "\n";
         f << "manaPotionCharges=" << s.manaPotionCharges << "\n";
         // Persist equipment +levels and elemental mods
@@ -367,6 +373,11 @@ std::optional<PlayerSave> Database::loadPlayerState(int userId, std::string* out
             else if (key == "strength") s.strength = std::stoi(val);
             else if (key == "intelligence") s.intelligence = std::stoi(val);
             else if (key == "gold") s.gold = std::stoi(val);
+            else if (key == "masterVolume") s.masterVolume = std::stoi(val);
+            else if (key == "musicVolume") s.musicVolume = std::stoi(val);
+            else if (key == "soundVolume") s.soundVolume = std::stoi(val);
+            else if (key == "monsterVolume") s.monsterVolume = std::stoi(val);
+            else if (key == "playerMeleeVolume") s.playerMeleeVolume = std::stoi(val);
             else if (key == "healthPotionCharges") s.healthPotionCharges = std::stoi(val);
             else if (key == "manaPotionCharges") s.manaPotionCharges = std::stoi(val);
             else if (key.rfind("equipPlus_",0)==0) { int i = key[10]-'0'; if (i>=0&&i<9) s.equipPlus[i] = std::stoi(val); }
@@ -493,6 +504,8 @@ std::string Database::usersCsvPath() const { return dataRoot + "/users.csv"; }
 std::string Database::itemsCsvPath() const { return dataRoot + "/items.csv"; }
 std::string Database::userItemsCsvPath() const { return dataRoot + "/user_items.csv"; }
 std::string Database::playerStatePath(int userId) const { return dataRoot + "/player_" + std::to_string(userId) + ".save"; }
+std::string Database::userAudioPath(int userId) const { return dataRoot + "/audio_" + std::to_string(userId) + ".cfg"; }
+std::string Database::userThemePath(int userId) const { return dataRoot + "/theme_" + std::to_string(userId) + ".cfg"; }
 std::string Database::rememberFilePath() const { return dataRoot + "/remember.txt"; }
 
 bool Database::saveRememberState(const RememberState& state) const {
@@ -522,6 +535,44 @@ bool Database::clearRememberState() const {
     try {
         if (std::filesystem::exists(rememberFilePath())) std::filesystem::remove(rememberFilePath());
         return true;
+    } catch (...) { return false; }
+}
+
+bool Database::saveAudioSettings(int userId, int master, int music, int sound, int monster, int playerMelee) const {
+    try {
+        std::ofstream f(userAudioPath(userId), std::ios::out | std::ios::trunc);
+        if (!f) return false;
+        f << master << "\n" << music << "\n" << sound << "\n" << monster << "\n" << playerMelee << "\n";
+        return true;
+    } catch (...) { return false; }
+}
+
+bool Database::loadAudioSettings(int userId, int& master, int& music, int& sound, int& monster, int& playerMelee) const {
+    master = music = sound = monster = playerMelee = 100;
+    try {
+        std::ifstream f(userAudioPath(userId));
+        if (!f) return false;
+        std::string line;
+        if (std::getline(f, line)) master = std::stoi(line);
+        if (std::getline(f, line)) music = std::stoi(line);
+        if (std::getline(f, line)) sound = std::stoi(line);
+        if (std::getline(f, line)) monster = std::stoi(line);
+        if (std::getline(f, line)) playerMelee = std::stoi(line);
+        return true;
+    } catch (...) { return false; }
+}
+
+bool Database::saveTheme(int userId, const std::string& themeName) const {
+    try {
+        std::ofstream f(userThemePath(userId), std::ios::out | std::ios::trunc);
+        if (!f) return false; f << themeName << "\n"; return true;
+    } catch (...) { return false; }
+}
+
+bool Database::loadTheme(int userId, std::string& outThemeName) const {
+    outThemeName.clear();
+    try {
+        std::ifstream f(userThemePath(userId)); if (!f) return false; std::getline(f, outThemeName); return !outThemeName.empty();
     } catch (...) { return false; }
 }
 

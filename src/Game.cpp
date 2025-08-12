@@ -100,9 +100,8 @@ void Game::initializeSystems() {
         audioManager->loadSound("exp_gather", "assets/Sound/Effects/exp_gather_sound.wav");
         // Fire shield looped SFX
         audioManager->loadSound("fire_shield_loop", "assets/Sound/Spells/fire_sheild_sound.wav");
-        // Try WAV first (works without SDL_mixer), then OGG (works when SDL_mixer is available)
+        // Load themes once; use distinct keys so persistence matches names
         audioManager->loadMusic("main_theme", "assets/Sound/Music/main_theme.wav");
-        audioManager->loadMusic("main_theme", "assets/Sound/Music/main_theme.ogg");
         audioManager->loadMusic("fast_tempo", "assets/Sound/Music/fast_tempo_theme.wav");
         audioManager->loadMusic("boss_music", "assets/Sound/Music/boss_music.wav");
         // Goblin SFX
@@ -179,13 +178,20 @@ void Game::initializeSystems() {
         world->updateVisibility(player->getX(), player->getY());
         world->updateVisibleChunks(player->getX(), player->getY());
     }
-    // Start background theme at game start (user-selectable later)
+    // Start background theme at game start (will be overridden by saved theme in loadOrCreateDefaultUserAndSave)
     backgroundMusicName = "main_theme";
     if (audioManager && audioManager->hasMusic(backgroundMusicName)) {
         audioManager->playMusic(backgroundMusicName);
         currentMusicTrack = backgroundMusicName;
     } else {
-        currentMusicTrack.clear();
+        // Attempt to fall back to fast_tempo if main_theme asset missing
+        backgroundMusicName = "fast_tempo";
+        if (audioManager && audioManager->hasMusic(backgroundMusicName)) {
+            audioManager->playMusic(backgroundMusicName);
+            currentMusicTrack = backgroundMusicName;
+        } else {
+            currentMusicTrack.clear();
+        }
     }
     
     isRunning = true;
@@ -746,6 +752,8 @@ void Game::render() {
         }
         // Draw HUD frame and stats above the minimap
         uiSystem->renderPlayerStats(player.get());
+        // Dash cooldown at bottom middle
+        uiSystem->renderDashCooldown(player.get());
         uiSystem->renderDebugInfo(player.get());
         // Render FPS counter
         uiSystem->renderFPSCounter(currentFPS, averageFPS, frameTime);
@@ -1106,6 +1114,31 @@ void Game::loadOrCreateDefaultUserAndSave() {
             // Apply minimal fields to player
             player->applySaveState(*save);
         }
+        // Load audio prefs and apply
+        if (audioManager) {
+            int m=100, mu=100, s=100, mon=100, pl=100;
+            if (database->loadAudioSettings(def->userId, m, mu, s, mon, pl)) {
+                audioManager->setMasterVolume(m);
+                audioManager->setMusicVolume(mu);
+                audioManager->setSoundVolume(s);
+                audioManager->setMonsterVolume(mon);
+                audioManager->setPlayerVolume(pl);
+            }
+            std::string theme;
+            if (database->loadTheme(def->userId, theme) && !theme.empty()) {
+                // Validate against loaded keys only
+                if (theme != "main_theme" && theme != "fast_tempo") theme = "main_theme";
+                backgroundMusicName = theme;
+                if (audioManager->hasMusic(backgroundMusicName)) {
+                    audioManager->fadeToMusic(backgroundMusicName, 200, 200);
+                    currentMusicTrack = backgroundMusicName;
+                } else if (audioManager->hasMusic("main_theme")) {
+                    backgroundMusicName = "main_theme";
+                    audioManager->fadeToMusic(backgroundMusicName, 200, 200);
+                    currentMusicTrack = backgroundMusicName;
+                }
+            }
+        }
     }
 }
 
@@ -1114,6 +1147,23 @@ void Game::handleEvents() {
     while (SDL_PollEvent(&event)) {
         switch (event.type) {
             case SDL_QUIT:
+                // Persist audio and theme on hard quit (Alt+F4 or window close)
+                if (database && audioManager) {
+                    int uid = loggedInUserId;
+                    if (uid <= 0) {
+                        auto defU = database->getUserByName("player");
+                        if (defU) uid = defU->userId;
+                    }
+                    if (uid > 0) {
+                        database->saveAudioSettings(uid,
+                            audioManager->getMasterVolume(),
+                            audioManager->getMusicVolume(),
+                            audioManager->getSoundVolume(),
+                            audioManager->getMonsterVolume(),
+                            audioManager->getPlayerVolume());
+                        database->saveTheme(uid, backgroundMusicName);
+                    }
+                }
                 isRunning = false;
                 break;
                 
@@ -1149,6 +1199,25 @@ void Game::handleEvents() {
                                 if (loginRemember) database->saveRememberState(Database::RememberState{loginUsername, loginPassword, true}); else database->clearRememberState();
                                 auto save = database->loadPlayerState(loggedInUserId);
                                 if (save) player->applySaveState(*save);
+                                // Load persisted audio settings and theme on login
+                                if (audioManager) {
+                                    int m=100, mu=100, s=100, mon=100, pl=100;
+                                    if (database->loadAudioSettings(loggedInUserId, m, mu, s, mon, pl)) {
+                                        audioManager->setMasterVolume(m);
+                                        audioManager->setMusicVolume(mu);
+                                        audioManager->setSoundVolume(s);
+                                        audioManager->setMonsterVolume(mon);
+                                        audioManager->setPlayerVolume(pl);
+                                    }
+                                    std::string theme;
+                                    if (database->loadTheme(loggedInUserId, theme) && !theme.empty()) {
+                                        backgroundMusicName = theme;
+                                        if (audioManager->hasMusic(backgroundMusicName)) {
+                                            audioManager->fadeToMusic(backgroundMusicName, 200, 200);
+                                            currentMusicTrack = backgroundMusicName;
+                                        }
+                                    }
+                                }
                             } else {
                                 loginError = err.empty()? std::string("Invalid credentials") : err;
                             }
@@ -1183,7 +1252,22 @@ void Game::handleEvents() {
             case SDL_KEYUP:
                 if (event.key.keysym.sym == SDLK_ESCAPE) {
                     if (anvilOpen) { anvilOpen = false; break; }
+                    bool wasOpen = optionsOpen;
                     optionsOpen = !optionsOpen;
+                    // Persist audio + theme whenever options menu closes
+                    if (wasOpen && database && audioManager) {
+                        int uid = loggedInUserId;
+                        if (uid <= 0) { auto defU = database->getUserByName("player"); if (defU) uid = defU->userId; }
+                        if (uid > 0) {
+                            database->saveAudioSettings(uid,
+                                audioManager->getMasterVolume(),
+                                audioManager->getMusicVolume(),
+                                audioManager->getSoundVolume(),
+                                audioManager->getMonsterVolume(),
+                                audioManager->getPlayerVolume());
+                            database->saveTheme(uid, backgroundMusicName);
+                        }
+                    }
                     break;
                 }
                 if (!optionsOpen) inputManager->handleKeyUp(event.key);
@@ -1233,6 +1317,16 @@ void Game::handleEvents() {
                                 if (loginRemember) database->saveRememberState(Database::RememberState{loginUsername, loginPassword, true}); else database->clearRememberState();
                                 // Create initial save
                                 database->savePlayerState(loggedInUserId, player->makeSaveState());
+                                // Initialize audio file defaults on first register
+                                if (audioManager) {
+                                    database->saveAudioSettings(loggedInUserId,
+                                        audioManager->getMasterVolume(),
+                                        audioManager->getMusicVolume(),
+                                        audioManager->getSoundVolume(),
+                                        audioManager->getMonsterVolume(),
+                                        audioManager->getPlayerVolume());
+                                    database->saveTheme(loggedInUserId, backgroundMusicName);
+                                }
                             } else {
                                 loginError = err.empty()? std::string("Registration failed") : err;
                             }
@@ -1273,6 +1367,11 @@ void Game::renderOptionsMenuOverlay() {
     int sound  = audioManager ? audioManager->getSoundVolume()  : 100;
     static int monsterVolCache = 100;
     static int playerVolCache = 100;
+    // On opening options, sync caches with current audio so the save path always reflects UI values
+    if (optionsOpen) {
+        monsterVolCache = audioManager ? audioManager->getMonsterVolume() : monsterVolCache;
+        playerVolCache  = audioManager ? audioManager->getPlayerVolume()  : playerVolCache;
+    }
     // Basic flags from window/renderer
     Uint32 winFlags = SDL_GetWindowFlags(window);
     bool fullscreen = (winFlags & SDL_WINDOW_FULLSCREEN) || (winFlags & SDL_WINDOW_FULLSCREEN_DESKTOP);
@@ -1281,23 +1380,61 @@ void Game::renderOptionsMenuOverlay() {
     bool mouseDown = (mouse & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
     UISystem::MenuHitResult hit;
     static UISystem::OptionsTab activeTab = UISystem::OptionsTab::Main;
-    uiSystem->renderOptionsMenu(optionsSelectedIndex, master, music, sound, fullscreen, vsync, activeTab, mx, my, mouseDown, hit);
+    uiSystem->renderOptionsMenu(optionsSelectedIndex,
+                                master, music, sound,
+                                monsterVolCache, playerVolCache,
+                                fullscreen, vsync,
+                                activeTab,
+                                mx, my, mouseDown,
+                                hit);
+    // If a theme selection was just made, consume the edge so other controls remain interactive
+    if (hit.newThemeIndex != -1) {
+        // Nothing else to do here; selection will be applied below
+        // Prevent stale state from blocking further clicks
+        optionsSelectedIndex = optionsSelectedIndex; // no-op, edge consumed
+    }
     if (hit.newTabIndex >= 0 && hit.newTabIndex <= 2) {
         activeTab = static_cast<UISystem::OptionsTab>(hit.newTabIndex);
     }
     if (audioManager) {
-        if (hit.changedMaster)  audioManager->setMasterVolume(hit.newMaster);
-        if (hit.changedMusic)   audioManager->setMusicVolume(hit.newMusic);
-        if (hit.changedSound)   audioManager->setSoundVolume(hit.newSound);
-        if (hit.changedMonster) { audioManager->setMonsterVolume(hit.newMonster); monsterVolCache = hit.newMonster; }
-        if (hit.changedPlayer)  { audioManager->setPlayerVolume(hit.newPlayer);  playerVolCache  = hit.newPlayer; }
+        if (hit.changedMaster)  { audioManager->setMasterVolume(hit.newMaster); }
+        if (hit.changedMusic)   { audioManager->setMusicVolume(hit.newMusic); }
+        if (hit.changedSound)   { audioManager->setSoundVolume(hit.newSound); }
+        if (hit.changedMonster) { monsterVolCache = hit.newMonster; audioManager->setMonsterVolume(monsterVolCache); }
+        if (hit.changedPlayer)  { playerVolCache  = hit.newPlayer;  audioManager->setPlayerVolume(playerVolCache); }
+        // Persist audio settings per account when changed (fallback to default 'player' when not logged in)
+        if (database && (hit.changedMaster || hit.changedMusic || hit.changedSound || hit.changedMonster || hit.changedPlayer)) {
+            int uid = loggedInUserId;
+            if (uid <= 0) {
+                auto defU = database->getUserByName("player");
+                if (defU) uid = defU->userId;
+            }
+            if (uid > 0) database->saveAudioSettings(uid,
+                audioManager->getMasterVolume(),
+                audioManager->getMusicVolume(),
+                audioManager->getSoundVolume(),
+                monsterVolCache,
+                playerVolCache);
+        }
         if (hit.newThemeIndex == 0) {
             backgroundMusicName = "main_theme";
             if (audioManager->hasMusic(backgroundMusicName)) { audioManager->fadeToMusic(backgroundMusicName, 200, 200); currentMusicTrack = backgroundMusicName; }
+            if (database) {
+                int uid = loggedInUserId;
+                if (uid <= 0) { auto defU = database->getUserByName("player"); if (defU) uid = defU->userId; }
+                if (uid > 0) database->saveTheme(uid, backgroundMusicName);
+            }
         } else if (hit.newThemeIndex == 1) {
             backgroundMusicName = "fast_tempo";
             if (audioManager->hasMusic(backgroundMusicName)) { audioManager->fadeToMusic(backgroundMusicName, 200, 200); currentMusicTrack = backgroundMusicName; }
+            if (database) {
+                int uid = loggedInUserId;
+                if (uid <= 0) { auto defU = database->getUserByName("player"); if (defU) uid = defU->userId; }
+                if (uid > 0) database->saveTheme(uid, backgroundMusicName);
+            }
         }
+        // Clear theme selection edge so UI remains interactive
+        hit.newThemeIndex = -1;
     }
     if (hit.clickedReset) {
         // Reset world and player to initial state
@@ -1347,8 +1484,20 @@ void Game::renderOptionsMenuOverlay() {
     }
     if (hit.clickedLogout) {
         // Save current state and return to login screen
-        if (database && loggedInUserId > 0 && player) {
-            database->savePlayerState(loggedInUserId, player->makeSaveState());
+        if (database && player) {
+            int uid = loggedInUserId > 0 ? loggedInUserId : (database->getUserByName("player").has_value() ? database->getUserByName("player").value().userId : -1);
+            if (uid > 0) {
+                database->savePlayerState(uid, player->makeSaveState());
+                if (audioManager) {
+                    database->saveAudioSettings(uid,
+                        audioManager->getMasterVolume(),
+                        audioManager->getMusicVolume(),
+                        audioManager->getSoundVolume(),
+                        audioManager->getMonsterVolume(),
+                        audioManager->getPlayerVolume());
+                    database->saveTheme(uid, backgroundMusicName);
+                }
+            }
         }
         // Persist remember state on logout based on checkbox
         if (database) {

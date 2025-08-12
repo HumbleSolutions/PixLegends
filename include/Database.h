@@ -37,6 +37,13 @@ struct PlayerSave {
     int intelligence = 15;
     int gold = 0;
 
+    // Audio settings
+    int masterVolume = 100; // 0..100
+    int musicVolume = 100;
+    int soundVolume = 100;
+    int monsterVolume = 100;
+    int playerMeleeVolume = 100;
+
     // Consumables
     int healthPotionCharges = 0;
     int manaPotionCharges = 0;
@@ -90,6 +97,11 @@ public:
     // Player state
     bool savePlayerState(int userId, const PlayerSave& state, std::string* outError = nullptr) const;
     std::optional<PlayerSave> loadPlayerState(int userId, std::string* outError = nullptr) const;
+    // Audio prefs per user
+    bool saveAudioSettings(int userId, int master, int music, int sound, int monster, int playerMelee) const;
+    bool loadAudioSettings(int userId, int& master, int& music, int& sound, int& monster, int& playerMelee) const;
+    bool saveTheme(int userId, const std::string& themeName) const;
+    bool loadTheme(int userId, std::string& outThemeName) const;
 
     // Items (basic scaffolding)
     std::optional<ItemRecord> upsertItemByName(const std::string& name,
@@ -143,6 +155,8 @@ private:
     std::string itemsCsvPath() const;
     std::string userItemsCsvPath() const;
     std::string playerStatePath(int userId) const;
+    std::string userAudioPath(int userId) const;
+    std::string userThemePath(int userId) const;
     std::string rememberFilePath() const;
 };
 

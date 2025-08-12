@@ -69,6 +69,40 @@ void UISystem::update(float deltaTime) {
 void UISystem::render() {
     // Main UI rendering - this will be called by the game
 }
+
+void UISystem::renderDashCooldown(const Player* player) {
+    if (!player) return;
+    int outW = 0, outH = 0; if (renderer) SDL_GetRendererOutputSize(renderer, &outW, &outH);
+    if (outW <= 0) { outW = 1280; outH = 720; }
+    float remain = player->getDashCooldownRemaining();
+    float maxCd = player->getDashCooldownMax();
+    float t = std::max(0.0f, std::min(1.0f, (maxCd > 0.0f ? remain / maxCd : 0.0f)));
+    // Bottom center bar
+    int barW = 160;
+    int barH = 14;
+    int x = outW/2 - barW/2;
+    int y = outH - 48; // bottom middle
+    // Background
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawColor(renderer, 20,20,24,180);
+    SDL_Rect bg{ x, y, barW, barH };
+    SDL_RenderFillRect(renderer, &bg);
+    SDL_SetRenderDrawColor(renderer, 220,220,230,255);
+    SDL_RenderDrawRect(renderer, &bg);
+    // Fill amount (cooldown remaining)
+    SDL_Color fillCol = player->isDashing() ? SDL_Color{255,255,255,220} : SDL_Color{80,160,255,220};
+    SDL_SetRenderDrawColor(renderer, fillCol.r, fillCol.g, fillCol.b, fillCol.a);
+    int fillW = static_cast<int>(std::round(barW * t));
+    SDL_Rect fg{ x, y, fillW, barH };
+    SDL_RenderFillRect(renderer, &fg);
+    // Text label and seconds
+    std::string label = "Dash";
+    if (remain > 0.05f) {
+        int secs = static_cast<int>(std::ceil(remain));
+        label += " (" + std::to_string(secs) + ")";
+    }
+    renderTextCentered(label, x + barW/2, y + barH/2, SDL_Color{255,255,255,255});
+}
 void UISystem::renderInventory(const Player* player, int screenW, int screenH,
                                int mouseX, int mouseY, bool leftDown, bool rightDown,
                                InventoryHit& outHit) {
@@ -350,6 +384,18 @@ void UISystem::renderPlayerStats(const Player* player) {
             renderText("Level: " + std::to_string(player->getLevel()), textX, textY);
             renderText("STR: " + std::to_string(player->getStrength()), textX, textY + 20);
             renderText("INT: " + std::to_string(player->getIntelligence()), textX, textY + 40);
+            // Replace shield slot icon with bow_item.png under portrait area
+            if (assetManager) {
+                if (Texture* bowIcon = assetManager->getTexture("assets/Textures/UI/bow_item.png")) {
+                    int iw = 28, ih = 28; // scaled icon size
+                    int iconX = frameX + static_cast<int>(texW * 0.16f);
+                    int iconY = by3 + barHeight + 6 + 10; // near gold
+                    SDL_Rect s{0,0,bowIcon->getWidth(), bowIcon->getHeight()};
+                    SDL_Rect d{ iconX, iconY, iw, ih };
+                    SDL_RenderCopy(renderer, bowIcon->getTexture(), &s, &d);
+                    renderText("Bow", iconX + iw + 6, iconY + ih/2 - 8);
+                }
+            }
             renderedFrame = true;
         }
     }
@@ -627,7 +673,7 @@ void UISystem::renderMagicAnvil(const Player* player,
                 "assets/Textures/Items/necklace_01.png",
                 "assets/Textures/Items/sword_01.png",
                 "assets/Textures/Items/chestpeice_01.png",
-                "assets/Textures/Items/sheild_01.png",
+                "assets/Textures/Items/bow_01.png",
                 "assets/Textures/Items/gloves_01.png",
                 "assets/Textures/Items/waist_01.png",
                 "assets/Textures/Items/boots_01.png"
@@ -765,7 +811,7 @@ void UISystem::renderMagicAnvil(const Player* player,
         SDL_SetRenderDrawColor(renderer, 25,25,28,220); SDL_RenderFillRect(renderer, &tip);
         SDL_SetRenderDrawColor(renderer, 220,220,230,255); SDL_RenderDrawRect(renderer, &tip);
         // Show actual item name when available, else generic slot name
-        static const char* slotNames[9] = {"Ring","Helm","Necklace","Sword","Chest","Shield","Glove","Waist","Feet"};
+        static const char* slotNames[9] = {"Ring","Helm","Necklace","Sword","Chest","Bow","Glove","Waist","Feet"};
         std::string displayName = heq.name.empty() ? std::string(slotNames[hovered]) : heq.name;
         int ycur = tip.y + 6;
         renderText(displayName, tip.x + 8, ycur, SDL_Color{255,255,180,255});
@@ -814,7 +860,7 @@ void UISystem::renderMagicAnvil(const Player* player,
             "assets/Textures/Items/necklace_01.png",
             "assets/Textures/Items/sword_01.png",
             "assets/Textures/Items/chestpeice_01.png",
-            "assets/Textures/Items/sheild_01.png",
+                "assets/Textures/Items/bow_01.png",
             "assets/Textures/Items/gloves_01.png",
             "assets/Textures/Items/waist_01.png",
             "assets/Textures/Items/boots_01.png"
@@ -852,6 +898,7 @@ void UISystem::renderMagicAnvil(const Player* player,
 
 void UISystem::renderOptionsMenu(int selectedIndex,
                            int masterVolume, int musicVolume, int soundVolume,
+                           int monsterVolume, int playerMeleeVolume,
                            bool fullscreenEnabled, bool vsyncEnabled,
                            OptionsTab activeTab,
                            int mouseX, int mouseY, bool mouseDown,
@@ -892,7 +939,7 @@ void UISystem::renderOptionsMenu(int selectedIndex,
         SDL_SetRenderDrawColor(renderer, 220,220,220,255);
         SDL_RenderDrawRect(renderer, &tr);
         renderTextCentered(tabNames[t], tr.x + tr.w/2, tr.y + tr.h/2, SDL_Color{255,255,255,255});
-        if (hovered && mouseDown && !lastMouseDown && !active) outResult.newTabIndex = t;
+        if (hovered && mouseDown && !lastMouseDown) outResult.newTabIndex = t;
     }
 
     const int startY = panel.y + 100;
@@ -949,7 +996,7 @@ void UISystem::renderOptionsMenu(int selectedIndex,
             // Draw slider
             static int monsterVolCache = 100; // temporary cache; Game will read and apply
             static int playerVolCache = 100;
-            int v = (i == 0 ? masterVolume : (i == 1 ? musicVolume : (i == 2 ? soundVolume : (i == 3 ? monsterVolCache : playerVolCache))));
+            int v = (i == 0 ? masterVolume : (i == 1 ? musicVolume : (i == 2 ? soundVolume : (i == 3 ? monsterVolume : playerMeleeVolume))));
             v = std::max(0, std::min(100, v));
             SDL_SetRenderDrawColor(renderer, 60, 60, 60, 255);
             SDL_RenderFillRect(renderer, &valueArea);
@@ -1009,6 +1056,11 @@ void UISystem::renderOptionsMenu(int selectedIndex,
                 if (mouseX>=opt1.x && mouseX<=opt1.x+opt1.w && mouseY>=opt1.y && mouseY<=opt1.y+opt1.h) { outResult.newThemeIndex = 0; selectedThemeIndexUI = 0; themeOpen = false; }
                 if (mouseX>=opt2.x && mouseX<=opt2.x+opt2.w && mouseY>=opt2.y && mouseY<=opt2.y+opt2.h) { outResult.newThemeIndex = 1; selectedThemeIndexUI = 1; themeOpen = false; }
             }
+        } else {
+            // Ensure dropdown state doesn't block other input
+            if (mouseDown && !lastMouseDown && !(mouseX>=ddl.x && mouseX<=ddl.x+ddl.w && mouseY>=ddl.y && mouseY<=ddl.y+ddl.h)) {
+                themeOpen = false;
+            }
         }
         // Update global mouse edge state at end of function
         lastMouseDown = mouseDown;
@@ -1040,6 +1092,9 @@ void UISystem::renderOptionsMenu(int selectedIndex,
     // Place helper text near the bottom, below the last row
     renderTextCentered("Use mouse to drag sliders and click buttons. Press Esc to close.",
                        outW/2, panel.y + panelH - 12, SDL_Color{200,200,200,255});
+
+    // Always update edge-trigger memory regardless of active tab to avoid input lock-ups
+    lastMouseDown = mouseDown;
 }
 
 void UISystem::renderDeathPopup(bool& outClickedRespawn, float fadeAlpha01) {

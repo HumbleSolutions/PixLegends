@@ -21,8 +21,10 @@ void InputManager::initializeKeyBindings() {
     // Combat keys
     actionToKey[InputAction::ATTACK_MELEE] = SDL_SCANCODE_UNKNOWN; // mouse left only
     actionToKey[InputAction::ATTACK_RANGED] = SDL_SCANCODE_LSHIFT;
-    // Shield toggle/hold
-    actionToKey[InputAction::SHIELD] = SDL_SCANCODE_SPACE;
+    // Dash ability on F
+    actionToKey[InputAction::DASH] = SDL_SCANCODE_F;
+    // Fire shield now bound to belt key (3)
+    actionToKey[InputAction::SHIELD] = SDL_SCANCODE_3;
     
     // Interaction keys
     actionToKey[InputAction::INTERACT] = SDL_SCANCODE_E;

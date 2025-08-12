@@ -11,6 +11,7 @@ enum class InputAction {
     MOVE_RIGHT,
     ATTACK_MELEE,
     ATTACK_RANGED,
+    DASH,
     INTERACT,
     INVENTORY,
     PAUSE,
