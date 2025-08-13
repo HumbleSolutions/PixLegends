@@ -1,9 +1,33 @@
 #include "Object.h"
 #include "AssetManager.h"
+#include "LootGenerator.h"
 #include <iostream>
 #include <cmath>
 
 static float g_magicAnvilPulseTimer = 0.0f;
+
+// Loot rarity color implementation
+SDL_Color Loot::getRarityColor() const {
+    switch (rarity) {
+        case LootRarity::COMMON:    return {255, 255, 255, 255}; // White
+        case LootRarity::UNCOMMON:  return {0, 255, 0, 255};     // Green
+        case LootRarity::RARE:      return {0, 100, 255, 255};   // Blue
+        case LootRarity::EPIC:      return {128, 0, 255, 255};   // Purple
+        case LootRarity::LEGENDARY: return {255, 165, 0, 255};   // Orange
+        default:                    return {255, 255, 255, 255}; // White fallback
+    }
+}
+
+std::string Loot::getRarityString() const {
+    switch (rarity) {
+        case LootRarity::COMMON:    return "Common";
+        case LootRarity::UNCOMMON:  return "Uncommon";
+        case LootRarity::RARE:      return "Rare";
+        case LootRarity::EPIC:      return "Epic";
+        case LootRarity::LEGENDARY: return "Legendary";
+        default:                    return "Common";
+    }
+}
 
 Object::Object(ObjectType type, int xPos, int yPos, const std::string& texturePath)
     : type(type), x(xPos), y(yPos), texturePath(texturePath), texture(nullptr), spriteSheet(nullptr), assetManager(nullptr),
@@ -214,35 +238,68 @@ void Object::interact() {
     switch (type) {
         case ObjectType::CHEST_UNOPENED:
             std::cout << "Opening chest..." << std::endl;
+            
+            // Generate loot if this chest doesn't already have any
+            if (!hasLoot()) {
+                auto generatedLoot = LootGenerator::getInstance().generateContainerLoot(type);
+                for (const auto& lootItem : generatedLoot) {
+                    addLoot(lootItem);
+                }
+            }
+            
             if (hasLoot()) {
                 std::cout << "Found loot in chest!" << std::endl;
             } else {
                 std::cout << "The chest is empty." << std::endl;
             }
+            
             // Change to opened chest
             type = ObjectType::CHEST_OPENED;
             interactable = false;
             // Change texture to opened chest
             changeTexture("assets/Textures/Objects/chest_opened.png");
             break;
+            
         case ObjectType::CLAY_POT:
             std::cout << "Breaking clay pot..." << std::endl;
+            
+            // Generate loot if this pot doesn't already have any
+            if (!hasLoot()) {
+                auto generatedLoot = LootGenerator::getInstance().generateContainerLoot(type);
+                for (const auto& lootItem : generatedLoot) {
+                    addLoot(lootItem);
+                }
+            }
+            
             if (hasLoot()) {
                 std::cout << "Found loot in pot!" << std::endl;
-                // TODO: Add breaking animation and remove object
             } else {
                 std::cout << "The pot shatters into pieces." << std::endl;
             }
+            // Make the pot non-interactive and invisible after breaking
+            interactable = false;
+            visible = false;
             break;
         case ObjectType::WOOD_CRATE:
         case ObjectType::STEEL_CRATE:
             std::cout << "Opening crate..." << std::endl;
+            
+            // Generate loot if this crate doesn't already have any
+            if (!hasLoot()) {
+                auto generatedLoot = LootGenerator::getInstance().generateContainerLoot(type);
+                for (const auto& lootItem : generatedLoot) {
+                    addLoot(lootItem);
+                }
+            }
+            
             if (hasLoot()) {
                 std::cout << "Found loot in crate!" << std::endl;
-                // TODO: Add opening animation and loot
             } else {
                 std::cout << "The crate is empty." << std::endl;
             }
+            
+            // Make crate non-interactive after opening
+            interactable = false;
             break;
         case ObjectType::WOOD_SIGN:
             std::cout << "Reading sign..." << std::endl;

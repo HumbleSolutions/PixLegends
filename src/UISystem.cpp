@@ -2,6 +2,8 @@
 #include "Renderer.h"
 #include "Player.h"
 #include "AssetManager.h"
+#include "ItemSystem.h"
+#include "Game.h"
 #include <iostream>
 #include <sstream>
 #include <algorithm>
@@ -626,275 +628,277 @@ void UISystem::renderMagicAnvil(const Player* player,
                                 AnvilHit& outHit,
                                 const std::string& externalDragPayload,
                                 int selectedSlotIdx,
-                                const std::string& selectedScrollKey) {
+                                const std::string& selectedScrollKey,
+                                Game* game) {
     outHit = AnvilHit{};
     if (!assetManager) return;
-    Texture* panel = assetManager->getTexture("assets/Textures/UI/Item_inv.png");
-    if (!panel) return;
+    
+    // Use the new AnvilUI.png background
+    Texture* anvilBG = assetManager->getTexture("assets/Textures/UI/AnvilUI.png");
+    if (!anvilBG) return;
 
-    // Position the panel to the right so it doesn't cover the big anvil sprite
-    int pw = panel->getWidth();
-    int ph = panel->getHeight();
-    int margin = 20;
-    int desiredX = screenW / 2 + 260; // push further right of center
-    if (desiredX + pw > screenW - margin) desiredX = std::max(margin, screenW - pw - margin);
-    SDL_Rect dst{ desiredX, (screenH - ph) / 2, pw, ph };
-    SDL_RenderCopy(renderer, panel->getTexture(), nullptr, &dst);
-
-    // Define 3x3 grid within panel with approximate padding inferred from art
-    const int gridX = dst.x + 20;
-    const int gridY = dst.y + 20;
-    const int cell = (std::min(pw, ph) - 40) / 3; // square cells
-
-    // Slot art per equipment
-    const char* slotArt[9] = {
-        "assets/Textures/UI/ring_upgrade_slot.png",
-        "assets/Textures/UI/helm_upgrade_slot.png",
-        "assets/Textures/UI/necklace_upgrade_slot.png",
-        "assets/Textures/UI/sword_upgrade_slot.png",
-        "assets/Textures/UI/chest_upgrade_slot.png",
-        "assets/Textures/UI/sheild_upgrade_slot.png",
-        "assets/Textures/UI/gloves_upgrade_slot.png",
-        "assets/Textures/UI/belt_upgrade_slot.png",
-        "assets/Textures/UI/boots_upgrade_slot.png"
-    };
-    for (int r = 0; r < 3; ++r) {
-        for (int c = 0; c < 3; ++c) {
-            int idx = r*3 + c; Texture* t = assetManager->getTexture(slotArt[idx]);
-            SDL_Rect d{ gridX + c*cell, gridY + r*cell, cell, cell };
-            if (t) {
-                SDL_Rect s{0,0,t->getWidth(),t->getHeight()};
-                SDL_RenderCopy(renderer, t->getTexture(), &s, &d);
-            } else {
-                SDL_SetRenderDrawColor(renderer, 60,60,80,200); SDL_RenderFillRect(renderer, &d);
-            }
-            const char* iconMap[9] = {
-                "assets/Textures/Items/ring_01.png",
-                "assets/Textures/Items/helmet_01.png",
-                "assets/Textures/Items/necklace_01.png",
-                "assets/Textures/Items/sword_01.png",
-                "assets/Textures/Items/chestpeice_01.png",
-                "assets/Textures/Items/bow_01.png",
-                "assets/Textures/Items/gloves_01.png",
-                "assets/Textures/Items/waist_01.png",
-                "assets/Textures/Items/boots_01.png"
-            };
-            if (Texture* it = assetManager->getTexture(iconMap[idx])) {
-                int pad = std::max(6, cell / 6);
-                SDL_Rect si{0,0,it->getWidth(),it->getHeight()};
-                SDL_Rect di{ d.x + pad, d.y + pad, d.w - pad*2, d.h - pad*2 };
-                SDL_RenderCopy(renderer, it->getTexture(), &si, &di);
-                if (mouseDown && mouseX>=di.x && mouseX<=di.x+di.w && mouseY>=di.y && mouseY<=di.y+di.h) {
-                    outHit.clickedSlot = idx;
-                }
-            }
-            if (player) {
-                const Player::EquipmentItem& eq = player->getEquipment(static_cast<Player::EquipmentSlot>(idx));
-                renderText(std::string("+") + std::to_string(eq.plusLevel), d.x + d.w - 20, d.y + d.h - 18, SDL_Color{200,255,200,255});
-            }
-        }
+    // Use custom position if set, otherwise use default positioning
+    int pw = anvilBG->getWidth();
+    int ph = anvilBG->getHeight();
+    int anvilX, anvilY;
+    
+    // Check for custom position from game
+    if (game && game->getAnvilPosX() >= 0 && game->getAnvilPosY() >= 0) {
+        anvilX = game->getAnvilPosX();
+        anvilY = game->getAnvilPosY();
+    } else {
+        // Default positioning - left quarter of screen to allow room for inventory
+        anvilX = screenW / 4 - pw / 2;
+        anvilY = (screenH - ph) / 2;
     }
+    SDL_Rect anvilRect{ anvilX, anvilY, pw, ph };
+    SDL_RenderCopy(renderer, anvilBG->getTexture(), nullptr, &anvilRect);
 
-    // Hit test slots 0..8
-    int hovered = -1;
-    for (int r = 0; r < 3; ++r) {
-        for (int c = 0; c < 3; ++c) {
-            int idx = r * 3 + c;
-            SDL_Rect slot{ gridX + c * cell, gridY + r * cell, cell, cell };
-            // Draw subtle hover outline
-            if (mouseX >= slot.x && mouseX <= slot.x + slot.w && mouseY >= slot.y && mouseY <= slot.y + slot.h) {
-                hovered = idx;
-                SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-                SDL_SetRenderDrawColor(renderer, 255, 215, 100, 130);
-                SDL_RenderDrawRect(renderer, &slot);
-                if (mouseDown) { outHit.clickedSlot = idx; }
-            }
-        }
-    }
-
-    // Buttons at bottom: Upgrade icon + element scroll icons
-    // Close button removed; use Esc to close
-
-    // Side panel (to the right): item slot, scroll slot, and Upgrade button
-    int sideX = dst.x + pw + 16;
-    int sideY = dst.y + 8;
+    // New layout based on concept: two slots at top, upgrade button below, progress bar at bottom
+    
+    // Define slot positions based on the concept image
     int slotSize = 48;
-    // Item slot (use art and selected slot icon if any)
-    SDL_Rect sideItem{ sideX, sideY, slotSize, slotSize };
+    int slotSpacing = 16;
+    
+    // Item upgrade slot (left slot at top)
+    SDL_Rect itemSlot = {
+        anvilX + (pw / 2) - slotSize - (slotSpacing / 2),
+        anvilY + 40,
+        slotSize, slotSize
+    };
+    
+    // Scroll slot (right slot at top)  
+    SDL_Rect scrollSlot = {
+        anvilX + (pw / 2) + (slotSpacing / 2),
+        anvilY + 40,
+        slotSize, slotSize
+    };
+    
+    // Draw the item upgrade slot
     if (Texture* t = assetManager->getTexture("assets/Textures/UI/item_upgrade_slot.png")) {
-        SDL_Rect s{0,0,t->getWidth(),t->getHeight()}; SDL_RenderCopy(renderer, t->getTexture(), &s, &sideItem);
-    } else { SDL_SetRenderDrawColor(renderer, 90,90,120,200); SDL_RenderFillRect(renderer, &sideItem); SDL_SetRenderDrawColor(renderer, 255,255,255,255); SDL_RenderDrawRect(renderer, &sideItem); }
-    // Scroll slot art
-    SDL_Rect sideScroll{ sideX + slotSize + 16, sideY, slotSize, slotSize };
+        SDL_Rect s{0,0,t->getWidth(),t->getHeight()};
+        SDL_RenderCopy(renderer, t->getTexture(), &s, &itemSlot);
+    } else {
+        SDL_SetRenderDrawColor(renderer, 90, 90, 120, 200);
+        SDL_RenderFillRect(renderer, &itemSlot);
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+        SDL_RenderDrawRect(renderer, &itemSlot);
+    }
+    
+    // Draw the scroll slot
     if (Texture* t = assetManager->getTexture("assets/Textures/UI/scroll_slot.png")) {
-        SDL_Rect s{0,0,t->getWidth(),t->getHeight()}; SDL_RenderCopy(renderer, t->getTexture(), &s, &sideScroll);
-    } else { SDL_SetRenderDrawColor(renderer, 90,90,120,200); SDL_RenderFillRect(renderer, &sideScroll); SDL_SetRenderDrawColor(renderer, 255,255,255,255); SDL_RenderDrawRect(renderer, &sideScroll); }
-    // Upgrade button art with text
-    SDL_Rect sideBtn{ sideX, sideY + slotSize + 28, slotSize*2 + 16, 28 };
-    if (Texture* t = assetManager->getTexture("assets/Textures/UI/upgrade_button.png")) {
-        SDL_Rect s{0,0,t->getWidth(),t->getHeight()}; SDL_RenderCopy(renderer, t->getTexture(), &s, &sideBtn);
-    } else { SDL_SetRenderDrawColor(renderer, 80,60,40,230); SDL_RenderFillRect(renderer, &sideBtn); SDL_SetRenderDrawColor(renderer, 255,255,255,255); SDL_RenderDrawRect(renderer, &sideBtn); }
-    renderTextCentered("UPGRADE", sideBtn.x + sideBtn.w/2, sideBtn.y + sideBtn.h/2, SDL_Color{255,255,255,255});
-    if (mouseDown && mouseX>=sideBtn.x && mouseX<=sideBtn.x+sideBtn.w && mouseY>=sideBtn.y && mouseY<=sideBtn.y+sideBtn.h) {
-        outHit.clickedSideUpgrade = true;
+        SDL_Rect s{0,0,t->getWidth(),t->getHeight()};
+        SDL_RenderCopy(renderer, t->getTexture(), &s, &scrollSlot);
+    } else {
+        SDL_SetRenderDrawColor(renderer, 90, 90, 120, 200);
+        SDL_RenderFillRect(renderer, &scrollSlot);
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+        SDL_RenderDrawRect(renderer, &scrollSlot);
     }
-
-    // Remove scroll icons from anvil UI (scrolls live in bags)
-    // If dragging ends over a slot, convert to an action; allow external payload (from inventory)
-    static bool wasDown = false;
-    if (!mouseDown && wasDown) {
-        outHit.endedDrag = true;
-        // Check drop over a slot
-        for (int r = 0; r < 3; ++r) {
-            for (int c = 0; c < 3; ++c) {
-                int idx = r * 3 + c;
-                SDL_Rect slot{ gridX + c * cell, gridY + r * cell, cell, cell };
-                if (mouseX>=slot.x && mouseX<=slot.x+slot.w && mouseY>=slot.y && mouseY<=slot.y+slot.h) {
-                    outHit.clickedSlot = idx;
-                    std::string payload = externalDragPayload.empty()? outHit.dragPayload : externalDragPayload;
-                    if (payload == "upgrade_scroll") outHit.clickedUpgrade = true;
-                    else if (!payload.empty()) outHit.clickedElement = payload;
-                }
-            }
+    
+    // Show item in upgrade slot - prioritize target item over selected slot
+    Item* targetItem = (game ? game->getAnvilTargetItem() : nullptr);
+    
+    if (targetItem && targetItem->type == ItemType::EQUIPMENT) {
+        // Use the specific dragged item
+        if (Texture* itemIcon = assetManager->getTexture(targetItem->iconPath)) {
+            int pad = 4;
+            SDL_Rect iconRect = {itemSlot.x + pad, itemSlot.y + pad, itemSlot.w - pad*2, itemSlot.h - pad*2};
+            SDL_RenderCopy(renderer, itemIcon->getTexture(), nullptr, &iconRect);
+            
+            // Show +level of target item
+            renderText("+" + std::to_string(targetItem->plusLevel), itemSlot.x + itemSlot.w - 20, itemSlot.y + itemSlot.h - 18, {200, 255, 200, 255});
         }
-        // Also allow dropping into side specific slots
-        std::string payload = externalDragPayload.empty()? outHit.dragPayload : externalDragPayload;
-        if (mouseX>=sideItem.x && mouseX<=sideItem.x+sideItem.w && mouseY>=sideItem.y && mouseY<=sideItem.y+sideItem.h) {
-            outHit.droppedItem = true;
-        }
-        if (mouseX>=sideScroll.x && mouseX<=sideScroll.x+sideScroll.w && mouseY>=sideScroll.y && mouseY<=sideScroll.y+sideScroll.h) {
-            if (payload == "upgrade_scroll" || payload=="fire" || payload=="water" || payload=="poison" || payload=="lightning") {
-                outHit.droppedScroll = true; outHit.droppedScrollKey = payload;
-                if (payload == "upgrade_scroll") outHit.clickedUpgrade = true; else outHit.clickedElement = payload;
-            }
-        }
-        outHit.dragPayload.clear();
-        outHit.dragRect = SDL_Rect{0,0,0,0};
-    }
-    wasDown = mouseDown;
-
-    // No explicit close button
-
-    // Tooltip / result indicator area (floating panel near mouse with stats and chance)
-    if (hovered >= 0 && player) {
-        const Player::EquipmentItem& heq = player->getEquipment(static_cast<Player::EquipmentSlot>(hovered));
-        // Use the custom upgrade table to preview chance
-        auto chanceForNext = [&](int currentPlus) -> float {
-            static const float table[31] = {
-                0.0f, 100.0f, 95.0f, 90.0f, 80.0f, 75.0f, 70.0f, 65.0f, 55.0f, 50.0f,
-                45.0f, 40.0f, 35.0f, 30.0f, 28.0f, 25.0f, 20.0f, 18.0f, 15.0f, 13.0f,
-                12.0f, 10.0f, 8.0f, 7.0f, 6.0f, 5.0f, 4.5f, 4.0f, 3.5f, 3.0f, 2.5f
-            };
-            int next = currentPlus + 1; if (next < 1) next = 1; if (next > 30) next = 30; return table[next];
-        };
-        int chance = static_cast<int>(std::round(chanceForNext(heq.plusLevel)));
-        bool hasPreview = !selectedScrollKey.empty();
-        // Dynamically size tooltip height based on number of lines we will render
-        int lineH = 16;
-        int lines = 0;
-        lines += 1; // name
-        lines += 1; // +level/base
-        lines += 1; // chance
-        if (hovered == static_cast<int>(Player::EquipmentSlot::SWORD)) {
-            lines += 4; // ATK, ASPD, Crit, DUR
-        }
-        // Element lines: place Fire last, so count all present
-        int elemLines = 0;
-        if (heq.ice > 0) elemLines++;
-        if (heq.poison > 0) elemLines++;
-        if (heq.fire > 0) elemLines++;
-        lines += elemLines;
-        if (hasPreview) lines += 1; // preview row
-        int w = 260;
-        int h = 12 + lines * lineH + 8; // top+bottom padding
-        SDL_Rect tip{ mouseX + 16, mouseY + 12, w, h };
-        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-        SDL_SetRenderDrawColor(renderer, 25,25,28,220); SDL_RenderFillRect(renderer, &tip);
-        SDL_SetRenderDrawColor(renderer, 220,220,230,255); SDL_RenderDrawRect(renderer, &tip);
-        // Show actual item name when available, else generic slot name
-        static const char* slotNames[9] = {"Ring","Helm","Necklace","Sword","Chest","Bow","Glove","Waist","Feet"};
-        std::string displayName = heq.name.empty() ? std::string(slotNames[hovered]) : heq.name;
-        int ycur = tip.y + 6;
-        renderText(displayName, tip.x + 8, ycur, SDL_Color{255,255,180,255});
-        ycur += lineH;
-        renderText(std::string("+") + std::to_string(heq.plusLevel) + "  Base:" + std::to_string(heq.basePower), tip.x + 8, ycur);
-        ycur += lineH;
-        // Show sword-specific stats if available
-        if (hovered == static_cast<int>(Player::EquipmentSlot::SWORD)) {
-            renderText("ATK: " + std::to_string(heq.attack), tip.x + 8, ycur);
-            ycur += lineH;
-            std::ostringstream aspd; aspd.setf(std::ios::fixed); aspd.precision(2);
-            aspd << "ASPD " << heq.attackSpeedMultiplier << "x";
-            renderText(aspd.str(), tip.x + 8, ycur);
-            ycur += lineH;
-            std::ostringstream crit; crit.setf(std::ios::fixed); crit.precision(1);
-            crit << "Crit " << heq.critChancePercent << "%";
-            renderText(crit.str(), tip.x + 8, ycur);
-            ycur += lineH;
-            renderText("DUR " + std::to_string(heq.durability) + "/" + std::to_string(heq.maxDurability), tip.x + 8, ycur);
-            ycur += lineH;
-        }
-        renderText("Chance:" + std::to_string(chance) + "%", tip.x + 8, ycur, SDL_Color{140,200,255,255});
-        ycur += lineH;
-        // Optional preview next so Fire can stay at the very bottom
-        if (hasPreview) {
-            std::string pv;
-            SDL_Color green{120, 255, 120, 255};
-            if (selectedScrollKey == std::string("upgrade_scroll")) pv = "+1 level";
-            else if (selectedScrollKey == std::string("fire")) pv = "+1 fire";
-            else if (selectedScrollKey == std::string("water")) pv = "+1 water";
-            else if (selectedScrollKey == std::string("poison")) pv = "+1 poison";
-            if (!pv.empty()) { renderText("Preview: " + pv, tip.x + 8, ycur, green); ycur += lineH; }
-        }
-        // Element lines: Water, Poison, then Fire last
-        if (heq.ice>0) { renderText("Water: +" + std::to_string(heq.ice), tip.x + 8, ycur, SDL_Color{140,180,255,255}); ycur += lineH; }
-        if (heq.poison>0) { renderText("Poison: +" + std::to_string(heq.poison), tip.x + 8, ycur, SDL_Color{160,255,160,255}); ycur += lineH; }
-        if (heq.fire>0) { renderText("Fire: +" + std::to_string(heq.fire), tip.x + 8, ycur, SDL_Color{255,140,80,255}); ycur += lineH; }
-    }
-
-    // Draw the selected slot icon in the side item slot for feedback
-    int selectedIdx = (selectedSlotIdx >= 0 ? selectedSlotIdx : hovered);
-    if (selectedIdx >= 0) {
+    } else if (selectedSlotIdx >= 0 && selectedSlotIdx <= 8 && player) {
+        // Fallback to equipment slot method when no target item
+        const Player::EquipmentItem& eq = player->getEquipment(static_cast<Player::EquipmentSlot>(selectedSlotIdx));
+        
+        // Item icon paths for display
         const char* iconMap[9] = {
             "assets/Textures/Items/ring_01.png",
-            "assets/Textures/Items/helmet_01.png",
+            "assets/Textures/Items/helmet_01.png", 
             "assets/Textures/Items/necklace_01.png",
             "assets/Textures/Items/sword_01.png",
             "assets/Textures/Items/chestpeice_01.png",
-                "assets/Textures/Items/bow_01.png",
+            "assets/Textures/Items/bow_01.png",
             "assets/Textures/Items/gloves_01.png",
             "assets/Textures/Items/waist_01.png",
             "assets/Textures/Items/boots_01.png"
         };
-        if (Texture* t = assetManager->getTexture(iconMap[selectedIdx])) {
-            SDL_Rect s{0,0,t->getWidth(),t->getHeight()}; SDL_Rect d{ sideX+4, sideY+4, slotSize-8, slotSize-8 };
-            SDL_RenderCopy(renderer, t->getTexture(), &s, &d);
+        
+        if (Texture* itemIcon = assetManager->getTexture(iconMap[selectedSlotIdx])) {
+            int pad = 4;
+            SDL_Rect iconRect = {itemSlot.x + pad, itemSlot.y + pad, itemSlot.w - pad*2, itemSlot.h - pad*2};
+            SDL_RenderCopy(renderer, itemIcon->getTexture(), nullptr, &iconRect);
+            
+            // Show +level
+            renderText("+" + std::to_string(eq.plusLevel), itemSlot.x + itemSlot.w - 20, itemSlot.y + itemSlot.h - 18, {200, 255, 200, 255});
         }
     }
-
-    // Draw staged scroll icon in the scroll slot if provided via selectedScrollKey
+    
+    // Show scroll in appropriate slot based on type
     if (!selectedScrollKey.empty()) {
-        const char* icon = nullptr;
-        if (selectedScrollKey == std::string("upgrade_scroll")) icon = "assets/Textures/Items/upgrade_scroll.png";
-        else if (selectedScrollKey == std::string("fire")) icon = "assets/Textures/Items/fire_dmg_scroll.png";
-        else if (selectedScrollKey == std::string("water")) icon = "assets/Textures/Items/water_damage_scroll.png";
-        else if (selectedScrollKey == std::string("poison")) icon = "assets/Textures/Items/Poison_dmg_scroll.png";
-        if (icon) {
-            if (Texture* t = assetManager->getTexture(icon)) {
-                SDL_Rect s{0,0,t->getWidth(),t->getHeight()};
-                SDL_Rect d{ sideScroll.x + 6, sideScroll.y + 6, sideScroll.w - 12, sideScroll.h - 12 };
-                SDL_RenderCopy(renderer, t->getTexture(), &s, &d);
+        std::string scrollIconPath;
+        SDL_Rect targetSlot = scrollSlot;  // Default to scroll slot
+        
+        if (selectedScrollKey == "upgrade_scroll") {
+            // Upgrade scrolls go in the right slot (empty slot in screenshot)
+            scrollIconPath = "assets/Textures/Items/upgrade_scroll.png";
+            targetSlot = scrollSlot;
+        } else if (selectedScrollKey == "fire_scroll" || selectedScrollKey == "water_scroll" || 
+                   selectedScrollKey == "lightning_scroll" || selectedScrollKey == "poison_scroll") {
+            // Element scrolls also go in the right slot
+            if (selectedScrollKey == "fire_scroll") {
+                scrollIconPath = "assets/Textures/Items/fire_dmg_scroll.png";
+            } else if (selectedScrollKey == "water_scroll") {
+                scrollIconPath = "assets/Textures/Items/water_damage_scroll.png";
+            } else if (selectedScrollKey == "lightning_scroll") {
+                scrollIconPath = "assets/Textures/Items/lightning_scroll.png"; // Need to check this exists
+            } else if (selectedScrollKey == "poison_scroll") {
+                scrollIconPath = "assets/Textures/Items/Poison_dmg_scroll.png";
+            }
+            targetSlot = scrollSlot;
+        }
+        
+        if (!scrollIconPath.empty()) {
+            if (Texture* scrollIcon = assetManager->getTexture(scrollIconPath)) {
+                int pad = 4;
+                SDL_Rect iconRect = {targetSlot.x + pad, targetSlot.y + pad, targetSlot.w - pad*2, targetSlot.h - pad*2};
+                SDL_RenderCopy(renderer, scrollIcon->getTexture(), nullptr, &iconRect);
             }
         }
     }
-
-    // Upgrade indicator anchored between item/scroll slots
-    SDL_Rect indicatorRect{ sideX + 8, sideY + slotSize + 4, sideBtn.w - 16, 22 };
-    if (Texture* ind = assetManager->getTexture("assets/Textures/UI/upgrade_indicator.png")) {
-        SDL_Rect s{0,0,ind->getWidth(), ind->getHeight()};
-        SDL_RenderCopy(renderer, ind->getTexture(), &s, &indicatorRect);
+    // Upgrade button (horizontal bar below slots)
+    SDL_Rect upgradeButton = {
+        anvilX + (pw / 2) - 60,
+        anvilY + 120,
+        120, 24
+    };
+    
+    if (Texture* t = assetManager->getTexture("assets/Textures/UI/upgrade_button.png")) {
+        SDL_RenderCopy(renderer, t->getTexture(), nullptr, &upgradeButton);
+    } else {
+        SDL_SetRenderDrawColor(renderer, 80, 60, 40, 230);
+        SDL_RenderFillRect(renderer, &upgradeButton);
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+        SDL_RenderDrawRect(renderer, &upgradeButton);
     }
-    // Optionally overlay success/fail bars here when Game requests (Game renders them by computing the same rect)
+    renderTextCentered("UPGRADE", upgradeButton.x + upgradeButton.w/2, upgradeButton.y + upgradeButton.h/2, {255, 255, 255, 255});
+    
+    // Upgrade indicator with background texture
+    SDL_Rect indicatorRect = {
+        anvilX + (pw / 2) - 55,  // Center horizontally
+        anvilY + ph - 50,        // Near bottom, moved up from previous position
+        110, 20
+    };
+    
+    // Draw the upgrade indicator background
+    if (Texture* indicator = assetManager->getTexture("assets/Textures/UI/upgrade_indicator.png")) {
+        SDL_RenderCopy(renderer, indicator->getTexture(), nullptr, &indicatorRect);
+    } else {
+        // Fallback if texture not found
+        SDL_SetRenderDrawColor(renderer, 60, 60, 60, 255);
+        SDL_RenderFillRect(renderer, &indicatorRect);
+        SDL_SetRenderDrawColor(renderer, 200, 200, 200, 255);
+        SDL_RenderDrawRect(renderer, &indicatorRect);
+    }
+
+    // Handle mouse interactions
+    static bool wasDown = false;
+    
+    // Check title bar for dragging (top 40 pixels of panel, avoiding slots and button areas)
+    SDL_Rect titleBar = {anvilX, anvilY, pw - 40, 40};  // Leave some space at the right edge
+    if (mouseDown && mouseX >= titleBar.x && mouseX <= titleBar.x + titleBar.w && 
+        mouseY >= titleBar.y && mouseY <= titleBar.y + titleBar.h) {
+        outHit.titleBarClicked = true;
+        outHit.dragOffsetX = mouseX - anvilX;
+        outHit.dragOffsetY = mouseY - anvilY;
+    }
+    
+    // Check for clicks on upgrade button
+    if (mouseDown && mouseX >= upgradeButton.x && mouseX <= upgradeButton.x + upgradeButton.w && 
+        mouseY >= upgradeButton.y && mouseY <= upgradeButton.y + upgradeButton.h) {
+        outHit.clickedSideUpgrade = true;
+    }
+    
+    // Handle drag and drop for item and scroll slots
+    if (!mouseDown && wasDown) {
+        outHit.endedDrag = true;
+        std::string payload = externalDragPayload.empty() ? outHit.dragPayload : externalDragPayload;
+        
+        // Check drop over item slot
+        if (mouseX >= itemSlot.x && mouseX <= itemSlot.x + itemSlot.w && 
+            mouseY >= itemSlot.y && mouseY <= itemSlot.y + itemSlot.h) {
+            outHit.droppedItem = true;
+        }
+        
+        // Check drop over scroll slot
+        if (mouseX >= scrollSlot.x && mouseX <= scrollSlot.x + scrollSlot.w && 
+            mouseY >= scrollSlot.y && mouseY <= scrollSlot.y + scrollSlot.h) {
+            if (payload == "upgrade_scroll" || payload == "fire" || payload == "water" || 
+                payload == "poison" || payload == "lightning") {
+                outHit.droppedScroll = true;
+                outHit.droppedScrollKey = payload;
+                if (payload == "upgrade_scroll") outHit.clickedUpgrade = true;
+                else outHit.clickedElement = payload;
+            }
+        }
+        
+        outHit.dragPayload.clear();
+        outHit.dragRect = SDL_Rect{0, 0, 0, 0};
+    }
+    wasDown = mouseDown;
+
+    // Simple tooltip for item in upgrade slot
+    if (mouseX >= itemSlot.x && mouseX <= itemSlot.x + itemSlot.w && 
+        mouseY >= itemSlot.y && mouseY <= itemSlot.y + itemSlot.h) {
+        
+        // Use target item if available, otherwise use selected slot
+        if (targetItem) {
+            // Calculate upgrade chance for target item
+            auto chanceForNext = [&](int currentPlus) -> float {
+                static const float table[31] = {
+                    0.0f, 100.0f, 95.0f, 90.0f, 80.0f, 75.0f, 70.0f, 65.0f, 55.0f, 50.0f,
+                    45.0f, 40.0f, 35.0f, 30.0f, 28.0f, 25.0f, 20.0f, 18.0f, 15.0f, 13.0f,
+                    12.0f, 10.0f, 8.0f, 7.0f, 6.0f, 5.0f, 4.5f, 4.0f, 3.5f, 3.0f, 2.5f
+                };
+                int next = currentPlus + 1;
+                if (next < 1) next = 1;
+                if (next > 30) next = 30;
+                return table[next];
+            };
+            int chance = static_cast<int>(std::round(chanceForNext(targetItem->plusLevel)));
+            
+            // Tooltip using target item data
+            std::string tooltipText = targetItem->getDisplayName();
+            tooltipText += "\nUpgrade chance: " + std::to_string(chance) + "%";
+            
+            renderTooltip(tooltipText, mouseX, mouseY);
+        } else if (selectedSlotIdx >= 0 && player) {
+            // Fallback to equipment slot tooltip
+            const Player::EquipmentItem& heq = player->getEquipment(static_cast<Player::EquipmentSlot>(selectedSlotIdx));
+            
+            auto chanceForNext = [&](int currentPlus) -> float {
+                static const float table[31] = {
+                    0.0f, 100.0f, 95.0f, 90.0f, 80.0f, 75.0f, 70.0f, 65.0f, 55.0f, 50.0f,
+                    45.0f, 40.0f, 35.0f, 30.0f, 28.0f, 25.0f, 20.0f, 18.0f, 15.0f, 13.0f,
+                    12.0f, 10.0f, 8.0f, 7.0f, 6.0f, 5.0f, 4.5f, 4.0f, 3.5f, 3.0f, 2.5f
+                };
+                int next = currentPlus + 1;
+                if (next < 1) next = 1;
+                if (next > 30) next = 30;
+                return table[next];
+            };
+            int chance = static_cast<int>(std::round(chanceForNext(heq.plusLevel)));
+            
+            // Simple tooltip
+            std::string tooltipText = heq.name.empty() ? "Equipment" : heq.name;
+            tooltipText += "\n+" + std::to_string(heq.plusLevel);
+            tooltipText += "\nUpgrade chance: " + std::to_string(chance) + "%";
+            
+            renderTooltip(tooltipText, mouseX, mouseY);
+        }
+    }
 }
 
 void UISystem::renderOptionsMenu(int selectedIndex,
@@ -1154,5 +1158,644 @@ void UISystem::renderDeathPopup(bool& outClickedRespawn, float fadeAlpha01) {
     bool leftDown = (mouse & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
     if (fadeAlpha01 >= 1.0f && leftDown && mx >= btn.x && mx <= btn.x + btn.w && my >= btn.y && my <= btn.y + btn.h) {
         outClickedRespawn = true;
+    }
+}
+
+// Enhanced inventory UI implementation
+UISystem::InventoryHit UISystem::renderEnhancedInventory(Player* player, bool& isOpen, bool anvilOpen, Game* game, bool equipmentOpen) {
+    InventoryHit hit;
+    if (!player || !player->getItemSystem()) return hit;
+    
+    ItemSystem* itemSystem = player->getItemSystem();
+    
+    // Get screen dimensions
+    int screenW, screenH;
+    SDL_GetRendererOutputSize(renderer, &screenW, &screenH);
+    
+    // Inventory panel - use custom position if set, otherwise use default positioning
+    int panelW = 800;
+    int panelH = 600;
+    int panelX, panelY;
+    
+    // Check for custom position from game
+    if (game && game->getInventoryPosX() >= 0 && game->getInventoryPosY() >= 0) {
+        panelX = game->getInventoryPosX();
+        panelY = game->getInventoryPosY();
+    } else {
+        // Default positioning - adjust based on what else is open
+        if (anvilOpen) {
+            // Position on right side of screen when anvil is open
+            panelX = screenW * 3 / 4 - panelW / 2;
+            panelY = (screenH - panelH) / 2;
+        } else if (equipmentOpen) {
+            // Position on left side when equipment UI is open
+            panelX = 50;
+            panelY = (screenH - panelH) / 2;
+        } else {
+            // Center when nothing else is open
+            panelX = (screenW - panelW) / 2;
+            panelY = (screenH - panelH) / 2;
+        }
+    }
+    
+    // Background panel
+    SDL_Rect panel = {panelX, panelY, panelW, panelH};
+    SDL_SetRenderDrawColor(renderer, 40, 40, 60, 240);
+    SDL_RenderFillRect(renderer, &panel);
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    SDL_RenderDrawRect(renderer, &panel);
+    
+    // Title
+    renderTextCentered("Inventory", panelX + panelW/2, panelY + 20);
+    
+    // Close button (X in top right)
+    SDL_Rect closeBtn = {panelX + panelW - 40, panelY + 10, 30, 30};
+    SDL_SetRenderDrawColor(renderer, 160, 40, 40, 255);
+    SDL_RenderFillRect(renderer, &closeBtn);
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    SDL_RenderDrawRect(renderer, &closeBtn);
+    renderTextCentered("X", closeBtn.x + closeBtn.w/2, closeBtn.y + closeBtn.h/2);
+    
+    // Split into two sections: Items (left) and Scrolls (right)
+    int sectionW = (panelW - 60) / 2;
+    int itemsX = panelX + 20;
+    int scrollsX = panelX + 40 + sectionW;
+    int sectionY = panelY + 60;
+    int sectionH = panelH - 100;
+    
+    // Items section
+    SDL_Rect itemsSection = {itemsX, sectionY, sectionW, sectionH};
+    SDL_SetRenderDrawColor(renderer, 30, 30, 45, 255);
+    SDL_RenderFillRect(renderer, &itemsSection);
+    SDL_SetRenderDrawColor(renderer, 120, 120, 140, 255);
+    SDL_RenderDrawRect(renderer, &itemsSection);
+    
+    renderText("Equipment & Materials", itemsX + 10, sectionY + 10);
+    
+    // Draw item grid (6 columns, 8 rows) - adjusted layout to fit within section boundaries
+    int slotSize = 42;  // Slightly smaller slots to fit better
+    int slotSpacing = 5;  // Reduced spacing
+    int gridCols = 6;  // Reduced from 8 to 6 columns
+    int gridRows = 8;  // Increased from 6 to 8 rows to maintain 48 total slots
+    int gridStartX = itemsX + 15;  // Better left margin  
+    int gridStartY = sectionY + 45;  // Better top margin
+    
+    const auto& itemInventory = itemSystem->getItemInventory();
+    
+    for (int row = 0; row < gridRows; row++) {
+        for (int col = 0; col < gridCols; col++) {
+            int slotIndex = row * gridCols + col;
+            if (slotIndex >= ItemSystem::INVENTORY_SIZE) break;
+            
+            int slotX = gridStartX + col * (slotSize + slotSpacing);
+            int slotY = gridStartY + row * (slotSize + slotSpacing);
+            SDL_Rect slotRect = {slotX, slotY, slotSize, slotSize};
+            
+            // Slot background
+            SDL_SetRenderDrawColor(renderer, 50, 50, 70, 255);
+            SDL_RenderFillRect(renderer, &slotRect);
+            SDL_SetRenderDrawColor(renderer, 100, 100, 120, 255);
+            SDL_RenderDrawRect(renderer, &slotRect);
+            
+            // Item icon and info
+            if (!itemInventory[slotIndex].isEmpty()) {
+                Item* item = itemInventory[slotIndex].item;
+                
+                // Draw rarity border
+                SDL_Color rarityColor = item->getRarityColor();
+                SDL_SetRenderDrawColor(renderer, rarityColor.r, rarityColor.g, rarityColor.b, 255);
+                SDL_RenderDrawRect(renderer, &slotRect);
+                
+                // Draw item icon if available
+                Texture* icon = itemSystem->getItemIcon(item->id);
+                if (icon) {
+                    SDL_Rect srcRect = {0, 0, 0, 0};
+                    SDL_QueryTexture(icon->getTexture(), nullptr, nullptr, &srcRect.w, &srcRect.h);
+                    SDL_Rect dstRect = {slotX + 2, slotY + 2, slotSize - 4, slotSize - 4};
+                    SDL_RenderCopy(renderer, icon->getTexture(), &srcRect, &dstRect);
+                }
+                
+                // Draw stack count if > 1
+                if (item->currentStack > 1) {
+                    std::string stackText = std::to_string(item->currentStack);
+                    renderText(stackText, slotX + slotSize - 15, slotY + slotSize - 15, {255, 255, 255, 255});
+                }
+            }
+            
+            // Check for mouse clicks on this slot
+            int mx, my;
+            Uint32 mouseState = SDL_GetMouseState(&mx, &my);
+            bool leftClick = (mouseState & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
+            bool rightClick = (mouseState & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0;
+            
+            if (mx >= slotX && mx <= slotX + slotSize && my >= slotY && my <= slotY + slotSize) {
+                if (leftClick) {
+                    hit.clickedItemSlot = slotIndex;
+                }
+                if (rightClick) {
+                    hit.rightClicked = true;
+                    hit.clickedItemSlot = slotIndex;
+                }
+                
+                // Show tooltip on hover
+                if (!itemInventory[slotIndex].isEmpty()) {
+                    Item* item = itemInventory[slotIndex].item;
+                    renderTooltip(item->getTooltipText(), mx, my);
+                }
+            }
+        }
+    }
+    
+    // Scrolls section
+    SDL_Rect scrollsSection = {scrollsX, sectionY, sectionW, sectionH};
+    SDL_SetRenderDrawColor(renderer, 45, 30, 30, 255);
+    SDL_RenderFillRect(renderer, &scrollsSection);
+    SDL_SetRenderDrawColor(renderer, 140, 120, 120, 255);
+    SDL_RenderDrawRect(renderer, &scrollsSection);
+    
+    renderText("Scrolls & Enchantments", scrollsX + 10, sectionY + 10);
+    
+    // Draw scroll grid (4 columns, 5 rows) with improved spacing
+    int scrollCols = 4;
+    int scrollRows = 5;
+    int scrollGridStartX = scrollsX + 15;  // Better left margin
+    int scrollGridStartY = sectionY + 45;  // Better top margin
+    
+    const auto& scrollInventory = itemSystem->getScrollInventory();
+    
+    for (int row = 0; row < scrollRows; row++) {
+        for (int col = 0; col < scrollCols; col++) {
+            int slotIndex = row * scrollCols + col;
+            if (slotIndex >= ItemSystem::SCROLL_INVENTORY_SIZE) break;
+            
+            int slotX = scrollGridStartX + col * (slotSize + slotSpacing);
+            int slotY = scrollGridStartY + row * (slotSize + slotSpacing);
+            SDL_Rect slotRect = {slotX, slotY, slotSize, slotSize};
+            
+            // Slot background
+            SDL_SetRenderDrawColor(renderer, 70, 50, 50, 255);
+            SDL_RenderFillRect(renderer, &slotRect);
+            SDL_SetRenderDrawColor(renderer, 120, 100, 100, 255);
+            SDL_RenderDrawRect(renderer, &slotRect);
+            
+            // Scroll icon and info
+            if (!scrollInventory[slotIndex].isEmpty()) {
+                Item* scroll = scrollInventory[slotIndex].item;
+                
+                // Draw rarity border
+                SDL_Color rarityColor = scroll->getRarityColor();
+                SDL_SetRenderDrawColor(renderer, rarityColor.r, rarityColor.g, rarityColor.b, 255);
+                SDL_RenderDrawRect(renderer, &slotRect);
+                
+                // Draw scroll icon if available
+                Texture* icon = itemSystem->getItemIcon(scroll->id);
+                if (icon) {
+                    SDL_Rect srcRect = {0, 0, 0, 0};
+                    SDL_QueryTexture(icon->getTexture(), nullptr, nullptr, &srcRect.w, &srcRect.h);
+                    SDL_Rect dstRect = {slotX + 2, slotY + 2, slotSize - 4, slotSize - 4};
+                    SDL_RenderCopy(renderer, icon->getTexture(), &srcRect, &dstRect);
+                }
+                
+                // Draw stack count if > 1
+                if (scroll->currentStack > 1) {
+                    std::string stackText = std::to_string(scroll->currentStack);
+                    renderText(stackText, slotX + slotSize - 15, slotY + slotSize - 15, {255, 255, 255, 255});
+                }
+            }
+            
+            // Check for mouse clicks on this scroll slot
+            int mx, my;
+            Uint32 mouseState = SDL_GetMouseState(&mx, &my);
+            bool leftClick = (mouseState & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
+            bool rightClick = (mouseState & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0;
+            
+            if (mx >= slotX && mx <= slotX + slotSize && my >= slotY && my <= slotY + slotSize) {
+                if (leftClick) {
+                    hit.clickedScrollSlot = slotIndex;
+                }
+                if (rightClick) {
+                    hit.rightClicked = true;
+                    hit.clickedScrollSlot = slotIndex;
+                }
+                
+                // Show tooltip on hover for scrolls
+                if (!scrollInventory[slotIndex].isEmpty()) {
+                    Item* scroll = scrollInventory[slotIndex].item;
+                    renderTooltip(scroll->getTooltipText(), mx, my);
+                }
+            }
+        }
+    }
+    
+    // Handle close button and ESC key
+    int mx, my;
+    Uint32 mouseState = SDL_GetMouseState(&mx, &my);
+    bool leftClick = (mouseState & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
+    
+    // Check title bar for dragging (top 40 pixels of panel, excluding close button)
+    SDL_Rect titleBar = {panelX, panelY, panelW - 60, 40};  // Leave space for close button
+    if (leftClick && mx >= titleBar.x && mx <= titleBar.x + titleBar.w && 
+        my >= titleBar.y && my <= titleBar.y + titleBar.h) {
+        hit.titleBarClicked = true;
+        hit.dragOffsetX = mx - panelX;
+        hit.dragOffsetY = my - panelY;
+    }
+    
+    // Check close button
+    if (leftClick && mx >= closeBtn.x && mx <= closeBtn.x + closeBtn.w && 
+        my >= closeBtn.y && my <= closeBtn.y + closeBtn.h) {
+        hit.clickedClose = true;
+        isOpen = false;
+    }
+    
+    // ESC key to close
+    const Uint8* keystate = SDL_GetKeyboardState(nullptr);
+    if (keystate[SDL_SCANCODE_ESCAPE]) {
+        isOpen = false;
+        hit.clickedClose = true;
+    }
+    
+    return hit;
+}
+
+UISystem::EquipmentHit UISystem::renderEquipmentUI(Player* player, bool& isOpen, bool anvilOpen, Game* game, bool inventoryOpen) {
+    EquipmentHit hit;
+    if (!player) return hit;
+    
+    // Get screen dimensions
+    int screenW, screenH;
+    SDL_GetRendererOutputSize(renderer, &screenW, &screenH);
+    
+    // Equipment panel - use custom position if set, otherwise use default positioning
+    int panelW = 600;
+    int panelH = 500;
+    int panelX, panelY;
+    
+    // Check for custom position from game
+    if (game && game->getEquipmentPosX() >= 0 && game->getEquipmentPosY() >= 0) {
+        panelX = game->getEquipmentPosX();
+        panelY = game->getEquipmentPosY();
+    } else {
+        // Default positioning - adjust based on what else is open
+        if (anvilOpen) {
+            // Position on right side when anvil is open (offset further right than inventory)
+            panelX = screenW - panelW - 50;  // Right edge with some margin
+            panelY = (screenH - panelH) / 2;
+        } else if (inventoryOpen) {
+            // Position on right side when inventory is open
+            panelX = screenW - panelW - 50;
+            panelY = (screenH - panelH) / 2;
+        } else {
+            // Center when nothing else is open
+            panelX = (screenW - panelW) / 2;
+            panelY = (screenH - panelH) / 2;
+        }
+    }
+    
+    // Background panel
+    SDL_Rect panel = {panelX, panelY, panelW, panelH};
+    SDL_SetRenderDrawColor(renderer, 60, 40, 40, 240);
+    SDL_RenderFillRect(renderer, &panel);
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    SDL_RenderDrawRect(renderer, &panel);
+    
+    // Title
+    renderTextCentered("Equipment & Stats", panelX + panelW/2, panelY + 20);
+    
+    // Close button
+    SDL_Rect closeBtn = {panelX + panelW - 40, panelY + 10, 30, 30};
+    SDL_SetRenderDrawColor(renderer, 160, 40, 40, 255);
+    SDL_RenderFillRect(renderer, &closeBtn);
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    SDL_RenderDrawRect(renderer, &closeBtn);
+    renderTextCentered("X", closeBtn.x + closeBtn.w/2, closeBtn.y + closeBtn.h/2);
+    
+    // Equipment slots layout (3x3 grid plus stats)
+    int equipX = panelX + 50;
+    int equipY = panelY + 60;
+    int slotSize = 60;
+    int slotSpacing = 10;
+    
+    // Note: We'll get equipment directly from player, not from ItemSystem slots
+    
+    // Equipment slot positions - new layout as requested:
+    // Row 1: helmet (center top)
+    // Row 2: necklace (left), chest (middle), ring (right) 
+    // Row 3: sword (left), belt (middle), bow (right)
+    // Row 4: gloves (left), boots (right)
+    int slotPositions[9][2] = {
+        {equipX + (slotSize + slotSpacing) * 2, equipY + slotSize + slotSpacing},    // Ring (row 2, right) - slot 0
+        {equipX + slotSize + slotSpacing, equipY},                                  // Helmet (row 1, center) - slot 1
+        {equipX, equipY + slotSize + slotSpacing},                                  // Necklace (row 2, left) - slot 2
+        {equipX, equipY + (slotSize + slotSpacing) * 2},                            // Sword (row 3, left) - slot 3
+        {equipX + slotSize + slotSpacing, equipY + slotSize + slotSpacing},         // Chest (row 2, middle) - slot 4
+        {equipX + (slotSize + slotSpacing) * 2, equipY + (slotSize + slotSpacing) * 2}, // Bow/Shield (row 3, right) - slot 5
+        {equipX, equipY + (slotSize + slotSpacing) * 3},                            // Gloves (row 4, left) - slot 6
+        {equipX + slotSize + slotSpacing, equipY + (slotSize + slotSpacing) * 2},   // Belt/Waist (row 3, middle) - slot 7
+        {equipX + (slotSize + slotSpacing) * 2, equipY + (slotSize + slotSpacing) * 3}  // Boots (row 4, right) - slot 8
+    };
+    
+    // Get ItemSystem once for all slots
+    ItemSystem* itemSystem = player->getItemSystem();
+    
+    for (int i = 0; i < 9; i++) {
+        int slotX = slotPositions[i][0];
+        int slotY = slotPositions[i][1];
+        SDL_Rect slotRect = {slotX, slotY, slotSize, slotSize};
+        
+        // Slot background
+        SDL_SetRenderDrawColor(renderer, 70, 50, 70, 255);
+        SDL_RenderFillRect(renderer, &slotRect);
+        SDL_SetRenderDrawColor(renderer, 120, 100, 120, 255);
+        SDL_RenderDrawRect(renderer, &slotRect);
+        
+        // Get equipped item from ItemSystem first, fallback to Player equipment
+        Item* equippedItem = nullptr;
+        if (itemSystem && i < itemSystem->getEquipmentSlots().size()) {
+            const auto& equipSlots = itemSystem->getEquipmentSlots();
+            if (!equipSlots[i].isEmpty()) {
+                equippedItem = equipSlots[i].item;
+            }
+        }
+        
+        // Fallback to Player's equipment array if ItemSystem doesn't have the item
+        const Player::EquipmentItem* playerEquipItem = nullptr;
+        if (!equippedItem) {
+            const Player::EquipmentItem& equipItem = player->getEquipment(static_cast<Player::EquipmentSlot>(i));
+            if (!equipItem.name.empty() || equipItem.plusLevel > 0 || equipItem.basePower > 0) {
+                playerEquipItem = &equipItem;
+            }
+        }
+        
+        // Variables for displaying item info
+        std::string tooltipText;
+        
+        // Draw equipped item if one exists
+        if (equippedItem || playerEquipItem) {
+            // Map equipment slot to icon path
+            std::string iconPath;
+            switch (static_cast<Player::EquipmentSlot>(i)) {
+                case Player::EquipmentSlot::RING:
+                    iconPath = "assets/Textures/Items/ring_01.png";
+                    break;
+                case Player::EquipmentSlot::HELM:
+                    iconPath = "assets/Textures/Items/helmet_01.png";
+                    break;
+                case Player::EquipmentSlot::NECKLACE:
+                    iconPath = "assets/Textures/Items/necklace_01.png";
+                    break;
+                case Player::EquipmentSlot::SWORD:
+                    iconPath = "assets/Textures/Items/sword_01.png";
+                    break;
+                case Player::EquipmentSlot::CHEST:
+                    iconPath = "assets/Textures/Items/chestpeice_01.png";
+                    break;
+                case Player::EquipmentSlot::SHIELD:
+                    iconPath = "assets/Textures/Items/bow_01.png";
+                    break;
+                case Player::EquipmentSlot::GLOVE:
+                    iconPath = "assets/Textures/Items/gloves_01.png";
+                    break;
+                case Player::EquipmentSlot::WAIST:
+                    iconPath = "assets/Textures/Items/waist_01.png";
+                    break;
+                case Player::EquipmentSlot::FEET:
+                    iconPath = "assets/Textures/Items/boots_01.png";
+                    break;
+            }
+            
+            // Get icon and display data based on item source
+            Texture* icon = nullptr;
+            int plusLevel = 0;
+            SDL_Color rarityColor = {255, 255, 255, 255}; // White default
+            
+            if (equippedItem) {
+                // ItemSystem item
+                icon = itemSystem->getItemIcon(equippedItem->id);
+                plusLevel = equippedItem->plusLevel;
+                rarityColor = equippedItem->getRarityColor();
+                tooltipText = equippedItem->getTooltipText();
+            } else if (playerEquipItem) {
+                // Player equipment item
+                plusLevel = playerEquipItem->plusLevel;
+                tooltipText = playerEquipItem->name + " (+" + std::to_string(plusLevel) + ")";
+            }
+            
+            // Fallback to slot-specific icon if no ItemSystem icon
+            if (!icon && !iconPath.empty()) {
+                icon = assetManager->getTexture(iconPath);
+            }
+            
+            // Draw equipment icon
+            if (icon) {
+                int pad = 4;
+                SDL_Rect iconRect = {slotX + pad, slotY + pad, slotSize - pad*2, slotSize - pad*2};
+                SDL_RenderCopy(renderer, icon->getTexture(), nullptr, &iconRect);
+            }
+            
+            // Draw +level for all equipment (including +0)
+            if (equippedItem || playerEquipItem) {
+                renderText("+" + std::to_string(plusLevel), 
+                          slotX + slotSize - 20, slotY + slotSize - 18, {200, 255, 200, 255});
+            }
+            
+            // Draw rarity border (only for ItemSystem items)
+            if (equippedItem) {
+                SDL_SetRenderDrawColor(renderer, rarityColor.r, rarityColor.g, rarityColor.b, 255);
+                SDL_Rect borderRect = {slotX - 2, slotY - 2, slotSize + 4, slotSize + 4};
+                SDL_RenderDrawRect(renderer, &borderRect);
+            }
+            
+            // Draw elemental indicators
+            int indicatorY = slotY + 2;
+            if (equippedItem) {
+                // ItemSystem item elemental indicators
+                if (equippedItem->stats.fireAttack > 0) {
+                    SDL_SetRenderDrawColor(renderer, 255, 100, 100, 255);
+                    SDL_Rect fireRect = {slotX + 2, indicatorY, 8, 4};
+                    SDL_RenderFillRect(renderer, &fireRect);
+                    indicatorY += 6;
+                }
+                if (equippedItem->stats.waterAttack > 0) {
+                    SDL_SetRenderDrawColor(renderer, 100, 200, 255, 255);
+                    SDL_Rect iceRect = {slotX + 2, indicatorY, 8, 4};
+                    SDL_RenderFillRect(renderer, &iceRect);
+                    indicatorY += 6;
+                }
+                if (equippedItem->stats.poisonAttack > 0) {
+                    SDL_SetRenderDrawColor(renderer, 100, 255, 100, 255);
+                    SDL_Rect poisonRect = {slotX + 2, indicatorY, 8, 4};
+                    SDL_RenderFillRect(renderer, &poisonRect);
+                }
+            } else if (playerEquipItem) {
+                // Player equipment elemental indicators
+                if (playerEquipItem->fire > 0) {
+                    SDL_SetRenderDrawColor(renderer, 255, 100, 100, 255);
+                    SDL_Rect fireRect = {slotX + 2, indicatorY, 8, 4};
+                    SDL_RenderFillRect(renderer, &fireRect);
+                    indicatorY += 6;
+                }
+                if (playerEquipItem->ice > 0) {
+                    SDL_SetRenderDrawColor(renderer, 100, 200, 255, 255);
+                    SDL_Rect iceRect = {slotX + 2, indicatorY, 8, 4};
+                    SDL_RenderFillRect(renderer, &iceRect);
+                    indicatorY += 6;
+                }
+                if (playerEquipItem->poison > 0) {
+                    SDL_SetRenderDrawColor(renderer, 100, 255, 100, 255);
+                    SDL_Rect poisonRect = {slotX + 2, indicatorY, 8, 4};
+                    SDL_RenderFillRect(renderer, &poisonRect);
+                }
+            }
+        }
+        
+        // Check for mouse clicks on equipment slot
+        int mx, my;
+        Uint32 mouseState = SDL_GetMouseState(&mx, &my);
+        bool leftClick = (mouseState & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
+        bool rightClick = (mouseState & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0;
+        
+        if (mx >= slotX && mx <= slotX + slotSize && my >= slotY && my <= slotY + slotSize) {
+            if (leftClick) {
+                hit.clickedEquipSlot = i;
+            }
+            if (rightClick) {
+                hit.rightClicked = true;
+                hit.clickedEquipSlot = i;
+            }
+            
+            // Show tooltip on hover for equipped items
+            if (!tooltipText.empty()) {
+                renderTooltip(tooltipText, mx, my);
+            }
+        }
+    }
+    
+    // Stats display - use ItemSystem's calculation
+    ItemStats totalStats;
+    if (itemSystem) {
+        totalStats = itemSystem->calculateTotalStats();
+    }
+    int statsX = panelX + 350;
+    int statsY = panelY + 80;
+    int lineHeight = 25;
+    
+    renderText("Total Stats:", statsX, statsY, {255, 255, 100, 255});
+    statsY += lineHeight + 10;
+    
+    if (totalStats.attack > 0) {
+        renderText("Attack: +" + std::to_string(totalStats.attack), statsX, statsY);
+        statsY += lineHeight;
+    }
+    if (totalStats.defense > 0) {
+        renderText("Defense: +" + std::to_string(totalStats.defense), statsX, statsY);
+        statsY += lineHeight;
+    }
+    if (totalStats.health > 0) {
+        renderText("Health: +" + std::to_string(totalStats.health), statsX, statsY);
+        statsY += lineHeight;
+    }
+    if (totalStats.mana > 0) {
+        renderText("Mana: +" + std::to_string(totalStats.mana), statsX, statsY);
+        statsY += lineHeight;
+    }
+    if (totalStats.strength > 0) {
+        renderText("Strength: +" + std::to_string(totalStats.strength), statsX, statsY);
+        statsY += lineHeight;
+    }
+    if (totalStats.intelligence > 0) {
+        renderText("Intelligence: +" + std::to_string(totalStats.intelligence), statsX, statsY);
+        statsY += lineHeight;
+    }
+    
+    // Elemental stats
+    if (totalStats.fireAttack > 0) {
+        renderText("Fire Attack: +" + std::to_string(totalStats.fireAttack), statsX, statsY, {255, 100, 100, 255});
+        statsY += lineHeight;
+    }
+    if (totalStats.waterAttack > 0) {
+        renderText("Water Attack: +" + std::to_string(totalStats.waterAttack), statsX, statsY, {100, 100, 255, 255});
+        statsY += lineHeight;
+    }
+    if (totalStats.poisonAttack > 0) {
+        renderText("Poison Attack: +" + std::to_string(totalStats.poisonAttack), statsX, statsY, {100, 255, 100, 255});
+        statsY += lineHeight;
+    }
+    
+    // Handle input
+    int mx, my;
+    Uint32 mouseState = SDL_GetMouseState(&mx, &my);
+    bool leftClick = (mouseState & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
+    
+    // Check title bar for dragging (top 40 pixels of panel, excluding close button)
+    SDL_Rect titleBar = {panelX, panelY, panelW - 60, 40};  // Leave space for close button
+    if (leftClick && mx >= titleBar.x && mx <= titleBar.x + titleBar.w && 
+        my >= titleBar.y && my <= titleBar.y + titleBar.h) {
+        hit.titleBarClicked = true;
+        hit.dragOffsetX = mx - panelX;
+        hit.dragOffsetY = my - panelY;
+    }
+    
+    // Check close button
+    if (leftClick && mx >= closeBtn.x && mx <= closeBtn.x + closeBtn.w && 
+        my >= closeBtn.y && my <= closeBtn.y + closeBtn.h) {
+        hit.clickedClose = true;
+        isOpen = false;
+    }
+    
+    // ESC key to close
+    const Uint8* keystate = SDL_GetKeyboardState(nullptr);
+    if (keystate[SDL_SCANCODE_ESCAPE]) {
+        isOpen = false;
+        hit.clickedClose = true;
+    }
+    
+    return hit;
+}
+
+void UISystem::renderTooltip(const std::string& tooltipText, int mouseX, int mouseY) {
+    if (tooltipText.empty()) return;
+    
+    // Calculate tooltip size
+    int maxWidth = 300;
+    int lineHeight = 20;
+    int padding = 10;
+    
+    // Split tooltip into lines (basic line breaking)
+    std::vector<std::string> lines;
+    std::istringstream stream(tooltipText);
+    std::string line;
+    while (std::getline(stream, line, '\n')) {
+        lines.push_back(line);
+    }
+    
+    int tooltipW = maxWidth;
+    int tooltipH = lines.size() * lineHeight + padding * 2;
+    
+    // Position tooltip always ABOVE the mouse/item, keep on screen
+    int screenW, screenH;
+    SDL_GetRendererOutputSize(renderer, &screenW, &screenH);
+    
+    // Always position tooltip above the mouse cursor
+    int tooltipX = mouseX - tooltipW / 2;  // Center horizontally on mouse
+    int tooltipY = mouseY - tooltipH - 50; // Always above with more margin to clear icons
+    
+    // Keep tooltip on screen horizontally
+    if (tooltipX < 10) tooltipX = 10;
+    if (tooltipX + tooltipW > screenW - 10) tooltipX = screenW - tooltipW - 10;
+    
+    // If tooltip would go off top of screen, position it just below mouse instead
+    if (tooltipY < 10) tooltipY = mouseY + 30;
+    
+    // Draw tooltip background
+    SDL_Rect tooltipRect = {tooltipX, tooltipY, tooltipW, tooltipH};
+    SDL_SetRenderDrawColor(renderer, 20, 20, 20, 240);
+    SDL_RenderFillRect(renderer, &tooltipRect);
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    SDL_RenderDrawRect(renderer, &tooltipRect);
+    
+    // Draw tooltip text
+    for (size_t i = 0; i < lines.size(); i++) {
+        renderText(lines[i], tooltipX + padding, tooltipY + padding + i * lineHeight, {255, 255, 255, 255});
     }
 }

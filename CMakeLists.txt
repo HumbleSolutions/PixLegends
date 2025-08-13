@@ -166,6 +166,9 @@ set(SOURCES
     src/AudioManager.cpp
     src/Object.cpp
     src/Enemy.cpp
+    src/Boss.cpp
+    src/LootGenerator.cpp
+    src/ItemSystem.cpp
 )
 
 # Create executable

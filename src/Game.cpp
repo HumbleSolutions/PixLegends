@@ -6,10 +6,13 @@
 #include "Projectile.h"
 #include "World.h"
 #include "Enemy.h"
+#include "Boss.h"
 #include "UISystem.h"
 #include "AudioManager.h"
 #include "Object.h"
 #include "Database.h"
+#include "LootGenerator.h"
+#include "ItemSystem.h"
 #include <iostream>
 #include <random>
 
@@ -270,9 +273,9 @@ void Game::update(float deltaTime) {
         if (uiSystem) uiSystem->update(deltaTime);
         return;
     }
-    // Update player (keep world running while inventory/anvil are open; optionally lock movement when anvil only)
+    // Update player (keep world running while inventory/anvil are open)
     if (player) {
-        if (!anvilOpen) player->update(deltaTime);
+        player->update(deltaTime);
     }
     
     // Update world
@@ -469,17 +472,33 @@ void Game::update(float deltaTime) {
             if (player->isMeleeAttacking()) {
                 SDL_Rect hitbox = player->getMeleeHitbox();
                 if (player->isMeleeHitActive()) {
-                    for (auto& enemyPtr : enemies) {
-                        if (!enemyPtr || enemyPtr->isDead()) continue;
-                        SDL_Rect eRect = enemyPtr->getCollisionRect();
+                    bool hitSomething = false;
+                    
+                    // Check boss first (higher priority)
+                    if (world->hasBoss() && world->getCurrentBoss() && !world->getCurrentBoss()->isDead()) {
+                        Boss* boss = world->getCurrentBoss();
+                        SDL_Rect bossRect = boss->getCollisionRect();
                         SDL_Rect inter;
-                        if (SDL_IntersectRect(&hitbox, &eRect, &inter)) {
+                        if (SDL_IntersectRect(&hitbox, &bossRect, &inter)) {
                             if (player->consumeMeleeHitIfActive()) {
-                                // Roll damage with crit and consume durability for the sword
-                                enemyPtr->takeDamage(player->rollMeleeDamageForHit());
+                                boss->takeDamage(player->rollMeleeDamageForHit());
+                                hitSomething = true;
                             }
-                            // do not break: allow hitting first valid enemy; keep break to single
-                            break;
+                        }
+                    }
+                    
+                    // Check regular enemies if we didn't hit a boss
+                    if (!hitSomething) {
+                        for (auto& enemyPtr : enemies) {
+                            if (!enemyPtr || enemyPtr->isDead()) continue;
+                            SDL_Rect eRect = enemyPtr->getCollisionRect();
+                            SDL_Rect inter;
+                            if (SDL_IntersectRect(&hitbox, &eRect, &inter)) {
+                                if (player->consumeMeleeHitIfActive()) {
+                                    enemyPtr->takeDamage(player->rollMeleeDamageForHit());
+                                }
+                                break;
+                            }
                         }
                     }
                 }
@@ -533,57 +552,140 @@ void Game::update(float deltaTime) {
                     }
                 }
             }
+            
+            // 2a) Boss contact damage to player
+            if (world->hasBoss() && world->getCurrentBoss() && !world->getCurrentBoss()->isDead()) {
+                Boss* boss = world->getCurrentBoss();
+                SDL_Rect bossRect = boss->getCollisionRect();
+                SDL_Rect playerRect = player->getCollisionRect();
+                SDL_Rect inter;
+                if (SDL_IntersectRect(&playerRect, &bossRect, &inter)) {
+                    // Only allow contact damage if boss is fully overlapping the player center
+                    bool deepOverlap = false;
+                    {
+                        int pcx = static_cast<int>(player->getX() + player->getWidth() * 0.5f);
+                        int pcy = static_cast<int>(player->getY() + player->getHeight() * 0.65f);
+                        if (pcx >= bossRect.x && pcx <= bossRect.x + bossRect.w &&
+                            pcy >= bossRect.y && pcy <= bossRect.y + bossRect.h) {
+                            deepOverlap = true;
+                        }
+                    }
+                    if (deepOverlap && boss->isAttackReady()) {
+                        player->takeDamage(boss->getContactDamage());
+                        if (audioManager) {
+                            audioManager->playSound("boss_melee");
+                            audioManager->startMusicDuck(0.35f, 0.5f);
+                        }
+                        boss->consumeAttackCooldown();
+                        if (player->isDead()) {
+                            // Reset boss to spawn when player dies
+                            boss->resetToSpawn();
+                        }
+                    }
+                }
+                
+                // Boss projectiles vs player
+                for (const auto& proj : boss->getProjectiles()) {
+                    if (!proj || !proj->isActive()) continue;
+                    SDL_Rect pRect = proj->getCollisionRect();
+                    SDL_Rect inter2;
+                    if (SDL_IntersectRect(&pRect, &playerRect, &inter2)) {
+                        player->takeDamage(15); // Boss projectiles do more damage
+                        const_cast<Projectile*>(proj.get())->deactivate();
+                    }
+                }
+            }
 
-            // 2b) Loot drops and EXP orbs from dead enemies (one-time) + corpse despawn
+            // 2b) Enhanced loot drops from dead enemies (one-time) + corpse despawn
             for (auto& enemyPtr : enemies) {
                 if (!enemyPtr) continue;
                 if (enemyPtr->isDead() && !enemyPtr->isLootDropped()) {
-                    // Basic drop table: Demon guaranteed Blessed upgrade scroll + random element; Wizard chance element only
-                    if (std::string(enemyPtr->getDisplayName()) == "Demon") {
-                        player->addUpgradeScrolls(1);
-                        // 50% chance one of fire/water/poison
-                        int r = SDL_GetTicks() % 3; // simple deterministic random-ish
-                        if (r == 0) player->addElementScrolls("fire", 1);
-                        else if (r == 1) player->addElementScrolls("water", 1);
-                        else player->addElementScrolls("poison", 1);
-                    } else if (std::string(enemyPtr->getDisplayName()) == "Wizard") {
-                        // 40% chance of one random element
-                        int t = SDL_GetTicks() % 10;
-                        if (t < 4) {
-                            int r = t % 3;
-                            if (r == 0) player->addElementScrolls("fire", 1);
-                            else if (r == 1) player->addElementScrolls("water", 1);
-                            else player->addElementScrolls("poison", 1);
-                        }
+                    // Generate enhanced loot using the new system
+                    int enemyLevel = 1; // Base level for now, could be based on area/zone later
+                    float rarityBonus = 0.0f;
+                    
+                    // Apply rarity bonus based on enemy pack rarity
+                    switch (enemyPtr->getPackRarity()) {
+                        case PackRarity::Trash:   rarityBonus = -0.1f; break;
+                        case PackRarity::Common:  rarityBonus = 0.0f; break;
+                        case PackRarity::Magic:   rarityBonus = 0.2f; break;
+                        case PackRarity::Elite:   rarityBonus = 0.4f; break;
                     }
-                    // EXP orbs by pack rarity
+                    
+                    // Generate loot using the new system
+                    auto lootItems = LootGenerator::getInstance().generateEnemyLoot(enemyLevel, rarityBonus);
+                    
                     if (world) {
                         int ts = world->getTileSize();
                         int tx = static_cast<int>(enemyPtr->getX()) / ts;
                         int ty = static_cast<int>(enemyPtr->getY()) / ts;
-                        int xp = 0; const char* orbTex = nullptr; ObjectType orbType = ObjectType::EXP_ORB1;
-                        switch (enemyPtr->getPackRarity()) {
-                            case PackRarity::Trash: xp = 5;   orbTex = "assets/Textures/Objects/exp_orb1.png"; orbType = ObjectType::EXP_ORB1; break;
-                            case PackRarity::Common: xp = 5;   orbTex = "assets/Textures/Objects/exp_orb1.png"; orbType = ObjectType::EXP_ORB1; break;
-                            case PackRarity::Magic: xp = 50;  orbTex = "assets/Textures/Objects/exp_orb2.png"; orbType = ObjectType::EXP_ORB2; break;
-                            case PackRarity::Elite: xp = 250; orbTex = "assets/Textures/Objects/exp_orb3.png"; orbType = ObjectType::EXP_ORB3; break;
-                        }
-                        if (xp > 0 && orbTex) {
-                            auto orb = std::make_unique<Object>(orbType, tx, ty, orbTex);
-                            orb->setAssetManager(assetManager.get());
-                            orb->setTileSizeHint(ts);
-                            // Spawn with pixel precise position centered in tile
-                            orb->setPositionPixels(tx * ts + ts * 0.5f - 8.0f, ty * ts + ts * 0.5f - 8.0f);
-                            orb->setCollectible(true);
-                            // Delay magnet by 2 seconds
-                            orb->setSpawnTicks(SDL_GetTicks());
-                            orb->setMagnetDelaySeconds(2.0f);
-                            if (Texture* t = assetManager->getTexture(orbTex)) {
-                                orb->setTexture(t);
+                        
+                        // Create loot objects for each dropped item
+                        for (const auto& loot : lootItems) {
+                            if (loot.type == LootType::GOLD) {
+                                // Add gold directly to player
+                                player->addGold(loot.amount);
+                                continue;
                             }
-                            // Store XP in loot payload so pickup can grant it
-                            orb->addLoot(Loot(LootType::EXPERIENCE, xp, "exp_orb"));
-                            world->addObject(std::move(orb));
+                            
+                            // Create visual loot object
+                            std::unique_ptr<Object> lootObj;
+                            
+                            switch (loot.type) {
+                                case LootType::EXPERIENCE: {
+                                    // Choose orb type based on XP amount
+                                    ObjectType orbType = ObjectType::EXP_ORB1;
+                                    const char* orbTex = "assets/Textures/Objects/exp_orb1.png";
+                                    
+                                    if (loot.amount >= 100) {
+                                        orbType = ObjectType::EXP_ORB3;
+                                        orbTex = "assets/Textures/Objects/exp_orb3.png";
+                                    } else if (loot.amount >= 25) {
+                                        orbType = ObjectType::EXP_ORB2;
+                                        orbTex = "assets/Textures/Objects/exp_orb2.png";
+                                    }
+                                    
+                                    lootObj = std::make_unique<Object>(orbType, tx, ty, orbTex);
+                                    break;
+                                }
+                                case LootType::HEALTH_POTION:
+                                    lootObj = std::make_unique<Object>(ObjectType::CHEST_UNOPENED, tx, ty, 
+                                        "assets/Textures/All Potions/HP potions/full_hp_potion.png");
+                                    break;
+                                case LootType::MANA_POTION:
+                                    lootObj = std::make_unique<Object>(ObjectType::CHEST_UNOPENED, tx, ty,
+                                        "assets/Textures/All Potions/Mana potion/full_mana_potion.png");
+                                    break;
+                                default:
+                                    // For other loot types (equipment, scrolls, materials), use a generic chest for now
+                                    lootObj = std::make_unique<Object>(ObjectType::CHEST_UNOPENED, tx, ty,
+                                        "assets/Textures/Objects/chest_unopened.png");
+                                    break;
+                            }
+                            
+                            if (lootObj) {
+                                lootObj->setAssetManager(assetManager.get());
+                                lootObj->setTileSizeHint(ts);
+                                
+                                // Randomize position slightly to avoid overlap
+                                float offsetX = (rand() % 21 - 10) * 0.5f; // -5 to +5 pixels
+                                float offsetY = (rand() % 21 - 10) * 0.5f;
+                                lootObj->setPositionPixels(tx * ts + ts * 0.5f - 8.0f + offsetX, 
+                                                          ty * ts + ts * 0.5f - 8.0f + offsetY);
+                                lootObj->setCollectible(true);
+                                lootObj->setSpawnTicks(SDL_GetTicks());
+                                lootObj->setMagnetDelaySeconds(1.5f);
+                                
+                                // Add the loot data to the object
+                                lootObj->addLoot(loot);
+                                
+                                // Set texture
+                                if (Texture* t = assetManager->getTexture(lootObj->getTexture() ? "" : "assets/Textures/Objects/chest_unopened.png")) {
+                                    lootObj->setTexture(t);
+                                }
+                                
+                                world->addObject(std::move(lootObj));
+                            }
                         }
                     }
 
@@ -841,29 +943,45 @@ void Game::render() {
             }
         }
 
-        // Boss/Pack health bar while engaged (hide during modal anvil). Show for Magic and Elite only.
+        // Boss/Pack health bar while engaged (hide during modal anvil). Show for Magic, Elite, and Bosses.
         if (world && player && !anvilOpen) {
-            auto& enemies = world->getEnemies();
-            // Prefer to show Demon bar if a Demon is engaged; otherwise show first engaged enemy
             Enemy* engagedEnemy = nullptr;
-            for (auto& e : enemies) {
-                if (!e || e->isDead()) continue;
-                // Use player center for engagement check to match enemy AI distance math
+            bool isBossFight = false;
+            
+            // Check for active boss first (bosses take priority over regular enemies)
+            if (world->hasBoss() && world->getCurrentBoss() && !world->getCurrentBoss()->isDead()) {
                 float pcx = player->getX() + player->getWidth() * 0.5f;
                 float pcy = player->getY() + player->getHeight() * 0.5f;
-                bool engaged = e->getIsAggroed() || e->isWithinAttackRange(pcx, pcy);
-                // Only Magic/Elite show top HP bar and gate boss music
-                if (engaged && !(e->getPackRarity() == PackRarity::Elite || e->getPackRarity() == PackRarity::Magic)) engaged = false;
-                if (!engaged) continue;
-                engagedEnemy = e.get();
-                if (std::string(engagedEnemy->getDisplayName()) == "Demon") break;
+                Boss* boss = world->getCurrentBoss();
+                bool engaged = boss->getIsAggroed() || boss->isWithinAttackRange(pcx, pcy);
+                if (engaged) {
+                    engagedEnemy = boss;
+                    isBossFight = true;
+                }
             }
+            
+            // If no boss is engaged, check regular enemies
+            if (!engagedEnemy) {
+                auto& enemies = world->getEnemies();
+                for (auto& e : enemies) {
+                    if (!e || e->isDead()) continue;
+                    float pcx = player->getX() + player->getWidth() * 0.5f;
+                    float pcy = player->getY() + player->getHeight() * 0.5f;
+                    bool engaged = e->getIsAggroed() || e->isWithinAttackRange(pcx, pcy);
+                    // Only Magic/Elite show top HP bar and gate boss music
+                    if (engaged && !(e->getPackRarity() == PackRarity::Elite || e->getPackRarity() == PackRarity::Magic)) engaged = false;
+                    if (!engaged) continue;
+                    engagedEnemy = e.get();
+                    if (std::string(engagedEnemy->getDisplayName()) == "Demon") break;
+                }
+            }
+            
             if (engagedEnemy) {
-                    int outW = 0, outH = 0;
-                    SDL_GetRendererOutputSize(sdlRenderer, &outW, &outH);
+                int outW = 0, outH = 0;
+                SDL_GetRendererOutputSize(sdlRenderer, &outW, &outH);
                 uiSystem->renderBossHealthBar(engagedEnemy->getDisplayName(), engagedEnemy->getHealth(), engagedEnemy->getMaxHealth(), (outW > 0 ? outW : WINDOW_WIDTH));
-                // Start boss music if available (elites only)
-                if (engagedEnemy->getPackRarity() == PackRarity::Elite && audioManager && audioManager->hasMusic("boss_music") && currentMusicTrack != "boss_music") { 
+                // Start boss music if available (bosses and elites)
+                if ((isBossFight || engagedEnemy->getPackRarity() == PackRarity::Elite) && audioManager && audioManager->hasMusic("boss_music") && currentMusicTrack != "boss_music") { 
                     audioManager->fadeToMusic("boss_music", 400, 300); 
                     currentMusicTrack = "boss_music"; 
                 }
@@ -982,22 +1100,193 @@ void Game::render() {
             }
         }
     }
-    // Inventory overlay (two bags) – does not pause the world. Process input first
-    if (inventoryOpen && uiSystem) {
-        int outW=0,outH=0; SDL_GetRendererOutputSize(sdlRenderer,&outW,&outH); if (outW<=0){outW=WINDOW_WIDTH;outH=WINDOW_HEIGHT;}
-        int mx=0,my=0; SDL_GetMouseState(&mx,&my); Uint32 ms = SDL_GetMouseState(nullptr,nullptr); bool md = (ms & SDL_BUTTON(SDL_BUTTON_LEFT))!=0; bool rd = (ms & SDL_BUTTON(SDL_BUTTON_RIGHT))!=0;
-        UISystem::InventoryHit ih;
-        uiSystem->renderInventory(player.get(), outW, outH, mx, my, md, rd, ih);
-        // Robust drag from inventory to anvil: remember drag while mouse is held down and feed payload to anvil all frames
-        if (ih.startedDrag && !ih.dragPayload.empty()) { draggingFromInventory = true; draggingPayload = ih.dragPayload; }
-        if (!md) { draggingFromInventory = false; draggingPayload.clear(); }
-        // Right-click quick-use: stage exactly one scroll in the anvil scroll slot (do not auto-apply)
-        if (anvilOpen && ih.rightClicked && !ih.rightClickedPayload.empty()) {
-            // Consume exactly one and place into anvil staged slot
-            bool consumed = false;
-            if (ih.rightClickedPayload == "upgrade_scroll") { consumed = player->consumeUpgradeScroll(); }
-            else { consumed = player->consumeElementScroll(ih.rightClickedPayload); }
-            if (consumed) { anvilStagedScrollKey = ih.rightClickedPayload; }
+    // Enhanced inventory overlay – does not pause the world. Process input first
+    if (inventoryOpen && uiSystem && player) {
+        UISystem::InventoryHit ih = uiSystem->renderEnhancedInventory(player.get(), inventoryOpen, anvilOpen, this, equipmentOpen);
+        // Handle UI interactions
+        if (ih.clickedClose) {
+            inventoryOpen = false;
+        }
+        
+        // Handle inventory panel dragging
+        static bool draggingInventory = false;
+        if (ih.titleBarClicked && !draggingInventory) {
+            draggingInventory = true;
+        }
+        if (draggingInventory) {
+            int mx, my;
+            SDL_GetMouseState(&mx, &my);
+            if (SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON(SDL_BUTTON_LEFT)) {
+                // Still dragging - update position
+                setInventoryPos(mx - ih.dragOffsetX, my - ih.dragOffsetY);
+            } else {
+                // Released mouse - stop dragging
+                draggingInventory = false;
+            }
+        }
+        
+        // Handle item slot clicks and dragging
+        ItemSystem* itemSystem = player->getItemSystem();
+        if (itemSystem) {
+            if (ih.clickedItemSlot >= 0 && !processingEquipmentEvent) {
+                const auto& itemInventory = itemSystem->getItemInventory();
+                if (ih.clickedItemSlot < itemInventory.size() && !itemInventory[ih.clickedItemSlot].isEmpty()) {
+                    Item* item = itemInventory[ih.clickedItemSlot].item;
+                    
+                    // Set flag to prevent double processing
+                    processingEquipmentEvent = true;
+                    
+                    if (!ih.rightClicked) {
+                        // Left click - check if anvil is open for dragging, otherwise equip
+                        if (anvilOpen && item->type == ItemType::EQUIPMENT) {
+                            // Start dragging to anvil
+                            draggingFromInventory = true;
+                            draggingPayload = item->id;
+                            // Store the specific item instance being dragged
+                            anvilTargetItem = item;
+                            anvilItemSource = AnvilItemSource::INVENTORY_ITEM;
+                        } else {
+                            // Regular equip behavior
+                            Item* item = itemInventory[ih.clickedItemSlot].item;
+                            int equipSlot = static_cast<int>(item->equipmentType);
+                            
+                            if (itemSystem->equipItem(ih.clickedItemSlot)) {
+                                // Sync the Player equipment array with the newly equipped item
+                                const auto& equipSlots = itemSystem->getEquipmentSlots();
+                                if (equipSlot >= 0 && equipSlot < equipSlots.size() && !equipSlots[equipSlot].isEmpty()) {
+                                    player->syncEquipmentFromItem(static_cast<Player::EquipmentSlot>(equipSlot), 
+                                                                 equipSlots[equipSlot].item);
+                                }
+                            }
+                        }
+                    } else if (anvilOpen && item->type == ItemType::EQUIPMENT) {
+                        // Right click - automatically select anvil slot for this equipment type AND set target item
+                        if (item->id.find("sword") != std::string::npos) anvilSelectedSlot = 3;
+                        else if (item->id.find("helmet") != std::string::npos) anvilSelectedSlot = 1;
+                        else if (item->id.find("ring") != std::string::npos) anvilSelectedSlot = 0;
+                        else if (item->id.find("necklace") != std::string::npos) anvilSelectedSlot = 2;
+                        else if (item->id.find("chestpeice") != std::string::npos) anvilSelectedSlot = 4;
+                        else if (item->id.find("bow") != std::string::npos) anvilSelectedSlot = 5;
+                        else if (item->id.find("gloves") != std::string::npos) anvilSelectedSlot = 6;
+                        else if (item->id.find("waist") != std::string::npos) anvilSelectedSlot = 7;
+                        else if (item->id.find("boots") != std::string::npos) anvilSelectedSlot = 8;
+                        
+                        // Set the target item for anvil operations
+                        anvilTargetItem = item;
+                        anvilItemSource = AnvilItemSource::INVENTORY_ITEM;
+                    } else if (!anvilOpen && item->type == ItemType::EQUIPMENT) {
+                        // Right click - ordered swap: unequip first, then equip
+                        int equipSlot = static_cast<int>(item->equipmentType);
+                        if (equipSlot >= 0 && equipSlot < 9) {
+                            const auto& equipSlots = itemSystem->getEquipmentSlots();
+                            
+                            // Step 1: If there's an item equipped in that slot, unequip it first
+                            if (equipSlot < equipSlots.size() && !equipSlots[equipSlot].isEmpty()) {
+                                if (itemSystem->unequipItem(equipSlot)) {
+                                    // Also clear the Player equipment array to stay synchronized
+                                    player->clearEquipmentSlot(static_cast<Player::EquipmentSlot>(equipSlot));
+                                }
+                            }
+                            
+                            // Step 2: Now equip the new item
+                            if (itemSystem->equipItem(ih.clickedItemSlot)) {
+                                // Sync the Player equipment array with the newly equipped item
+                                const auto& equipSlots = itemSystem->getEquipmentSlots();
+                                if (equipSlot < equipSlots.size() && !equipSlots[equipSlot].isEmpty()) {
+                                    player->syncEquipmentFromItem(static_cast<Player::EquipmentSlot>(equipSlot), 
+                                                                 equipSlots[equipSlot].item);
+                                }
+                            }
+                        }
+                    }
+                    // Right click also shows tooltip (handled by UI)
+                    
+                    // Clear the processing flag
+                    processingEquipmentEvent = false;
+                }
+            }
+            
+            if (ih.clickedScrollSlot >= 0) {
+                const auto& scrollInventory = itemSystem->getScrollInventory();
+                if (ih.clickedScrollSlot < scrollInventory.size() && !scrollInventory[ih.clickedScrollSlot].isEmpty()) {
+                    Item* scroll = scrollInventory[ih.clickedScrollSlot].item;
+                    
+                    if (!ih.rightClicked && anvilOpen && scroll->type == ItemType::SCROLL) {
+                        // Start dragging scroll to anvil
+                        draggingFromInventory = true;
+                        draggingPayload = scroll->id;
+                    } else if (ih.rightClicked && anvilOpen && scroll->type == ItemType::SCROLL) {
+                        // Right click - automatically stage scroll in anvil and consume it
+                        anvilStagedScrollKey = scroll->id;
+                        // Consume the scroll from player's inventory
+                        if (scroll->id == "upgrade_scroll") {
+                            player->consumeUpgradeScroll();
+                        } else {
+                            player->consumeElementScroll(scroll->id);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Equipment/Stats UI overlay
+    if (equipmentOpen && uiSystem && player) {
+        UISystem::EquipmentHit eh = uiSystem->renderEquipmentUI(player.get(), equipmentOpen, anvilOpen, this, inventoryOpen);
+        // Handle UI interactions
+        if (eh.clickedClose) {
+            equipmentOpen = false;
+        }
+        
+        // Handle equipment panel dragging
+        static bool draggingEquipment = false;
+        if (eh.titleBarClicked && !draggingEquipment) {
+            draggingEquipment = true;
+        }
+        if (draggingEquipment) {
+            int mx, my;
+            SDL_GetMouseState(&mx, &my);
+            if (SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON(SDL_BUTTON_LEFT)) {
+                // Still dragging - update position
+                setEquipmentPos(mx - eh.dragOffsetX, my - eh.dragOffsetY);
+            } else {
+                // Released mouse - stop dragging
+                draggingEquipment = false;
+            }
+        }
+        
+        // Handle equipment slot clicks and dragging
+        ItemSystem* itemSystem = player->getItemSystem();
+        if (itemSystem && eh.clickedEquipSlot >= 0 && eh.clickedEquipSlot < 9) {
+            const auto& equipSlots = itemSystem->getEquipmentSlots();
+            if (eh.clickedEquipSlot < equipSlots.size() && !equipSlots[eh.clickedEquipSlot].isEmpty()) {
+                Item* equippedItem = equipSlots[eh.clickedEquipSlot].item;
+                if (!eh.rightClicked) {
+                    // Left click - check if anvil is open for dragging, otherwise unequip
+                    if (anvilOpen) {
+                        // Start dragging to anvil
+                        draggingFromInventory = true;
+                        draggingPayload = equippedItem->id;
+                        // Store the specific item instance being dragged
+                        anvilTargetItem = equippedItem;
+                        anvilItemSource = AnvilItemSource::EQUIPPED_SLOT;
+                        // Also set the anvil selected slot to match this equipment type
+                        anvilSelectedSlot = eh.clickedEquipSlot;
+                    } else {
+                        // Regular unequip behavior - move to inventory using ItemSystem
+                        if (itemSystem->unequipItem(eh.clickedEquipSlot)) {
+                            // Also clear the Player equipment array to stay synchronized
+                            player->clearEquipmentSlot(static_cast<Player::EquipmentSlot>(eh.clickedEquipSlot));
+                        }
+                    }
+                } else if (anvilOpen) {
+                    // Right click - automatically select this equipment slot in anvil and set target item
+                    anvilSelectedSlot = eh.clickedEquipSlot;
+                    anvilTargetItem = equippedItem;
+                    anvilItemSource = AnvilItemSource::EQUIPPED_SLOT;
+                }
+                // Right click also shows tooltip (handled by UI)
+            }
         }
     }
 
@@ -1011,7 +1300,7 @@ void Game::render() {
         static std::string currentScrollPreview;
         // Provide external payload while dragging from inventory (enables drop detection on release)
         std::string external = (draggingFromInventory ? draggingPayload : std::string());
-        uiSystem->renderMagicAnvil(player.get(), outW, outH, mx, my, mouseDown, hit, external, anvilSelectedSlot, anvilStagedScrollKey);
+        uiSystem->renderMagicAnvil(player.get(), outW, outH, mx, my, mouseDown, hit, external, anvilSelectedSlot, anvilStagedScrollKey, this);
         if (hit.clickedSlot>=0) anvilSelectedSlot = hit.clickedSlot;
         // Apply via button or drag-drop
         static float upgradeFlashTimer = 0.0f; static bool lastUpgradeSuccess = false;
@@ -1028,13 +1317,30 @@ void Game::render() {
         if (hit.clickedSideUpgrade && !anvilStagedScrollKey.empty()) {
             anvilUpgradeAnimT = 0.0001f; // start sweep
             if (anvilStagedScrollKey == "upgrade_scroll") {
-                const auto& eq = player->getEquipment(static_cast<Player::EquipmentSlot>(anvilSelectedSlot));
-                if (eq.plusLevel < 30) {
+                // Determine which item to upgrade
+                Item* targetItem = anvilTargetItem;
+                int currentPlusLevel = 0;
+                
+                if (targetItem) {
+                    // Upgrade specific item instance
+                    currentPlusLevel = targetItem->plusLevel;
+                } else {
+                    // Fallback to equipment slot method
+                    const auto& eq = player->getEquipment(static_cast<Player::EquipmentSlot>(anvilSelectedSlot));
+                    currentPlusLevel = eq.plusLevel;
+                    targetItem = nullptr;
+                }
+                
+                if (currentPlusLevel < 30) {
                     std::uniform_real_distribution<float> dist(0.0f, 100.0f);
                     float roll = dist(rng);
-                    float chance = chanceForNext(eq.plusLevel);
+                    float chance = chanceForNext(currentPlusLevel);
                     if (roll <= chance) {
-                        player->upgradeEquipment(static_cast<Player::EquipmentSlot>(anvilSelectedSlot), 1);
+                        if (targetItem) {
+                            player->upgradeSpecificItem(targetItem, 1);
+                        } else {
+                            player->upgradeEquipment(static_cast<Player::EquipmentSlot>(anvilSelectedSlot), 1);
+                        }
                         lastUpgradeSuccess = true;
                     } else {
                         lastUpgradeSuccess = false;
@@ -1046,28 +1352,87 @@ void Game::render() {
                     if (audioManager) audioManager->playSound("upgrade_sound");
                 } else { lastUpgradeSuccess = false; upgradeFlashTimer = 0.8f; }
             } else {
-                player->enchantEquipment(static_cast<Player::EquipmentSlot>(anvilSelectedSlot), anvilStagedScrollKey, 1);
+                // Enchantment
+                if (anvilTargetItem) {
+                    player->enchantSpecificItem(anvilTargetItem, anvilStagedScrollKey, 1);
+                } else {
+                    player->enchantEquipment(static_cast<Player::EquipmentSlot>(anvilSelectedSlot), anvilStagedScrollKey, 1);
+                }
                 lastUpgradeSuccess = true; anvilLastSuccess = true; anvilStagedScrollKey.clear();
                 Object::setMagicAnvilPulse(3.2f);
                 if (audioManager) audioManager->playSound("upgrade_sound");
             }
         }
+        // Handle dropped items from enhanced inventory system
+        if (hit.droppedItem && draggingFromInventory && !draggingPayload.empty()) {
+            // An equipment item was dropped into the item slot
+            // Map the item ID to an equipment slot if possible
+            if (draggingPayload.find("sword") != std::string::npos) anvilSelectedSlot = 3;
+            else if (draggingPayload.find("helmet") != std::string::npos) anvilSelectedSlot = 1;
+            else if (draggingPayload.find("ring") != std::string::npos) anvilSelectedSlot = 0;
+            else if (draggingPayload.find("necklace") != std::string::npos) anvilSelectedSlot = 2;
+            else if (draggingPayload.find("chestpeice") != std::string::npos) anvilSelectedSlot = 4;
+            else if (draggingPayload.find("bow") != std::string::npos) anvilSelectedSlot = 5;
+            else if (draggingPayload.find("gloves") != std::string::npos) anvilSelectedSlot = 6;
+            else if (draggingPayload.find("waist") != std::string::npos) anvilSelectedSlot = 7;
+            else if (draggingPayload.find("boots") != std::string::npos) anvilSelectedSlot = 8;
+            
+            draggingFromInventory = false;
+            draggingPayload.clear();
+            // Keep anvilTargetItem set since the item was successfully dropped
+        }
+        
         // Dropping an element scroll into scroll slot stages it; clicking upgrade applies if element staged
         if (hit.droppedScroll) {
             anvilStagedScrollKey = hit.droppedScrollKey;
+            
+            // Clear dragging state if this was from inventory
+            if (draggingFromInventory) {
+                draggingFromInventory = false;
+                draggingPayload.clear();
+                // Don't clear anvilTargetItem here since scroll was successfully dropped
+            }
         }
         if (!hit.clickedElement.empty()) {
             std::string elem = hit.clickedElement;
             if (!anvilStagedScrollKey.empty() && anvilStagedScrollKey != elem) {
                 lastUpgradeSuccess = false; upgradeFlashTimer = 0.8f;
             } else {
-                player->enchantEquipment(static_cast<Player::EquipmentSlot>(anvilSelectedSlot), elem, 1);
+                // Use specific item if available, otherwise fall back to slot
+                if (anvilTargetItem) {
+                    player->enchantSpecificItem(anvilTargetItem, elem, 1);
+                } else {
+                    player->enchantEquipment(static_cast<Player::EquipmentSlot>(anvilSelectedSlot), elem, 1);
+                }
                 lastUpgradeSuccess = true; upgradeFlashTimer = 0.8f; anvilStagedScrollKey.clear();
                 Object::setMagicAnvilPulse(3.2f);
             }
         }
         if (hit.droppedScroll) { currentScrollPreview = hit.droppedScrollKey; }
         else if (!mouseDown) { currentScrollPreview = anvilStagedScrollKey; }
+        
+        // Handle anvil panel dragging
+        static bool draggingAnvil = false;
+        if (hit.titleBarClicked && !draggingAnvil) {
+            draggingAnvil = true;
+        }
+        if (draggingAnvil) {
+            if (mouseDown) {
+                // Still dragging - update position
+                setAnvilPos(mx - hit.dragOffsetX, my - hit.dragOffsetY);
+            } else {
+                // Released mouse - stop dragging
+                draggingAnvil = false;
+            }
+        }
+        
+        // Clear dragging state if mouse was released and nothing was dropped
+        if (!mouseDown && draggingFromInventory && !hit.droppedItem && !hit.droppedScroll) {
+            draggingFromInventory = false;
+            draggingPayload.clear();
+            anvilTargetItem = nullptr;
+            anvilItemSource = AnvilItemSource::NONE;
+        }
         // Close via Escape handled in event loop; remove close button logic
     }
 
@@ -1077,22 +1442,39 @@ void Game::render() {
         // Sweep loading bar inside indicator: alternate succeed/failed image while sweeping
         if (anvilUpgradeAnimT > 0.0f) {
             anvilUpgradeAnimT = std::min(1.0f, anvilUpgradeAnimT + 2.0f * TARGET_FRAME_TIME); // ~0.5s sweep
-            Texture* panel = assetManager->getTexture("assets/Textures/UI/Item_inv.png");
+            
+            // Use current anvil UI positioning - match exactly with UISystem indicatorRect
+            Texture* anvilBG = assetManager->getTexture("assets/Textures/UI/AnvilUI.png");
             int outW=0,outH=0; SDL_GetRendererOutputSize(sdlRenderer,&outW,&outH); if (outW<=0){outW=WINDOW_WIDTH;outH=WINDOW_HEIGHT;}
-            int pw = panel ? panel->getWidth() : 300; int ph = panel ? panel->getHeight() : 300;
-            int desiredX = outW / 2 + 260; int margin = 20; if (desiredX + pw > outW - margin) desiredX = std::max(margin, outW - pw - margin);
-            SDL_Rect panelDst{ desiredX, (outH - ph) / 2, pw, ph };
-            int sideX = panelDst.x + pw + 16; int sideY = panelDst.y + 8; int slotSize = 48; int sideBtnW = slotSize*2 + 16;
-            SDL_Rect indicatorDst{ sideX + 8, sideY + slotSize + 4, sideBtnW - 16, 22 };
+            int pw = anvilBG ? anvilBG->getWidth() : 200;
+            int ph = anvilBG ? anvilBG->getHeight() : 200;
+            int anvilX, anvilY;
+            
+            // Use same positioning logic as anvil UI
+            if (anvilPosX >= 0 && anvilPosY >= 0) {
+                anvilX = anvilPosX;
+                anvilY = anvilPosY;
+            } else {
+                anvilX = outW / 4 - pw / 2;  // Default anvil positioning
+                anvilY = (outH - ph) / 2;
+            }
+            
+            // Match indicator rect from UISystem.cpp exactly
+            SDL_Rect indicatorRect = {
+                anvilX + pw / 2 - 55,  // Center horizontally
+                anvilY + ph - 50,      // Near bottom
+                110, 20
+            };
+            
             // Alternate texture as it fills
             bool alt = (static_cast<int>(anvilUpgradeAnimT * 10.0f) % 2) == 0;
             Texture* tAlt = assetManager->getTexture(alt ? "assets/Textures/UI/upgrade_succeed.png" : "assets/Textures/UI/upgrade_failed.png");
             if (tAlt) {
                 SDL_Rect src{0,0, static_cast<int>(tAlt->getWidth()*anvilUpgradeAnimT), tAlt->getHeight()};
-                SDL_Rect dst{ indicatorDst.x, indicatorDst.y, static_cast<int>(indicatorDst.w*anvilUpgradeAnimT), indicatorDst.h };
+                SDL_Rect dst{ indicatorRect.x, indicatorRect.y, static_cast<int>(indicatorRect.w*anvilUpgradeAnimT), indicatorRect.h };
                 SDL_RenderCopy(sdlRenderer, tAlt->getTexture(), &src, &dst);
             }
-                if (anvilUpgradeAnimT >= 1.0f) { anvilUpgradeAnimT = 0.0f; anvilResultFlashTimer = 1.2f; }
+            if (anvilUpgradeAnimT >= 1.0f) { anvilUpgradeAnimT = 0.0f; anvilResultFlashTimer = 1.2f; }
         }
     }
     if (anvilOpen && assetManager) {
@@ -1101,15 +1483,30 @@ void Game::render() {
             anvilResultFlashTimer = std::max(0.0f, anvilResultFlashTimer - TARGET_FRAME_TIME);
             Texture* t = assetManager->getTexture(anvilLastSuccess ? "assets/Textures/UI/upgrade_succeed.png" : "assets/Textures/UI/upgrade_failed.png");
             if (t) {
+                // Use current anvil UI positioning - match exactly with UISystem indicatorRect
+                Texture* anvilBG = assetManager->getTexture("assets/Textures/UI/AnvilUI.png");
                 int outW=0,outH=0; SDL_GetRendererOutputSize(sdlRenderer,&outW,&outH); if (outW<=0){outW=WINDOW_WIDTH;outH=WINDOW_HEIGHT;}
-                Texture* panel = assetManager->getTexture("assets/Textures/UI/Item_inv.png");
-                int pw = panel ? panel->getWidth() : 300; int ph = panel ? panel->getHeight() : 300;
-                int desiredX = outW / 2 + 260; int margin = 20; if (desiredX + pw > outW - margin) desiredX = std::max(margin, outW - pw - margin);
-                SDL_Rect panelDst{ desiredX, (outH - ph) / 2, pw, ph };
-                int sideX = panelDst.x + pw + 16; int sideY = panelDst.y + 8; int slotSize = 48; int sideBtnW = slotSize*2 + 16;
-                SDL_Rect indicatorDst{ sideX + 8, sideY + slotSize + 4, sideBtnW - 16, 22 };
+                int pw = anvilBG ? anvilBG->getWidth() : 200;
+                int ph = anvilBG ? anvilBG->getHeight() : 200;
+                int anvilX, anvilY;
+                
+                // Use same positioning logic as anvil UI
+                if (anvilPosX >= 0 && anvilPosY >= 0) {
+                    anvilX = anvilPosX;
+                    anvilY = anvilPosY;
+                } else {
+                    anvilX = outW / 4 - pw / 2;  // Default anvil positioning
+                    anvilY = (outH - ph) / 2;
+                }
+                
+                // Match indicator rect from UISystem.cpp exactly
+                SDL_Rect indicatorRect = {
+                    anvilX + pw / 2 - 55,  // Center horizontally
+                    anvilY + ph - 50,      // Near bottom
+                    110, 20
+                };
                 SDL_Rect s{0,0,t->getWidth(), t->getHeight()};
-                SDL_RenderCopy(sdlRenderer, t->getTexture(), &s, &indicatorDst);
+                SDL_RenderCopy(sdlRenderer, t->getTexture(), &s, &indicatorRect);
             }
         }
     }
@@ -1262,9 +1659,11 @@ void Game::handleEvents() {
                     setInfinitePotions(!getInfinitePotions());
                     std::cout << "Infinite potions: " << (getInfinitePotions() ? "ON" : "OFF") << std::endl;
                 } else if (!optionsOpen && event.key.keysym.sym == SDLK_i) {
-                    // Toggle inventory; does not pause world
+                    // Toggle inventory UI
                     inventoryOpen = !inventoryOpen;
-                    break;
+                } else if (!optionsOpen && event.key.keysym.sym == SDLK_u) {
+                    // Toggle equipment UI
+                    equipmentOpen = !equipmentOpen;
                 } else if (!optionsOpen && event.key.keysym.sym == SDLK_F9) {
                     // Dev hotkey: grant large stacks of test scrolls
                     if (player) {

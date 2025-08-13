@@ -9,6 +9,7 @@
 #include "World.h"
 #include "Enemy.h"
 #include "Database.h"
+#include "ItemSystem.h"
 #include <iostream>
 #include <algorithm>
 #include <cmath>
@@ -56,6 +57,44 @@ Player::Player(Game* game) : game(game), x(Game::WINDOW_WIDTH / 2.0f - 32.0f), y
     initEquip(EquipmentSlot::GLOVE,    "Cloth Gloves", 1);
     initEquip(EquipmentSlot::WAIST,    "Rope Belt", 1);
     initEquip(EquipmentSlot::FEET,     "Worn Boots", 2);
+    // Initialize enhanced item system
+    if (game && game->getAssetManager()) {
+        itemSystem = std::make_unique<ItemSystem>(game->getAssetManager());
+        // Give player starter equipment and auto-equip it
+        const char* starterItems[9] = {
+            "copper_ring",      // RING - slot 0
+            "cloth_cap",        // HELM - slot 1  
+            "string_necklace",  // NECKLACE - slot 2
+            "rusty_sword",      // SWORD - slot 3
+            "torn_shirt",       // CHEST - slot 4
+            "wooden_shield",    // SHIELD - slot 5
+            "fabric_gloves",    // GLOVE - slot 6
+            "frayed_rope",      // WAIST - slot 7
+            "canvas_shoes"      // FEET - slot 8
+        };
+        
+        // Create and equip starter items directly
+        for (int i = 0; i < 9; i++) {
+            Item* starterItem = itemSystem->createItem(starterItems[i], ItemRarity::COMMON, 1);
+            if (starterItem) {
+                // Give the sword a +1 to test bracket display
+                if (i == 3) { // SWORD slot
+                    starterItem->plusLevel = 1;
+                }
+                
+                // Add to inventory slot i first
+                if (itemSystem->addItemToSlot(starterItem, i, false)) {
+                    // Then equip from that slot
+                    itemSystem->equipItem(i);
+                }
+            }
+        }
+        
+        // Add some basic scrolls for upgrades
+        itemSystem->addItem("upgrade_scroll", 3, ItemRarity::COMMON);
+        itemSystem->addItem("fire_scroll", 2, ItemRarity::COMMON);
+    }
+    
     // Testing: give 6 of each scroll type by default (upgrade + elements)
     // Ensure sword name and stats reflect current + level mapping
     updateSwordNameByPlus();
@@ -230,7 +269,7 @@ void Player::update(float deltaTime) {
                     SDL_Rect er = e->getCollisionRect();
                     SDL_Rect inter;
                     if (SDL_IntersectRect(&area, &er, &inter)) {
-                        e->takeDamage(FIRE_SHIELD_DAMAGE);
+                        e->takeDamage(getFireShieldDamage());
                     }
                 }
             }
@@ -496,8 +535,10 @@ void Player::performMeleeAttack() {
         auto* am = game->getAssetManager();
         // Use the fireball projectile sprite (single frame)
         // Animate 5-frame 32x32 projectile sheet
+        // Fire projectile gets base ranged damage + fire enchantment damage
+        int fireProjectileDamage = static_cast<int>(rangedDamage) + getFireDamageForHit();
         projectiles.push_back(std::make_unique<Projectile>(
-            projectileX, projectileY, direction, am, static_cast<int>(rangedDamage),
+            projectileX, projectileY, direction, am, fireProjectileDamage,
             std::string("assets/Textures/Spells/Projectile.png"), 5, 5, false));
     }
     // Play melee swing SFX at attack start (alternating variants), regardless of hit
@@ -603,8 +644,10 @@ void Player::performRangedAttack() {
     direction.normalize();
     
     // Spawn arrow at player center without scaling; rotation enabled
+    // Arrow damage includes base ranged damage + fire enchantment if bow is enchanted
+    int arrowDamage = static_cast<int>(rangedDamage) + getFireDamageForHit();
     projectiles.push_back(std::make_unique<Projectile>(
-        projectileX, projectileY, direction, game->getAssetManager(), static_cast<int>(rangedDamage),
+        projectileX, projectileY, direction, game->getAssetManager(), arrowDamage,
         std::string("assets/Main Character/BOW ATTACK 1/arrow.png"), 1, 1, true));
 }
 
@@ -646,6 +689,50 @@ void Player::takeDamage(int damage) {
     } else {
         setState(PlayerState::HURT);
         std::cout << "Player took " << damage << " damage! Health: " << health << "/" << maxHealth << std::endl;
+    }
+}
+
+void Player::takeDamageWithType(int damage, int fireDamage) {
+    // I-frames during dash: ignore damage
+    if (currentState == PlayerState::DEAD || currentState == PlayerState::DASHING) {
+        return;
+    }
+    // Fire shield immunity
+    if (shieldActive) {
+        return;
+    }
+    
+    // Calculate fire resistance from armor
+    int fireResistance = 0;
+    
+    // Check legacy Player equipment for fire resistance
+    for (int i = 0; i < 9; ++i) {
+        fireResistance += equipment[i].ice; // Using ice field for fire resist temporarily
+    }
+    
+    // Check ItemSystem equipment for fire resistance
+    if (itemSystem) {
+        const auto& equipSlots = itemSystem->getEquipmentSlots();
+        for (const auto& slot : equipSlots) {
+            if (!slot.isEmpty() && slot.item->type == ItemType::EQUIPMENT) {
+                fireResistance += slot.item->stats.fireResist;
+            }
+        }
+    }
+    
+    // Apply fire resistance to fire damage
+    int mitigatedFireDamage = std::max(0, fireDamage - fireResistance);
+    int totalDamage = damage + mitigatedFireDamage;
+    
+    health -= totalDamage;
+    if (health <= 0) {
+        health = 0;
+        setState(PlayerState::DEAD);
+        deathAnimationFinished = false;
+        std::cout << "Player died!" << std::endl;
+    } else {
+        setState(PlayerState::HURT);
+        std::cout << "Player took " << totalDamage << " damage (" << damage << " physical + " << mitigatedFireDamage << " fire after " << fireResistance << " resist)! Health: " << health << "/" << maxHealth << std::endl;
     }
 }
 
@@ -725,14 +812,72 @@ void Player::interact() {
                         notification += std::to_string(item.amount) + " XP";
                         break;
                     case LootType::HEALTH_POTION:
-                        addHealthPotionCharges(item.amount / 10 > 0 ? item.amount / 10 : 1);
-                        notification += "HP Potion Charges";
-                        std::cout << "Found HP potion charges! +" << (item.amount / 10 > 0 ? item.amount / 10 : 1) << std::endl;
+                        addHealthPotionCharges(item.amount);
+                        notification += "HP Potion x" + std::to_string(item.amount);
                         break;
                     case LootType::MANA_POTION:
-                        addManaPotionCharges(item.amount / 10 > 0 ? item.amount / 10 : 1);
-                        notification += "MP Potion Charges";
-                        std::cout << "Found MP potion charges! +" << (item.amount / 10 > 0 ? item.amount / 10 : 1) << std::endl;
+                        addManaPotionCharges(item.amount);
+                        notification += "MP Potion x" + std::to_string(item.amount);
+                        break;
+                    case LootType::EQUIPMENT:
+                        // Map loot equipment names to item IDs
+                        {
+                            std::string itemId = "iron_sword"; // Default
+                            if (item.name.find("Sword") != std::string::npos || item.name.find("Blade") != std::string::npos) {
+                                itemId = "iron_sword";
+                            } else if (item.name.find("Bow") != std::string::npos) {
+                                itemId = "recurve_bow";
+                            } else if (item.name.find("Helmet") != std::string::npos || item.name.find("Hat") != std::string::npos) {
+                                itemId = "iron_helmet";
+                            } else if (item.name.find("Chest") != std::string::npos || item.name.find("Armor") != std::string::npos || 
+                                      item.name.find("Mail") != std::string::npos || item.name.find("Scale") != std::string::npos) {
+                                itemId = "leather_chest";
+                            } else if (item.name.find("Shield") != std::string::npos) {
+                                itemId = "simple_shield";
+                            } else if (item.name.find("Gloves") != std::string::npos) {
+                                itemId = "leather_gloves";
+                            } else if (item.name.find("Boots") != std::string::npos) {
+                                itemId = "leather_boots";
+                            } else if (item.name.find("Belt") != std::string::npos) {
+                                itemId = "rope_belt";
+                            } else if (item.name.find("Ring") != std::string::npos) {
+                                itemId = "silver_ring";
+                            } else if (item.name.find("Necklace") != std::string::npos) {
+                                itemId = "gold_necklace";
+                            }
+                            
+                            addItemToInventoryWithRarity(itemId, item.amount, static_cast<int>(item.rarity));
+                        }
+                        notification += item.getRarityString() + " " + item.name;
+                        break;
+                    case LootType::SCROLL:
+                        // Map scroll names to item IDs and add to enhanced inventory
+                        {
+                            std::string scrollId = "upgrade_scroll"; // Default
+                            if (item.name.find("Upgrade") != std::string::npos) {
+                                scrollId = "upgrade_scroll";
+                                addUpgradeScrolls(item.amount); // Also add to legacy system
+                            } else if (item.name.find("Fire") != std::string::npos) {
+                                scrollId = "fire_scroll";
+                                addElementScrolls("fire", item.amount); // Also add to legacy system
+                            } else if (item.name.find("Water") != std::string::npos) {
+                                scrollId = "water_scroll";
+                                addElementScrolls("water", item.amount); // Also add to legacy system
+                            } else if (item.name.find("Poison") != std::string::npos) {
+                                scrollId = "poison_scroll";
+                                addElementScrolls("poison", item.amount); // Also add to legacy system
+                            } else if (item.name.find("Armor") != std::string::npos) {
+                                scrollId = "armor_scroll";
+                            }
+                            
+                            addItemToInventoryWithRarity(scrollId, item.amount, static_cast<int>(item.rarity));
+                        }
+                        notification += item.getRarityString() + " " + item.name;
+                        break;
+                    case LootType::MATERIAL:
+                        // For now, add materials to the legacy bag system
+                        addItemToInventory("material_" + item.name, item.amount);
+                        notification += item.getRarityString() + " " + item.name + " x" + std::to_string(item.amount);
                         break;
                 }
             }
@@ -991,6 +1136,17 @@ void Player::upgradeEquipment(EquipmentSlot slot, int deltaPlus) {
     size_t idx = static_cast<size_t>(slot);
     int before = equipment[idx].plusLevel;
     equipment[idx].plusLevel = std::max(0, before + deltaPlus);
+    
+    // Also update ItemSystem equipment if it exists - sync to match Player equipment
+    if (itemSystem) {
+        const auto& equipSlots = itemSystem->getEquipmentSlots();
+        if (idx < equipSlots.size() && !equipSlots[idx].isEmpty()) {
+            // Set ItemSystem item's plus level to match Player equipment
+            Item* item = equipSlots[idx].item;
+            item->plusLevel = equipment[idx].plusLevel;
+        }
+    }
+    
     // Scale base stats per +: +1 STR/INT, +5 HP, +3 MP per plus across the board
     strength += std::max(0, deltaPlus);
     intelligence += std::max(0, deltaPlus);
@@ -1008,17 +1164,136 @@ void Player::upgradeEquipment(EquipmentSlot slot, int deltaPlus) {
     }
 }
 
+void Player::upgradeSpecificItem(Item* item, int deltaPlus) {
+    if (!item || item->type != ItemType::EQUIPMENT) return;
+    
+    int before = item->plusLevel;
+    item->plusLevel = std::max(0, before + deltaPlus);
+    
+    // If this item is also equipped, sync the Player equipment array
+    if (itemSystem) {
+        const auto& equipSlots = itemSystem->getEquipmentSlots();
+        for (size_t i = 0; i < equipSlots.size(); ++i) {
+            if (!equipSlots[i].isEmpty() && equipSlots[i].item == item) {
+                // Found the equipped item, sync Player equipment
+                equipment[i].plusLevel = item->plusLevel;
+                
+                // Scale base stats per +: +1 STR/INT, +5 HP, +3 MP per plus across the board
+                strength += std::max(0, deltaPlus);
+                intelligence += std::max(0, deltaPlus);
+                maxHealth += 5 * std::max(0, deltaPlus);
+                maxMana += 3 * std::max(0, deltaPlus);
+                health = std::min(health, maxHealth);
+                mana = std::min(mana, maxMana);
+                
+                // Recompute derived damage if it's a weapon
+                if (i == static_cast<size_t>(EquipmentSlot::SWORD)) {
+                    updateSwordStatsByPlus();
+                    int weaponBonus = equipment[i].attack;
+                    meleeDamage = strength * 2 + weaponBonus;
+                    updateSwordNameByPlus();
+                }
+                break;
+            }
+        }
+    }
+}
+
 void Player::enchantEquipment(EquipmentSlot slot, const std::string& element, int amount) {
     size_t idx = static_cast<size_t>(slot);
     auto setElem = [&](int& ref){ ref = std::max(0, ref + amount); };
-    if (element == "fire") setElem(equipment[idx].fire);
-    else if (element == "ice" || element == "water") setElem(equipment[idx].ice);
+    
+    // Update old equipment array (handle both scroll keys and element names)
+    if (element == "fire" || element == "fire_scroll") setElem(equipment[idx].fire);
+    else if (element == "ice" || element == "water" || element == "water_scroll") setElem(equipment[idx].ice);
     else if (element == "lightning") setElem(equipment[idx].lightning);
-    else if (element == "poison") setElem(equipment[idx].poison);
+    else if (element == "poison" || element == "poison_scroll") setElem(equipment[idx].poison);
     else if (element == "resist_fire") setElem(equipment[idx].resistFire);
     else if (element == "resist_ice") setElem(equipment[idx].resistIce);
     else if (element == "resist_lightning") setElem(equipment[idx].resistLightning);
     else if (element == "resist_poison") setElem(equipment[idx].resistPoison);
+    
+    // Also update ItemSystem equipment if it exists
+    if (itemSystem) {
+        const auto& equipSlots = itemSystem->getEquipmentSlots();
+        if (idx < equipSlots.size() && !equipSlots[idx].isEmpty()) {
+            Item* item = equipSlots[idx].item;
+            auto setItemElem = [&](int& ref){ ref = std::max(0, ref + amount); };
+            
+            if (element == "fire" || element == "fire_scroll") setItemElem(item->stats.fireAttack);
+            else if (element == "ice" || element == "water" || element == "water_scroll") setItemElem(item->stats.waterAttack);
+            else if (element == "poison" || element == "poison_scroll") setItemElem(item->stats.poisonAttack);
+            else if (element == "resist_fire") setItemElem(item->stats.fireResist);
+            else if (element == "resist_ice") setItemElem(item->stats.waterResist);
+            else if (element == "resist_poison") setItemElem(item->stats.poisonResist);
+            // Lightning not implemented yet in ItemSystem
+        }
+    }
+}
+
+void Player::enchantSpecificItem(Item* item, const std::string& element, int amount) {
+    if (!item || item->type != ItemType::EQUIPMENT) return;
+    
+    auto setItemElem = [&](int& ref){ ref = std::max(0, ref + amount); };
+    
+    // Update the specific item's stats (handle both scroll keys and element names)
+    if (element == "fire" || element == "fire_scroll") setItemElem(item->stats.fireAttack);
+    else if (element == "ice" || element == "water" || element == "water_scroll") setItemElem(item->stats.waterAttack);
+    else if (element == "poison" || element == "poison_scroll") setItemElem(item->stats.poisonAttack);
+    else if (element == "resist_fire") setItemElem(item->stats.fireResist);
+    else if (element == "resist_ice") setItemElem(item->stats.waterResist);
+    else if (element == "resist_poison") setItemElem(item->stats.poisonResist);
+    // Lightning not implemented yet in ItemSystem
+    
+    // If this item is also equipped, sync the Player equipment array
+    if (itemSystem) {
+        const auto& equipSlots = itemSystem->getEquipmentSlots();
+        for (size_t i = 0; i < equipSlots.size(); ++i) {
+            if (!equipSlots[i].isEmpty() && equipSlots[i].item == item) {
+                // Found the equipped item, sync Player equipment
+                auto setElem = [&](int& ref){ ref = std::max(0, ref + amount); };
+                
+                if (element == "fire" || element == "fire_scroll") setElem(equipment[i].fire);
+                else if (element == "ice" || element == "water" || element == "water_scroll") setElem(equipment[i].ice);
+                else if (element == "lightning") setElem(equipment[i].lightning);
+                else if (element == "poison" || element == "poison_scroll") setElem(equipment[i].poison);
+                else if (element == "resist_fire") setElem(equipment[i].resistFire);
+                else if (element == "resist_ice") setElem(equipment[i].resistIce);
+                else if (element == "resist_lightning") setElem(equipment[i].resistLightning);
+                else if (element == "resist_poison") setElem(equipment[i].resistPoison);
+                break;
+            }
+        }
+    }
+}
+
+void Player::clearEquipmentSlot(EquipmentSlot slot) {
+    size_t idx = static_cast<size_t>(slot);
+    if (idx >= 9) return;
+    
+    // Clear the Player equipment array entry
+    equipment[idx] = EquipmentItem{};  // Reset to default empty state
+}
+
+void Player::syncEquipmentFromItem(EquipmentSlot slot, const Item* item) {
+    size_t idx = static_cast<size_t>(slot);
+    if (idx >= 9 || !item) return;
+    
+    // Sync the Player equipment array with the ItemSystem item
+    equipment[idx].plusLevel = item->plusLevel;
+    equipment[idx].fire = item->stats.fireAttack;
+    equipment[idx].ice = item->stats.waterAttack;
+    equipment[idx].lightning = 0; // Lightning not implemented yet in ItemSystem
+    equipment[idx].poison = item->stats.poisonAttack;
+    equipment[idx].name = item->id;  // Use item template ID
+    
+    // Update base stats and derived values if it's a weapon
+    if (slot == EquipmentSlot::SWORD) {
+        updateSwordStatsByPlus();
+        int weaponBonus = equipment[idx].attack;
+        meleeDamage = strength * 2 + weaponBonus;
+        updateSwordNameByPlus();
+    }
 }
 
 int Player::getElementScrolls(const std::string& element) const {
@@ -1130,20 +1405,43 @@ void Player::applySaveState(const PlayerSave& s) {
     // Upgrades (will be recomputed from bags below to stay in sync)
     upgradeScrolls = std::max(0, s.upgradeScrolls);
     elementScrolls.clear();
-    // Apply saved +levels and elemental mods to equipment
-    for (int i = 0; i < 9; ++i) {
-        equipment[i].plusLevel = std::max(0, s.equipPlus[i]);
-        equipment[i].fire = std::max(0, s.equipFire[i]);
-        equipment[i].ice = std::max(0, s.equipIce[i]);
-        equipment[i].lightning = std::max(0, s.equipLightning[i]);
-        equipment[i].poison = std::max(0, s.equipPoison[i]);
+    // Load equipment into ItemSystem if available
+    if (itemSystem) {
+        // Load equipment into ItemSystem with rarity
+        itemSystem->loadEquipmentFromSave(s.equipNames, s.equipPlus, s.equipFire, s.equipIce, s.equipLightning, s.equipPoison, s.equipRarity);
+        
+        // Also update old equipment array for compatibility and sync both systems
+        for (int i = 0; i < 9; ++i) {
+            equipment[i].plusLevel = std::max(0, s.equipPlus[i]);
+            equipment[i].fire = std::max(0, s.equipFire[i]);
+            equipment[i].ice = std::max(0, s.equipIce[i]);
+            equipment[i].lightning = std::max(0, s.equipLightning[i]);
+            equipment[i].poison = std::max(0, s.equipPoison[i]);
+            equipment[i].name = s.equipNames[i];
+        }
+        
+        // Load inventory into ItemSystem with rarity and +levels
+        itemSystem->loadInventoryFromSave(s.invKey, s.invCnt, s.invRarity, s.invPlusLevel);
+        
+        // Recompute melee damage with sword stats
+        updateSwordStatsByPlus();
+        int weaponBonus = equipment[static_cast<size_t>(EquipmentSlot::SWORD)].attack;
+        meleeDamage = strength * 2 + weaponBonus;
+    } else {
+        // Fallback to old equipment array if ItemSystem not available
+        for (int i = 0; i < 9; ++i) {
+            equipment[i].plusLevel = std::max(0, s.equipPlus[i]);
+            equipment[i].fire = std::max(0, s.equipFire[i]);
+            equipment[i].ice = std::max(0, s.equipIce[i]);
+            equipment[i].lightning = std::max(0, s.equipLightning[i]);
+            equipment[i].poison = std::max(0, s.equipPoison[i]);
+            equipment[i].name = s.equipNames[i];
+        }
+        // Recompute melee damage with sword stats
+        updateSwordStatsByPlus();
+        int weaponBonus = equipment[static_cast<size_t>(EquipmentSlot::SWORD)].attack;
+        meleeDamage = strength * 2 + weaponBonus;
     }
-    // Recompute melee damage with sword stats
-    updateSwordStatsByPlus();
-    int weaponBonus = equipment[static_cast<size_t>(EquipmentSlot::SWORD)].attack;
-    meleeDamage = strength * 2 + weaponBonus;
-    // Ensure sword name matches loaded + level
-    updateSwordNameByPlus();
     // Inventory persistence (exact grid)
     for (int b = 0; b < 2; ++b) {
         bags[b].clear();
@@ -1177,24 +1475,92 @@ PlayerSave Player::makeSaveState() const {
     s.gold = gold;
     s.healthPotionCharges = healthPotionCharges; s.manaPotionCharges = manaPotionCharges;
     s.upgradeScrolls = upgradeScrolls;
-    // Persist equipment +levels and element mods
-    for (int i = 0; i < 9; ++i) {
-        s.equipPlus[i] = equipment[i].plusLevel;
-        s.equipFire[i] = equipment[i].fire;
-        s.equipIce[i] = equipment[i].ice;
-        s.equipLightning[i] = equipment[i].lightning;
-        s.equipPoison[i] = equipment[i].poison;
-    }
-    // Inventory persistence (exact grid snapshot - distribute first 9 items per bag)
-    for (int b = 0; b < 2; ++b) {
-        int idx = 0;
-        for (const auto& kv : bags[b]) {
-            if (idx >= 9) break;
-            s.invKey[b][idx] = kv.first;
-            s.invCnt[b][idx] = kv.second;
-            idx++;
+    // Persist equipment from ItemSystem if available
+    if (itemSystem) {
+        const auto& equipSlots = itemSystem->getEquipmentSlots();
+        for (int i = 0; i < 9; ++i) {
+            if (i < equipSlots.size() && !equipSlots[i].isEmpty()) {
+                Item* item = equipSlots[i].item;
+                s.equipPlus[i] = item->plusLevel;
+                s.equipFire[i] = item->stats.fireAttack;
+                s.equipIce[i] = item->stats.waterAttack;
+                s.equipLightning[i] = 0; // Lightning not implemented yet
+                s.equipPoison[i] = item->stats.poisonAttack;
+                s.equipNames[i] = item->id; // Save item ID, not display name
+                s.equipRarity[i] = static_cast<int>(item->rarity);
+            } else {
+                // Empty slot
+                s.equipPlus[i] = 0;
+                s.equipFire[i] = 0;
+                s.equipIce[i] = 0;
+                s.equipLightning[i] = 0;
+                s.equipPoison[i] = 0;
+                s.equipNames[i].clear();
+                s.equipRarity[i] = 0;
+            }
         }
-        for (; idx < 9; ++idx) { s.invKey[b][idx].clear(); s.invCnt[b][idx] = 0; }
+    } else {
+        // Fallback to old equipment array if ItemSystem not available
+        for (int i = 0; i < 9; ++i) {
+            s.equipPlus[i] = equipment[i].plusLevel;
+            s.equipFire[i] = equipment[i].fire;
+            s.equipIce[i] = equipment[i].ice;
+            s.equipLightning[i] = equipment[i].lightning;
+            s.equipPoison[i] = equipment[i].poison;
+            s.equipNames[i] = equipment[i].name;
+        }
+    }
+    // Inventory persistence
+    if (itemSystem) {
+        // Save from ItemSystem inventories
+        const auto& itemInv = itemSystem->getItemInventory();
+        const auto& scrollInv = itemSystem->getScrollInventory();
+        
+        // Clear arrays first
+        for (int b = 0; b < 2; ++b) {
+            for (int i = 0; i < 9; ++i) {
+                s.invKey[b][i].clear();
+                s.invCnt[b][i] = 0;
+                s.invRarity[b][i] = 0;
+                s.invPlusLevel[b][i] = 0;
+            }
+        }
+        
+        // Save main item inventory (bag 0)
+        int idx = 0;
+        for (int i = 0; i < itemInv.size() && idx < 9; ++i) {
+            if (!itemInv[i].isEmpty()) {
+                s.invKey[0][idx] = itemInv[i].item->id;
+                s.invCnt[0][idx] = itemInv[i].item->currentStack;
+                s.invRarity[0][idx] = static_cast<int>(itemInv[i].item->rarity);
+                s.invPlusLevel[0][idx] = itemInv[i].item->plusLevel;
+                idx++;
+            }
+        }
+        
+        // Save scroll inventory (bag 1)
+        idx = 0;
+        for (int i = 0; i < scrollInv.size() && idx < 9; ++i) {
+            if (!scrollInv[i].isEmpty()) {
+                s.invKey[1][idx] = scrollInv[i].item->id;
+                s.invCnt[1][idx] = scrollInv[i].item->currentStack;
+                s.invRarity[1][idx] = static_cast<int>(scrollInv[i].item->rarity);
+                s.invPlusLevel[1][idx] = scrollInv[i].item->plusLevel;
+                idx++;
+            }
+        }
+    } else {
+        // Fallback to old bag system
+        for (int b = 0; b < 2; ++b) {
+            int idx = 0;
+            for (const auto& kv : bags[b]) {
+                if (idx >= 9) break;
+                s.invKey[b][idx] = kv.first;
+                s.invCnt[b][idx] = kv.second;
+                idx++;
+            }
+            for (; idx < 9; ++idx) { s.invKey[b][idx].clear(); s.invCnt[b][idx] = 0; }
+        }
     }
     return s;
 }
@@ -1445,6 +1811,22 @@ int Player::rollMeleeDamageForHit() {
     // Base damage = strength*2 + sword ATK
     const auto& sword = equipment[static_cast<size_t>(EquipmentSlot::SWORD)];
     int base = strength * 2 + sword.attack;
+    
+    // Add fire damage from weapon enchantment
+    int fireDamage = sword.fire;
+    
+    // Add fire damage from ItemSystem if available
+    if (itemSystem) {
+        const auto& equipSlots = itemSystem->getEquipmentSlots();
+        int swordSlot = static_cast<int>(EquipmentSlot::SWORD);
+        if (swordSlot < equipSlots.size() && !equipSlots[swordSlot].isEmpty()) {
+            Item* swordItem = equipSlots[swordSlot].item;
+            fireDamage = std::max(fireDamage, swordItem->stats.fireAttack);
+        }
+    }
+    
+    int totalBaseDamage = base + fireDamage;
+    
     // Simple crit roll using SDL ticks as rng seed source
     float critChance = std::max(0.0f, std::min(100.0f, sword.critChancePercent));
     bool isCrit = false;
@@ -1454,15 +1836,35 @@ int Player::rollMeleeDamageForHit() {
         float roll01 = (r % 10000) / 100.0f; // 0..100
         isCrit = (roll01 < critChance);
     }
-    int dmg = base;
+    
+    int dmg = totalBaseDamage;
     if (isCrit) {
-        dmg = static_cast<int>(std::round(base * 1.5f));
+        dmg = static_cast<int>(std::round(totalBaseDamage * 1.5f));
     }
+    
     // Durability loss on hit if any
     if (equipment[static_cast<size_t>(EquipmentSlot::SWORD)].durability > 0) {
         equipment[static_cast<size_t>(EquipmentSlot::SWORD)].durability = std::max(0, equipment[static_cast<size_t>(EquipmentSlot::SWORD)].durability - 1);
     }
+    
     return std::max(1, dmg);
+}
+
+int Player::getFireDamageForHit() {
+    const auto& sword = equipment[static_cast<size_t>(EquipmentSlot::SWORD)];
+    int fireDamage = sword.fire;
+    
+    // Add fire damage from ItemSystem if available
+    if (itemSystem) {
+        const auto& equipSlots = itemSystem->getEquipmentSlots();
+        int swordSlot = static_cast<int>(EquipmentSlot::SWORD);
+        if (swordSlot < equipSlots.size() && !equipSlots[swordSlot].isEmpty()) {
+            Item* swordItem = equipSlots[swordSlot].item;
+            fireDamage = std::max(fireDamage, swordItem->stats.fireAttack);
+        }
+    }
+    
+    return fireDamage;
 }
 
 void Player::updateProjectiles(float deltaTime) {
@@ -1482,5 +1884,33 @@ void Player::updateProjectiles(float deltaTime) {
 void Player::renderProjectiles(Renderer* renderer) {
     for (auto& projectile : projectiles) {
         projectile->render(renderer);
+    }
+}
+
+int Player::getFireShieldDamage() {
+    // Base fire shield damage
+    int baseDamage = FIRE_SHIELD_DAMAGE;
+    
+    // Add fire damage from waist equipment (belt determines fire shield ability)
+    const auto& waist = equipment[static_cast<size_t>(EquipmentSlot::WAIST)];
+    int enchantedFireDamage = waist.fire;
+    
+    // Add fire damage from ItemSystem waist equipment if available
+    if (itemSystem) {
+        const auto& equipSlots = itemSystem->getEquipmentSlots();
+        int waistSlot = static_cast<int>(EquipmentSlot::WAIST);
+        if (waistSlot < equipSlots.size() && !equipSlots[waistSlot].isEmpty()) {
+            Item* waistItem = equipSlots[waistSlot].item;
+            enchantedFireDamage = std::max(enchantedFireDamage, waistItem->stats.fireAttack);
+        }
+    }
+    
+    return baseDamage + enchantedFireDamage;
+}
+
+// Enhanced item system methods
+void Player::addItemToInventoryWithRarity(const std::string& itemId, int amount, int rarity) {
+    if (itemSystem) {
+        itemSystem->addItem(itemId, amount, static_cast<ItemRarity>(rarity));
     }
 }

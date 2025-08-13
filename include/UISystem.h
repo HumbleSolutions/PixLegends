@@ -38,6 +38,37 @@ public:
     void renderFPSCounter(float currentFPS, float averageFPS, Uint32 frameTime);
     // Death popup
     void renderDeathPopup(bool& outClickedRespawn, float fadeAlpha01);
+    
+    // Enhanced inventory UI
+    struct InventoryHit {
+        bool clickedClose = false;
+        int clickedItemSlot = -1;      // Item inventory slot
+        int clickedScrollSlot = -1;    // Scroll inventory slot  
+        int clickedEquipSlot = -1;     // Equipment slot
+        bool rightClicked = false;     // For tooltips/context menus
+        bool dragging = false;         // Drag operation in progress
+        bool startedDrag = false;      // For legacy compatibility
+        std::string dragPayload;       // For legacy compatibility
+        std::string rightClickedPayload; // For legacy compatibility
+        // Panel dragging
+        bool titleBarClicked = false;  // True if title bar was clicked for dragging panel
+        int dragOffsetX = 0, dragOffsetY = 0;  // Offset from panel top-left to mouse
+    };
+    
+    InventoryHit renderEnhancedInventory(class Player* player, bool& isOpen, bool anvilOpen = false, class Game* game = nullptr, bool equipmentOpen = false);
+    
+    // Equipment/Stats UI (U key)
+    struct EquipmentHit {
+        bool clickedClose = false;
+        int clickedEquipSlot = -1;
+        bool rightClicked = false;
+        // Panel dragging
+        bool titleBarClicked = false;  // True if title bar was clicked for dragging panel
+        int dragOffsetX = 0, dragOffsetY = 0;  // Offset from panel top-left to mouse
+    };
+    
+    EquipmentHit renderEquipmentUI(class Player* player, bool& isOpen, bool anvilOpen = false, class Game* game = nullptr, bool inventoryOpen = false);
+    void renderTooltip(const std::string& tooltipText, int mouseX, int mouseY);
 
     // Equipment upgrade UI (Magic Anvil)
     struct AnvilHit {
@@ -55,6 +86,9 @@ public:
         bool droppedItem = false; // dropped item into side item slot
         bool droppedScroll = false; // dropped scroll into side scroll slot
         std::string droppedScrollKey; // which scroll was dropped ("upgrade_scroll" or element)
+        // Panel dragging
+        bool titleBarClicked = false;  // True if title bar was clicked for dragging panel
+        int dragOffsetX = 0, dragOffsetY = 0;  // Offset from panel top-left to mouse
     };
     // Renders the item grid and returns what was clicked based on mouse state
     void renderMagicAnvil(const class Player* player,
@@ -63,17 +97,11 @@ public:
                           AnvilHit& outHit,
                           const std::string& externalDragPayload = std::string(),
                           int selectedSlotIdx = -1,
-                          const std::string& selectedScrollKey = std::string());
+                          const std::string& selectedScrollKey = std::string(),
+                          class Game* game = nullptr);
 
     void setAssetManager(AssetManager* am) { assetManager = am; }
 
-    // Inventory UI (two bags) – modal overlay that does not pause the world
-    struct InventoryHit {
-        bool startedDrag = false;
-        std::string dragPayload; // key string for the item being dragged
-        bool rightClicked = false;
-        std::string rightClickedPayload;
-    };
     void renderInventory(const class Player* player, int screenW, int screenH,
                          int mouseX, int mouseY, bool leftDown, bool rightDown,
                          InventoryHit& outHit);

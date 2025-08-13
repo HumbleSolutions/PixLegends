@@ -13,7 +13,11 @@ class Texture;
 class SpriteSheet;
 class Object;
 class Enemy;
+class Boss;
 class AssetManager;
+
+// Forward declare BossType enum
+enum class BossType;
 
 // Tile type constants (high-level material IDs)
 enum TileType {
@@ -152,6 +156,12 @@ public:
     void addEnemy(std::unique_ptr<Enemy> enemy);
     const std::vector<std::unique_ptr<Enemy>>& getEnemies() const { return enemies; }
     std::vector<std::unique_ptr<Enemy>>& getEnemies() { return enemies; }
+    
+    // Boss management
+    void spawnBoss(BossType bossType, float x, float y);
+    bool hasBoss() const { return currentBoss != nullptr; }
+    class Boss* getCurrentBoss() const { return currentBoss.get(); }
+    void checkBossSpawn(float playerX, float playerY); // Check if player should trigger boss
 
     // Asset management
     void setAssetManager(AssetManager* newAssetManager) { this->assetManager = newAssetManager; }
@@ -198,6 +208,9 @@ private:
     std::vector<std::unique_ptr<Object>> objects;
     // Enemies
     std::vector<std::unique_ptr<Enemy>> enemies;
+    // Boss
+    std::unique_ptr<Boss> currentBoss;
+    bool bossSpawned = false;
     
     // Rendering
     Texture* tilesetTexture;

@@ -57,6 +57,8 @@ public:
     int getMeleeDamage() const { return meleeDamage; }
     // Computes hit damage with crit and applies durability loss
     int rollMeleeDamageForHit();
+    int getFireDamageForHit();
+    int getFireShieldDamage();
     SDL_Rect getMeleeHitbox() const; // returns {0,0,0,0} if not attacking
     bool isMeleeHitActive() const;    // true only during the active frames window
     bool consumeMeleeHitIfActive();   // returns true once per swing when entering active window
@@ -74,8 +76,9 @@ public:
     float getDashCooldownMax() const { return DASH_COOLDOWN_SECONDS; }
     void startShield();
     void stopShield();
-    bool hasFireWeapon() const { const auto& sw = equipment[static_cast<size_t>(EquipmentSlot::SWORD)]; const auto& sh = equipment[static_cast<size_t>(EquipmentSlot::SHIELD)]; return sw.fire > 0 || sh.fire > 0; }
+    bool hasFireWeapon() const { const auto& sw = equipment[static_cast<size_t>(EquipmentSlot::SWORD)]; return sw.fire > 0; }
     void takeDamage(int damage);
+    void takeDamageWithType(int damage, int fireDamage);
     bool isShieldActive() const { return shieldActive; }
     // Fire shield now depends on belt (waist) enchant with fire
     bool hasFireShield() const { return equipment[static_cast<size_t>(EquipmentSlot::WAIST)].fire > 0; }
@@ -168,7 +171,11 @@ public:
     const EquipmentItem& getEquipment(EquipmentSlot slot) const { return equipment[static_cast<int>(slot)]; }
     EquipmentItem& getEquipmentMutable(EquipmentSlot slot) { return equipment[static_cast<int>(slot)]; }
     void upgradeEquipment(EquipmentSlot slot, int deltaPlus);
+    void upgradeSpecificItem(class Item* item, int deltaPlus);
     void enchantEquipment(EquipmentSlot slot, const std::string& element, int amount);
+    void enchantSpecificItem(class Item* item, const std::string& element, int amount);
+    void clearEquipmentSlot(EquipmentSlot slot);
+    void syncEquipmentFromItem(EquipmentSlot slot, const class Item* item);
 
     // Scrolls inventory
     int getUpgradeScrolls() const { return upgradeScrolls; }
@@ -178,7 +185,11 @@ public:
     bool consumeUpgradeScroll();
     bool consumeElementScroll(const std::string& element);
 
-    // Simple inventory (two bags). Items are stackable by key string.
+    // Enhanced item system
+    class ItemSystem* getItemSystem() const { return itemSystem.get(); }
+    void addItemToInventoryWithRarity(const std::string& itemId, int amount, int rarity = 0);
+    
+    // Legacy inventory support (for compatibility)
     void addItemToInventory(const std::string& key, int amount);
     int getInventoryCount(const std::string& key) const;
     const std::array<std::unordered_map<std::string,int>,2>& getBags() const { return bags; }
@@ -229,7 +240,10 @@ private:
     int strength, intelligence;
     int gold;
 
-    // Equipment and upgrade resources
+    // Enhanced item system
+    std::unique_ptr<class ItemSystem> itemSystem;
+    
+    // Legacy equipment and upgrade resources (for compatibility)
     std::array<EquipmentItem, static_cast<size_t>(EquipmentSlot::COUNT)> equipment;
     int upgradeScrolls = 0; // "Blessed upgrade scroll"
     std::unordered_map<std::string,int> elementScrolls; // e.g., fire, ice, lightning, poison, resist_fire, etc.

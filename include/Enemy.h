@@ -93,7 +93,7 @@ public:
     void resetToSpawn();
     const std::vector<std::unique_ptr<Projectile>>& getProjectiles() const { return projectiles; }
 
-private:
+protected:
     // Core
     float x;
     float y;

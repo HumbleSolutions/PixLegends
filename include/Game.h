@@ -17,6 +17,15 @@ class UISystem;
 class AudioManager;
 class Database;
 
+// Forward declarations
+class Item;
+
+enum class AnvilItemSource {
+    NONE,
+    EQUIPPED_SLOT,
+    INVENTORY_ITEM
+};
+
 class Game {
 public:
     Game();
@@ -43,12 +52,32 @@ public:
 
     // Magic Anvil UI state
     bool isAnvilOpen() const { return anvilOpen; }
-    void openAnvil() { anvilOpen = true; inventoryOpen = true; }
+    void openAnvil() { 
+        anvilOpen = true; 
+        inventoryOpen = true; 
+        // Clear anvil state when opening
+        anvilSelectedSlot = -1;  // Clear item slot
+        anvilStagedScrollKey.clear();  // Clear scroll slot
+        anvilTargetItem = nullptr;  // Clear target item
+        anvilItemSource = AnvilItemSource::NONE;  // Clear source
+    }
     void closeAnvil() { anvilOpen = false; }
     int getAnvilSelectedSlot() const { return anvilSelectedSlot; }
     void setAnvilSelectedSlot(int idx) { anvilSelectedSlot = idx; }
+    Item* getAnvilTargetItem() const { return anvilTargetItem; }
     bool isInventoryOpen() const { return inventoryOpen; }
     void toggleInventory() { inventoryOpen = !inventoryOpen; }
+    
+    // UI position getters/setters for moveable panels
+    int getInventoryPosX() const { return inventoryPosX; }
+    int getInventoryPosY() const { return inventoryPosY; }
+    void setInventoryPos(int x, int y) { inventoryPosX = x; inventoryPosY = y; }
+    int getEquipmentPosX() const { return equipmentPosX; }
+    int getEquipmentPosY() const { return equipmentPosY; }
+    void setEquipmentPos(int x, int y) { equipmentPosX = x; equipmentPosY = y; }
+    int getAnvilPosX() const { return anvilPosX; }
+    int getAnvilPosY() const { return anvilPosY; }
+    void setAnvilPos(int x, int y) { anvilPosX = x; anvilPosY = y; }
 
     // Game configuration
     static constexpr int WINDOW_WIDTH = 1280;
@@ -99,15 +128,27 @@ private:
     float anvilUpgradeAnimT = 0.0f; // 0..1 loading sweep for success/fail bar
     float anvilResultFlashTimer = 0.0f; // steady display duration for final result
     bool anvilLastSuccess = false; // last upgrade outcome
+    // Anvil target item tracking
+    Item* anvilTargetItem = nullptr; // specific item instance being upgraded
+    AnvilItemSource anvilItemSource = AnvilItemSource::NONE; // where the item comes from
     // Drag state for inventory -> anvil
     bool draggingFromInventory = false;
     std::string draggingPayload;
+    // Prevent double processing of equipment events
+    bool processingEquipmentEvent = false;
     
     // Game state
     bool isRunning;
     bool isPaused;
     bool optionsOpen = false;
     bool loginScreenActive = true;
+    
+    // Enhanced UI state
+    bool equipmentOpen = false;
+    // UI panel positions for moveable interface
+    int inventoryPosX = -1, inventoryPosY = -1;  // -1 means use default positioning
+    int equipmentPosX = -1, equipmentPosY = -1;
+    int anvilPosX = -1, anvilPosY = -1;
     enum class LoginField { Username, Password, None };
     LoginField loginActiveField = LoginField::Username;
     std::string loginUsername;

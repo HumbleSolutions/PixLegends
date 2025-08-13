@@ -56,9 +56,17 @@ struct PlayerSave {
     int equipIce[9] = {};
     int equipLightning[9] = {};
     int equipPoison[9] = {};
+    // Equipment item names per slot
+    std::string equipNames[9];
+    // Equipment rarity per slot (0=Common, 1=Uncommon, 2=Rare, 3=Epic, 4=Legendary)
+    int equipRarity[9] = {};
     // Inventory stacks per bag slot: invKey[b][i], invCnt[b][i]
     std::string invKey[2][9];
     int         invCnt[2][9] = {};
+    // Inventory rarity per bag slot
+    int         invRarity[2][9] = {};
+    // Inventory +levels per bag slot
+    int         invPlusLevel[2][9] = {};
 };
 
 struct ItemRecord {

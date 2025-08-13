@@ -333,12 +333,16 @@ bool Database::savePlayerState(int userId, const PlayerSave& s, std::string* out
             f << "equipIce_" << i << "=" << s.equipIce[i] << "\n";
             f << "equipLightning_" << i << "=" << s.equipLightning[i] << "\n";
             f << "equipPoison_" << i << "=" << s.equipPoison[i] << "\n";
+            f << "equipName_" << i << "=" << s.equipNames[i] << "\n";
+            f << "equipRarity_" << i << "=" << s.equipRarity[i] << "\n";
         }
         // Persist inventory grid
         for (int b = 0; b < 2; ++b) {
             for (int i = 0; i < 9; ++i) {
                 f << "invKey_" << b << "_" << i << "=" << s.invKey[b][i] << "\n";
                 f << "invCnt_" << b << "_" << i << "=" << s.invCnt[b][i] << "\n";
+                f << "invRarity_" << b << "_" << i << "=" << s.invRarity[b][i] << "\n";
+                f << "invPlusLevel_" << b << "_" << i << "=" << s.invPlusLevel[b][i] << "\n";
             }
         }
     } catch (const std::exception& e) {
@@ -385,10 +389,16 @@ std::optional<PlayerSave> Database::loadPlayerState(int userId, std::string* out
             else if (key.rfind("equipIce_",0)==0) { int i = key[9]-'0'; if (i>=0&&i<9) s.equipIce[i] = std::stoi(val); }
             else if (key.rfind("equipLightning_",0)==0) { int i = key[15]-'0'; if (i>=0&&i<9) s.equipLightning[i] = std::stoi(val); }
             else if (key.rfind("equipPoison_",0)==0) { int i = key[12]-'0'; if (i>=0&&i<9) s.equipPoison[i] = std::stoi(val); }
+            else if (key.rfind("equipName_",0)==0) { int i = key[10]-'0'; if (i>=0&&i<9) s.equipNames[i] = val; }
+            else if (key.rfind("equipRarity_",0)==0) { int i = key[12]-'0'; if (i>=0&&i<9) s.equipRarity[i] = std::stoi(val); }
             else if (key.rfind("invKey_",0)==0) {
                 int b = key[7]-'0'; int i = key[9]-'0'; if (b>=0&&b<2&&i>=0&&i<9) s.invKey[b][i] = val;
             } else if (key.rfind("invCnt_",0)==0) {
                 int b = key[7]-'0'; int i = key[9]-'0'; if (b>=0&&b<2&&i>=0&&i<9) s.invCnt[b][i] = std::stoi(val);
+            } else if (key.rfind("invRarity_",0)==0) {
+                int b = key[10]-'0'; int i = key[12]-'0'; if (b>=0&&b<2&&i>=0&&i<9) s.invRarity[b][i] = std::stoi(val);
+            } else if (key.rfind("invPlusLevel_",0)==0) {
+                int b = key[13]-'0'; int i = key[15]-'0'; if (b>=0&&b<2&&i>=0&&i<9) s.invPlusLevel[b][i] = std::stoi(val);
             }
         }
     } catch (const std::exception& e) {

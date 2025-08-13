@@ -1,26 +1,59 @@
 ## PixLegends
 
-A 2D action-adventure prototype built with SDL2. It features chunk-based procedural world generation, a combat-ready player character, a boss enemy, interactable objects with loot, a simple HUD, options overlay, audio with mixer fallback, and an autotile visualization demo.
+A 2D action-adventure game built with SDL2 featuring advanced equipment systems, elemental enchantments, and dynamic combat mechanics. Experience a rich fantasy world with dual equipment systems, magic anvil upgrading, and fire-based combat abilities.
 
-### Current status
-- Procedural world with biomes, large coherent regions, rivers/lakes, and fog of war (toggle always-on; see `World`)
-- Chunk streaming and screen-space culling for tiles, objects, and enemies
-- Player: WASD movement, melee and ranged attacks, potions (HP/MP), leveling, stats, gold
-- Enemy: Demon boss with idle/fly/attack/hurt/death states and contact damage, on-screen boss health bar when engaged
-- Interactables: chests/pots/crates/signs/bonfire with simple loot and prompts; respawn on death with UI popup
-- UI/HUD: health/mana/xp bars, gold, debug info, FPS counter (color-coded), death popup, options overlay
-- Assets: pixel-art characters/tiles/objects and SFX/music included under `assets/`
+### 🌟 Key Features
 
-### Controls
+**Advanced Equipment & Enchantment System**
+- **Dual Equipment Systems**: Legacy + modern ItemSystem with full synchronization
+- **Item Rarity**: 5-tier system (Common→Uncommon→Rare→Epic→Legendary) with color coding
+- **Equipment Upgrading**: +0 to +30 enhancement via Magic Anvil with success/failure mechanics
+- **Elemental Enchantments**: Fire, Water, and Poison damage/resistance via enchantment scrolls
+- **Unique Item Instances**: Each item has unique ID preventing upgrade contamination
+
+**Dynamic Combat & Abilities**
+- **Fire Damage System**: Weapons add fire damage, armor provides resistance
+- **Fire Shield Ability**: AoE damage shield scaling with waist enchantments
+- **Dash Ability**: Directional dash with invincibility frames and cooldown
+- **Enhanced Projectiles**: Fire projectiles and arrows with enchanted damage scaling
+
+**Rich UI & Interface**
+- **Dual Inventory System**: Equipment/Materials (6×8) + Scrolls/Enchantments (4×5)
+- **Magic Anvil Interface**: Visual upgrading with success/failure feedback
+- **Advanced Tooltips**: Item stats, hover detection, and rarity display
+- **Equipment Visualization**: Visual slots showing +levels and rarity colors
+
+### 🎮 Current Implementation Status
+
+**✅ Fully Implemented**
+- Complete player character with movement, combat, and abilities
+- Goblin enemies with AI states (patrol, attack, hurt, death)
+- Dynamic loot generation with rarity-based drops
+- Persistent save system with user accounts and settings
+- Audio system with themes and volume controls
+- Procedural world generation with biomes and fog of war
+
+**🚧 Partially Implemented**  
+- Enemy variety (25+ creature sprites available, only Goblins active)
+- Terrain diversity (extensive tile sets available, basic implementation)
+- Elemental system (Fire/Water/Poison active, Lightning planned)
+
+### 🎯 Controls
+
+**Movement & Combat**
 - Movement: W/A/S/D
-- Melee attack: Space or Left Mouse
-- Ranged attack: Left Shift or Right Mouse
-- Interact: E
-- Use potions: 1 (HP), 2 (MP)
-- Pause: P
-- Options overlay: Esc
-- Toggle autotile demo: F1 (replaces world render with demo grid)
-- Toggle debug hitboxes: F3
+- Melee attack: Space or Left Mouse (direction-based)
+- Ranged attack: Shift or Right Mouse (mouse targeting)
+- Dash: Movement direction during dash
+- Fire Shield: Space (when belt has fire enchantment)
+
+**Interaction & UI**
+- Interact: E (objects, magic anvil)
+- Inventory: I (dual-pane equipment and scrolls)
+- Equipment: U (visual equipment slots)
+- Potions: 1 (HP), 2 (MP)
+- Pause: P | Options: Esc
+- Debug: F1 (autotile demo), F3 (hitboxes)
 
 ### Build and run
 
@@ -80,12 +113,27 @@ Managing accounts
 - External libraries: `external/` (pre-populated or filled by `setup_sdl2.bat`)
 - Build helpers: `build.bat`, `build.sh`
 
-### Roadmap
-- More enemy types and encounters
-- Object pooling for projectiles and effects
-- Texture atlasing; additional biome art; lighting pass
-- Save/load and broader gameplay loop
-  - Expand the file-backed DB or switch to SQLite for richer queries and concurrency
+### 🗺️ Roadmap
+
+**Priority 1: Content Expansion**
+- **Enemy Diversity**: Activate 25+ existing creature sprites (Dragons, Demons, etc.)
+- **Boss Battles**: Multi-phase fights with arena mechanics
+- **Lightning Enchantments**: Complete the electrical damage system
+
+**Priority 2: World Building**
+- **Biome Expansion**: Utilize extensive terrain assets (snow, desert, forest)
+- **Underworld Content**: Hell-themed dungeons with giant boss encounters
+- **NPC System**: Quests and merchants using existing NPC sprites
+
+**Priority 3: Advanced Features**
+- **Magic Schools**: Full spell system with elemental combinations
+- **Social Systems**: Guilds, trading, and leaderboards
+- **Performance**: Mobile optimization and cross-platform saves
+
+**Technical Improvements**
+- Entity Component System (ECS) migration
+- Data-driven configuration (JSON)
+- Mod support and community tools
 
 ### License
 Code is under MIT (see `LICENSE`). Third‑party assets in `assets/` retain their original licenses; review before redistribution.

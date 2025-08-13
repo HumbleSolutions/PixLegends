@@ -4,6 +4,7 @@
 #include "Object.h"
 #include "Game.h"
 #include "Enemy.h"
+#include "Boss.h"
 #include <iostream>
 #include <random>
 #include <cmath> // Required for sin and cos
@@ -67,6 +68,19 @@ void World::updateEnemies(float deltaTime, float playerX, float playerY) {
     for (auto& enemy : enemies) {
         if (enemy) enemy->update(deltaTime, playerX, playerY);
     }
+    
+    // Update boss
+    if (currentBoss && !currentBoss->isDead()) {
+        currentBoss->update(deltaTime, playerX, playerY);
+    } else if (currentBoss && currentBoss->isDead()) {
+        std::cout << currentBoss->getBossName() << " has been defeated!" << std::endl;
+        // Boss drops enhanced loot
+        // TODO: Implement boss loot dropping
+        currentBoss.reset();
+    }
+    
+    // Check for boss spawn conditions
+    checkBossSpawn(playerX, playerY);
 }
 
 void World::render(Renderer* renderer) {
@@ -310,6 +324,20 @@ void World::render(Renderer* renderer) {
             screenY + cullH > -200 && screenY < 1080 + 200) {
             enemy->render(renderer);
             enemy->renderProjectiles(renderer);
+        }
+    }
+    
+    // Render boss (screen-space culling)
+    if (currentBoss && !currentBoss->isDead()) {
+        float z = renderer->getZoom();
+        int screenX = static_cast<int>((static_cast<int>(currentBoss->getX()) - cameraX) * z);
+        int screenY = static_cast<int>((static_cast<int>(currentBoss->getY()) - cameraY) * z);
+        int cullW = static_cast<int>(512 * z);
+        int cullH = static_cast<int>(512 * z);
+        if (screenX + cullW > -200 && screenX < 1920 + 200 &&
+            screenY + cullH > -200 && screenY < 1080 + 200) {
+            currentBoss->render(renderer);
+            currentBoss->renderProjectiles(renderer);
         }
     }
 }
@@ -2070,3 +2098,46 @@ int World::getBiomeType(int x, int y) const {
 }
 
 // (unused generateBiomeBasedTile removed)
+
+// Boss management methods
+void World::spawnBoss(BossType bossType, float x, float y) {
+    if (currentBoss) {
+        std::cout << "Warning: Attempting to spawn boss while another boss exists!" << std::endl;
+        return;
+    }
+    
+    currentBoss = std::make_unique<Boss>(x, y, assetManager, bossType);
+    bossSpawned = true;
+    
+    std::cout << "Boss spawned: " << currentBoss->getBossName() << " at (" << x << ", " << y << ")" << std::endl;
+}
+
+void World::checkBossSpawn(float playerX, float playerY) {
+    // Only spawn boss once per session for now
+    if (bossSpawned) return;
+    
+    // Simple boss spawn trigger: when player reaches certain areas or after killing enough enemies
+    int playerTileX = static_cast<int>(playerX / tileSize);
+    int playerTileY = static_cast<int>(playerY / tileSize);
+    
+    // Example: Spawn boss when player reaches coordinates (30, 30) or similar trigger
+    if ((playerTileX > 25 && playerTileX < 35 && playerTileY > 25 && playerTileY < 35) ||
+        (enemies.empty() && rand() % 1000 < 2)) { // 0.2% chance per frame when no enemies
+        
+        // Choose random boss type
+        BossType bossTypes[] = {BossType::DEMON_LORD, BossType::ANCIENT_WIZARD, BossType::GOBLIN_KING};
+        BossType chosenType = bossTypes[rand() % 3];
+        
+        // Spawn boss at a safe distance from player
+        float bossX = playerX + ((rand() % 2 == 0) ? 400 : -400);
+        float bossY = playerY + ((rand() % 2 == 0) ? 400 : -400);
+        
+        // Ensure boss spawns on walkable terrain
+        int bossTileX = static_cast<int>(bossX / tileSize);
+        int bossTileY = static_cast<int>(bossY / tileSize);
+        
+        if (isWalkable(bossTileX, bossTileY)) {
+            spawnBoss(chosenType, bossX, bossY);
+        }
+    }
+}

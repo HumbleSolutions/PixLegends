@@ -9,20 +9,40 @@ class Texture;
 class SpriteSheet;
 class AssetManager;
 
+enum class LootRarity {
+    COMMON,    // White
+    UNCOMMON,  // Green  
+    RARE,      // Blue
+    EPIC,      // Purple
+    LEGENDARY  // Orange/Gold
+};
+
 enum class LootType {
     GOLD,
     EXPERIENCE,
     HEALTH_POTION,
-    MANA_POTION
+    MANA_POTION,
+    EQUIPMENT,
+    SCROLL,
+    MATERIAL
 };
 
 struct Loot {
     LootType type;
+    LootRarity rarity;
     int amount;
     std::string name;
+    std::string description;
     
-    Loot(LootType lootType, int lootAmount, const std::string& lootName = "")
-        : type(lootType), amount(lootAmount), name(lootName) {}
+    Loot(LootType lootType, int lootAmount, const std::string& lootName = "", 
+         LootRarity lootRarity = LootRarity::COMMON, const std::string& lootDesc = "")
+        : type(lootType), rarity(lootRarity), amount(lootAmount), name(lootName), description(lootDesc) {}
+    
+    // Get color for rarity display
+    SDL_Color getRarityColor() const;
+    
+    // Get rarity display string
+    std::string getRarityString() const;
 };
 
 enum class ObjectType {
