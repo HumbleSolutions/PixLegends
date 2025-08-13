@@ -371,8 +371,66 @@ void Player::move(float deltaTime) {
     }
     float dx = moveX * moveSpeed * speedFactor * deltaTime;
     float dy = moveY * moveSpeed * speedFactor * deltaTime;
-    x += dx;
-    y += dy;
+
+    // Prevent stepping into non-walkable/hazard tiles (e.g., lava) and enforce ledge rules
+    if (game && game->getWorld()) {
+        World* world = game->getWorld();
+        int ts = world->getTileSize();
+        auto feetTile = [&](float px, float py) {
+            int tileX = static_cast<int>((px + width * 0.5f) / ts);
+            int tileY = static_cast<int>((py + height * 0.9f) / ts);
+            return std::pair<int,int>(tileX, tileY);
+        };
+        // X axis
+        float tryX = x + dx;
+        auto [txX, tyX] = feetTile(tryX, y);
+        int tileIdX = world->getTile(txX, tyX);
+        bool walkableX = world->isWalkable(txX, tyX);
+        bool allowX = (tileIdX >= 0) && (tileIdX != TILE_LAVA) && walkableX;
+        if (allowX) {
+            auto [curTx, curTy] = feetTile(x, y);
+            if (world->isLedgeCrossingBlocked(curTx, curTy, txX, tyX)) {
+                allowX = false;
+            }
+        }
+        if (!allowX && dx != 0) {
+            // Debug why movement is blocked
+            std::cout << "X movement blocked: tile(" << txX << "," << tyX << ") id=" << tileIdX 
+                      << " walkable=" << walkableX << " lava=" << (tileIdX == TILE_LAVA) << std::endl;
+        }
+        if (allowX) x = tryX;
+
+        // Y axis
+        float tryY = y + dy;
+        auto [txY, tyY] = feetTile(x, tryY);
+        auto [curTx, curTy] = feetTile(x, y);
+        int tileIdY = world->getTile(txY, tyY); // note: getTile expects (x,y) in tile coords
+        bool walkableY = world->isWalkable(txY, tyY);
+        bool allowY = (tileIdY >= 0) && (tileIdY != TILE_LAVA) && walkableY;
+        
+        // Debug movement details
+        if (dy != 0 && abs(tyY - curTy) > 1) {
+            std::cout << "WARNING: Large Y movement detected! Current tile: (" << curTx << "," << curTy 
+                      << ") Target tile: (" << txY << "," << tyY << ")" 
+                      << " dy=" << dy << " tryY=" << tryY << " y=" << y << std::endl;
+        }
+        
+        // Ledge rule: if vertical move crosses platform boundary and no stairs, block it
+        if (allowY) {
+            if (world->isLedgeBlockedVertical(curTx, curTy, txY, tyY) || world->isLedgeCrossingBlocked(curTx, curTy, txY, tyY)) {
+                allowY = false;
+            }
+        }
+        if (!allowY && dy != 0) {
+            // Debug why movement is blocked
+            std::cout << "Y movement blocked: from tile(" << curTx << "," << curTy << ") to tile(" << txY << "," << tyY << ") id=" << tileIdY 
+                      << " walkable=" << walkableY << " lava=" << (tileIdY == TILE_LAVA) << std::endl;
+        }
+        if (allowY) y = tryY;
+    } else {
+        x += dx;
+        y += dy;
+    }
 
     // Tile hazards: water and lava
     if (game && game->getWorld()) {
@@ -634,8 +692,11 @@ void Player::interact() {
     Object* nearbyObject = getNearbyInteractableObject();
     if (nearbyObject) {
         std::cout << "Interacting with " << nearbyObject->getInteractionPrompt() << std::endl;
-        // Special-case Magic Anvil: open modal UI
-        if (game && nearbyObject->getType() == ObjectType::MAGIC_ANVIL) {
+        // Portal to Underworld
+        if (game && nearbyObject->getType() == ObjectType::PORTAL) {
+            game->enterUnderworld();
+        } else if (game && nearbyObject->getType() == ObjectType::MAGIC_ANVIL) {
+            // Special-case Magic Anvil: open modal UI
             game->openAnvil();
         } else {
             nearbyObject->interact();

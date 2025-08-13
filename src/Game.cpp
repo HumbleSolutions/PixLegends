@@ -18,6 +18,36 @@ Game::Game() : window(nullptr), sdlRenderer(nullptr), isRunning(false), isPaused
     initializeSystems();
 }
 
+void Game::enterUnderworld() {
+    if (!world || !assetManager || !player) return;
+    std::cout << "=== ENTERING UNDERWORLD ===" << std::endl;
+    // Load the provided TMX underworld map
+    world->loadTilemap("assets/Underworld Tilemap/TiledMap Editor/sample map.tmx");
+    // Safe spawn: search for nearest safe tile around a preferred entrance
+    int ts = world->getTileSize();
+    int preferTX = 8, preferTY = 8; // near a likely solid start on platform tiles
+    int safeTX = preferTX, safeTY = preferTY;
+    const int maxSearch = 200;
+    bool found = false;
+    for (int r = 0; r <= maxSearch && !found; ++r) {
+        for (int dy = -r; dy <= r && !found; ++dy) {
+            for (int dx = -r; dx <= r; ++dx) {
+                int tx = preferTX + dx;
+                int ty = preferTY + dy;
+                if (world->isSafeTile(tx, ty)) { safeTX = tx; safeTY = ty; found = true; break; }
+            }
+        }
+    }
+    float spawnX = static_cast<float>(safeTX * ts);
+    float spawnY = static_cast<float>(safeTY * ts);
+    player->respawn(spawnX, spawnY);
+    // Force player to reinitialize sprites after world change
+    player->setState(player->getState());
+    // Update camera and visibility for the new map
+    world->updateVisibility(player->getX(), player->getY());
+    world->updateVisibleChunks(player->getX(), player->getY());
+}
+
 Game::~Game() {
     saveCurrentUserState();
     cleanup();
@@ -286,7 +316,7 @@ void Game::update(float deltaTime) {
                     }
                 }
 
-                if (!playerOnAnvil && aliveGoblins < maxGoblins) {
+                if (!stopMonsterSpawns && !playerOnAnvil && aliveGoblins < maxGoblins) {
                     // Wave size scales mildly with level and alternates per waveId
                     int base = 2 + (level / 3); // grows slowly
                     int variance = (waveId % 3); // 0..2
@@ -1416,7 +1446,8 @@ void Game::renderOptionsMenuOverlay() {
                 monsterVolCache,
                 playerVolCache);
         }
-        if (hit.newThemeIndex == 0) {
+    if (hit.toggledStopSpawns) { setStopMonsterSpawns(hit.stopSpawnsNewValue); }
+    if (hit.newThemeIndex == 0) {
             backgroundMusicName = "main_theme";
             if (audioManager->hasMusic(backgroundMusicName)) { audioManager->fadeToMusic(backgroundMusicName, 200, 200); currentMusicTrack = backgroundMusicName; }
             if (database) {
@@ -1529,7 +1560,7 @@ void Game::initializeObjects() {
     // OPTIMIZATION: Reduced object count and implemented intelligent spawning
     // Only spawn objects in a reasonable area around the player starting position
     const int spawnRadius = 15; // Reduced from previous large area
-    const int maxObjects = 9;   // Limit total objects for performance
+    int maxObjects = 0;   // Will be set to number of planned spawns
     
     std::cout << "Initializing optimized object spawning..." << std::endl;
     
@@ -1540,11 +1571,13 @@ void Game::initializeObjects() {
         {20, 8},   // Flag
         {18, 20},  // Bonfire
         {25, 10},  // Wood sign
+        {24, 9},   // Portal to Underworld
         {15, 12},  // Clay pot
         {8, 15},   // Wood crate
         {12, 18},  // Steel crate
         {12, 26}   // Magic Anvil moved away from mobs
     };
+    maxObjects = static_cast<int>(spawnPositions.size());
     
     // Limit the number of objects to spawn
     int objectsSpawned = 0;
@@ -1589,6 +1622,13 @@ void Game::initializeObjects() {
                 // Wood sign (decorative)
                 object = std::make_unique<Object>(ObjectType::WOOD_SIGN, x, y, "assets/Textures/Objects/wood_sign.png");
                 object->setTexture(assetManager->getTexture("assets/Textures/Objects/wood_sign.png"));
+            } else if (x == 24 && y == 9) {
+                // Portal to Underworld at a nearby tile
+                object = std::make_unique<Object>(ObjectType::PORTAL, x, y, "assets/Underworld Tilemap/Props/static/individual sprites/nasty structure_0.png");
+                if (Texture* t = assetManager->getTexture("assets/Underworld Tilemap/Props/static/individual sprites/nasty structure_0.png")) {
+                    object->setTexture(t);
+                }
+                // Interaction prompt uses default; behavior wired in Player::interact via object type
             } else if (x == 15 && y == 12) {
                 // Clay pot
                 object = std::make_unique<Object>(ObjectType::CLAY_POT, x, y, "assets/Textures/Objects/clay_pot.png");

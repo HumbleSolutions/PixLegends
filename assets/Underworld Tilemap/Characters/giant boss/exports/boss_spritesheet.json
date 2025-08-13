@@ -1,0 +1,81 @@
+{
+  "image": "boss_spritesheet.png",
+  "frames": [
+    {
+      "x": 0,
+      "y": 0,
+      "w": 896,
+      "h": 608,
+      "duration_ms": 100
+    },
+    {
+      "x": 896,
+      "y": 0,
+      "w": 896,
+      "h": 608,
+      "duration_ms": 100
+    },
+    {
+      "x": 1792,
+      "y": 0,
+      "w": 896,
+      "h": 608,
+      "duration_ms": 100
+    },
+    {
+      "x": 2688,
+      "y": 0,
+      "w": 896,
+      "h": 608,
+      "duration_ms": 100
+    },
+    {
+      "x": 3584,
+      "y": 0,
+      "w": 896,
+      "h": 608,
+      "duration_ms": 100
+    },
+    {
+      "x": 4480,
+      "y": 0,
+      "w": 896,
+      "h": 608,
+      "duration_ms": 100
+    },
+    {
+      "x": 5376,
+      "y": 0,
+      "w": 896,
+      "h": 608,
+      "duration_ms": 100
+    },
+    {
+      "x": 6272,
+      "y": 0,
+      "w": 896,
+      "h": 608,
+      "duration_ms": 100
+    },
+    {
+      "x": 0,
+      "y": 608,
+      "w": 896,
+      "h": 608,
+      "duration_ms": 100
+    },
+    {
+      "x": 896,
+      "y": 608,
+      "w": 896,
+      "h": 608,
+      "duration_ms": 100
+    }
+  ],
+  "meta": {
+    "columns": 8,
+    "rows": 2,
+    "frame_count": 10,
+    "note": "Durations come from GIF; use them to time frame changes if supported."
+  }
+}

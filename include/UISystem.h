@@ -97,6 +97,8 @@ public:
         int newPlayer = 0;
         int newThemeIndex = -1; // 0 = main, 1 = fast tempo
         int newTabIndex = -1; // -1 means unchanged
+        bool toggledStopSpawns = false;
+        bool stopSpawnsNewValue = false;
     };
 
     void renderOptionsMenu(int selectedIndex,

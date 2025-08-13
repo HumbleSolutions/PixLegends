@@ -134,6 +134,8 @@ public:
     void setTile(int x, int y, int tileId);
     int getTile(int x, int y) const;
     bool isWalkable(int x, int y) const;
+    // Whether this world is using a fixed, pre-authored tilemap (TMX) instead of procedural chunks
+    bool isUsingPrebakedMap() const { return usePrebakedChunks; }
     
     // World properties
     int getWidth() const { return width; }
@@ -188,6 +190,9 @@ private:
     // Chunk system
     std::unordered_map<std::string, std::unique_ptr<Chunk>> chunks;
     std::vector<Chunk*> visibleChunks;
+    bool usePrebakedChunks = false;
+    int mapChunkCols = 0;
+    int mapChunkRows = 0;
     
     // Objects
     std::vector<std::unique_ptr<Object>> objects;
@@ -209,6 +214,27 @@ private:
     // Animated tiles
     SpriteSheet* deepWaterSpriteSheet = nullptr;
     SpriteSheet* lavaSpriteSheet = nullptr;
+    // Underworld visual set (tileset atlas)
+    bool underworldVisuals = false;
+    // Platform 1: base atlas; Platform 2: glow-integrated atlas
+    Texture* underworldAtlasPlatform1 = nullptr;
+    Texture* underworldAtlasPlatform2 = nullptr;
+    int underworldAtlasCols = 0;
+    int underworldAtlasRows = 0;
+    // TMX rendering data
+    struct TmxTilesetInfo {
+        int firstGid = 0;
+        Texture* texture = nullptr;
+        int columns = 0;
+        int tileWidth = 32;
+        int tileHeight = 32;
+        std::string name;
+        std::string imagePath;
+    };
+    std::vector<TmxTilesetInfo> tmxTilesets;
+    std::vector<std::vector<int>> tmxLayers; // each layer is width*height GIDs
+    int tmxWidth = 0;
+    int tmxHeight = 0;
     
     // Random number generation for tile placement
     std::mt19937 rng;
@@ -221,6 +247,13 @@ private:
     std::vector<std::vector<bool>> exploredTiles;
     int visibilityRadius;
     bool fogOfWarEnabled;
+    // Underworld TMX masks
+    std::vector<std::vector<bool>> platformMask; // true where plat/plat2 tiles exist
+    std::vector<std::vector<bool>> platform1Mask; // true where plat/platform1 tiles exist
+    std::vector<std::vector<bool>> platform2Mask; // true where plat2/platform2 tiles exist
+    std::vector<std::vector<bool>> stairsMask;   // true where stairs exist
+    std::vector<std::vector<bool>> edgeMask;     // true where "floating land" (ledge faces) exists
+    std::vector<std::vector<bool>> lavaMask;     // true where lava tiles exist
     
     // Helper functions
     void initializeDefaultWorld();
@@ -269,4 +302,9 @@ private:
     bool hasLineOfSight(int startX, int startY, int endX, int endY) const;
     void markTileVisible(int x, int y);
     void markTileExplored(int x, int y);
+
+public:
+    // Movement rules derived from TMX
+    bool isLedgeBlockedVertical(int fromTileX, int fromTileY, int toTileX, int toTileY) const;
+    bool isLedgeCrossingBlocked(int fromTileX, int fromTileY, int toTileX, int toTileY) const;
 };

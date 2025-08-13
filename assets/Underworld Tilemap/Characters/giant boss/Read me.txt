@@ -1,0 +1,2 @@
+- ribs_0 is the top one and the ribs_4 is the lowest one (see mock up for reference)
+- This boss should be animated using game engine features like the AnimationPlayer and Skeleton2D from Godot 4+

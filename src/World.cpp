@@ -2,6 +2,7 @@
 #include "Renderer.h"
 #include "AssetManager.h"
 #include "Object.h"
+#include "Game.h"
 #include "Enemy.h"
 #include <iostream>
 #include <random>
@@ -9,6 +10,7 @@
 #include <algorithm> // Required for std::max
 #include <cstdio>
 #include <cstdlib> // Required for std::abs
+#include <set> // Required for std::set
 
 World::World() : width(1000), height(1000), tileSize(32), tilesetTexture(nullptr), assetManager(nullptr), rng(std::random_device{}()), visibilityRadius(30), fogOfWarEnabled(true) {
     // Initialize default tile generation config
@@ -86,6 +88,42 @@ void World::render(Renderer* renderer) {
     int renderedTiles = 0;
     int visibleTilesCount = 0;
     
+    // TMX render path when a fixed map is loaded
+    if (usePrebakedChunks && !tmxLayers.empty() && tmxWidth>0 && tmxHeight>0) {
+        int cameraX, cameraY; renderer->getCamera(cameraX, cameraY);
+        float z = renderer->getZoom();
+        auto toScreen = [cameraX, cameraY, z](int wx, int wy) -> SDL_Rect {
+            float x1 = (wx - cameraX) * z;
+            float y1 = (wy - cameraY) * z;
+            float x2 = (wx + 32 - cameraX) * z;
+            float y2 = (wy + 32 - cameraY) * z;
+            return SDL_Rect{ static_cast<int>(std::floor(x1)), static_cast<int>(std::floor(y1)),
+                             std::max(1, static_cast<int>(std::floor(x2)-std::floor(x1))),
+                             std::max(1, static_cast<int>(std::floor(y2)-std::floor(y1))) };
+        };
+        // Draw layers in order
+        for (const auto& layer : tmxLayers) {
+            for (int y=0; y<tmxHeight; ++y) {
+                for (int x=0; x<tmxWidth; ++x) {
+                    int gid = layer[y*tmxWidth + x]; if (gid<=0) continue;
+                    // Find tileset
+                    const TmxTilesetInfo* used = nullptr; const TmxTilesetInfo* best=nullptr;
+                    for (const auto& ts : tmxTilesets) {
+                        if (gid >= ts.firstGid) { if (!best || ts.firstGid > best->firstGid) best = &ts; }
+                    }
+                    used = best; if (!used || !used->texture || used->columns<=0) continue;
+                    int localId = gid - used->firstGid; if (localId < 0) continue;
+                    int sx = (localId % used->columns) * used->tileWidth;
+                    int sy = (localId / used->columns) * used->tileHeight;
+                    SDL_Rect src{ sx, sy, used->tileWidth, used->tileHeight };
+                    SDL_Rect dst = toScreen(x*tileSize, y*tileSize);
+                    SDL_RenderCopy(renderer->getSDLRenderer(), used->texture->getTexture(), &src, &dst);
+                }
+            }
+        }
+        // Also render objects/enemies as below
+        // fall-through to object/enemy render; skip procedural tile pass
+    } else {
     for (Chunk* chunk : visibleChunks) {
         if (!chunk || !chunk->isGenerated) continue;
         
@@ -155,7 +193,7 @@ void World::render(Renderer* renderer) {
                     SDL_Rect destRect = { screenX, screenY, std::max(1, br.x - tl.x), std::max(1, br.y - tl.y) };
 
                     // Special-cases: animated sprite sheets for deep water and lava
-                    if (tileId == TILE_WATER_DEEP && deepWaterSpriteSheet && deepWaterSpriteSheet->getTexture()) {
+                    if (!underworldVisuals && tileId == TILE_WATER_DEEP && deepWaterSpriteSheet && deepWaterSpriteSheet->getTexture()) {
                         int total = std::max(1, deepWaterSpriteSheet->getTotalFrames());
                         // Time-based animation with a slight per-tile phase offset for variety
                         Uint32 ticks = SDL_GetTicks();
@@ -176,6 +214,29 @@ void World::render(Renderer* renderer) {
                     }
 
                     Texture* chosen = nullptr;
+                    SDL_Texture* sdlTex = nullptr;
+                    if (underworldVisuals && (underworldAtlasPlatform1 || underworldAtlasPlatform2)) {
+                        // Choose atlas per-neighborhood: if tile neighbors any lava, use platform2 (glow), else platform1
+                        auto inb = [&](int tx, int ty){ return tx>=0 && tx<width && ty>=0 && ty<height; };
+                        bool nearLava = false;
+                        for (int dy=-1; dy<=1 && !nearLava; ++dy) {
+                            for (int dx=-1; dx<=1; ++dx) {
+                                if (dx==0 && dy==0) continue;
+                                int nx = worldX + dx;
+                                int ny = worldY + dy;
+                                if (!inb(nx, ny)) continue;
+                                if (tiles[ny][nx].id == TILE_LAVA) { nearLava = true; break; }
+                            }
+                        }
+                        Texture* atlasTex = nearLava && underworldAtlasPlatform2 ? underworldAtlasPlatform2 : (underworldAtlasPlatform1 ? underworldAtlasPlatform1 : underworldAtlasPlatform2);
+                        SDL_Rect src{0,0,32,32};
+                        // Small variety using world coords
+                        int idx = ((worldX * 13 + worldY * 7) & 7);
+                        src.x = (idx % std::max(1, underworldAtlasCols)) * 32;
+                        src.y = ((idx / std::max(1, underworldAtlasCols)) % std::max(1, underworldAtlasRows)) * 32;
+                        sdlTex = atlasTex ? atlasTex->getTexture() : nullptr;
+                        if (sdlTex) { SDL_RenderCopy(renderer->getSDLRenderer(), sdlTex, &src, &destRect); continue; }
+                    } else {
                     if (tileId >= 0 && tileId < static_cast<int>(tileVariantTextures.size()) && !tileVariantTextures[tileId].empty()) {
                         size_t idx = static_cast<size_t>(getPreferredVariantIndex(tileId, worldX, worldY));
                         idx = std::min(idx, tileVariantTextures[tileId].size() - 1);
@@ -183,7 +244,8 @@ void World::render(Renderer* renderer) {
                     } else if (tileId >= 0 && tileId < static_cast<int>(tileTextures.size())) {
                         chosen = tileTextures[tileId];
                     }
-                    SDL_Texture* sdlTex = chosen ? chosen->getTexture() : nullptr;
+                        sdlTex = chosen ? chosen->getTexture() : nullptr;
+                    }
                     if (sdlTex) {
                         SDL_SetTextureBlendMode(sdlTex, SDL_BLENDMODE_BLEND);
                         if (fogOfWarEnabled && isExplored && !isVisible) {
@@ -194,6 +256,7 @@ void World::render(Renderer* renderer) {
                             SDL_SetTextureColorMod(sdlTex, 255, 255, 255);
                         }
                         SDL_RenderCopy(renderer->getSDLRenderer(), sdlTex, nullptr, &destRect);
+                    }
                     }
                 }
             }
@@ -394,7 +457,7 @@ void World::loadTileTextures() {
     tileTextures[TILE_WATER_DEEP] = assetManager->getTexture("assets/Textures/Tiles/Water/water_deep_01.png");
     // water_deep_01.png: auto-detect layout (horizontal or vertical). totalFrames=4.
     deepWaterSpriteSheet = assetManager->loadSpriteSheet("assets/Textures/Tiles/Water/water_deep_01.png", 32, 32, 0, 4);
-    lavaSpriteSheet = assetManager->loadSpriteSheet("assets/Textures/Tiles/Lava/lava.png", 32, 32, 9, 9);
+    lavaSpriteSheet = assetManager->loadSpriteSheet("assets/Underworld Tilemap/Tilesets/lava-16frames.png", 32, 32, 16, 16);
 }
 
 // (legacy isGrassAt / buildMaskFromNeighbors removed)
@@ -402,8 +465,410 @@ void World::loadTileTextures() {
 // (legacy getEdgeTextureForMask removed)
 
 void World::loadTilemap(const std::string& filename) {
-    // TODO: Implement tilemap loading from file
-    std::cout << "Loading tilemap: " << filename << " (not implemented yet)" << std::endl;
+    // Lightweight TMX CSV loader: reads layers named "plat", "plat2" as solid ground
+    // and any layer with name starting with "lava" as TILE_LAVA (non-walkable).
+    // Other layers are ignored for collision but render via our normal materials.
+    std::cout << "Loading TMX tilemap: " << filename << std::endl;
+
+    // Read file into memory
+    FILE* f = fopen(filename.c_str(), "rb");
+    if (!f) { std::cerr << "Failed to open TMX: " << filename << std::endl; return; }
+    fseek(f, 0, SEEK_END); long len = ftell(f); fseek(f, 0, SEEK_SET);
+    std::string xml; xml.resize(static_cast<size_t>(len));
+    size_t rd = fread(xml.data(), 1, static_cast<size_t>(len), f); (void)rd; fclose(f);
+
+    // Crude parsing: extract width/height and tilesets/layers
+    auto findAttr = [](const std::string& s, const std::string& key, size_t pos)->int{
+        size_t k = s.find(key + "=\"", pos); if (k==std::string::npos) return -1; k += key.size()+2; size_t e = s.find('"', k); if (e==std::string::npos) return -1; return std::atoi(s.substr(k, e-k).c_str()); };
+
+    // Initialize baseline grid from first matching layer dimensions
+    int mapW = 0, mapH = 0;
+    // Parse tilesets (supports external TSX)
+    tmxTilesets.clear(); tmxLayers.clear(); tmxWidth = tmxHeight = 0;
+    auto getAttr = [&](const std::string& h, const std::string& key)->std::string{
+        size_t k = h.find(key+"=\""); if (k==std::string::npos) return std::string(); k += key.size()+2; size_t e = h.find('"', k); if (e==std::string::npos) return std::string(); return h.substr(k, e-k);
+    };
+    auto readWholeFile = [&](const std::string& path) -> std::string {
+        FILE* tf = fopen(path.c_str(), "rb"); if (!tf) return std::string();
+        fseek(tf, 0, SEEK_END); long L = ftell(tf); fseek(tf, 0, SEEK_SET);
+        std::string out; out.resize(static_cast<size_t>(std::max<long>(L,0)));
+        size_t n = fread(out.data(), 1, static_cast<size_t>(std::max<long>(L,0)), tf); (void)n; fclose(tf);
+        return out;
+    };
+    auto joinPath = [](const std::string& base, const std::string& rel) -> std::string {
+        if (rel.empty()) return rel;
+        if (rel.find(":") != std::string::npos) return rel; // absolute (Windows)
+        if (!rel.empty() && (rel[0]=='/' || rel[0]=='\\')) return rel;
+        if (base.empty()) return rel;
+        size_t slash = base.find_last_of("/\\");
+        std::string dir = (slash==std::string::npos) ? std::string() : base.substr(0, slash+1);
+        return dir + rel;
+    };
+    size_t tsPos = 0;
+    while (true) {
+        size_t tsi = xml.find("<tileset", tsPos); if (tsi==std::string::npos) break;
+        size_t tsiEnd = xml.find('>', tsi); if (tsiEnd==std::string::npos) break;
+        std::string tsHeader = xml.substr(tsi, tsiEnd - tsi + 1);
+        int firstGid = std::max(0, std::atoi(getAttr(tsHeader, "firstgid").c_str()));
+        std::string sourceTsx = getAttr(tsHeader, "source");
+        if (!sourceTsx.empty()) {
+            std::string tsxPath = joinPath(filename, sourceTsx);
+            std::string tsx = readWholeFile(tsxPath);
+            if (!tsx.empty()) {
+                // Parse TSX header for tile size, columns, image source
+                size_t hdrStart = tsx.find("<tileset"); size_t hdrEnd = tsx.find('>', hdrStart);
+                std::string h = (hdrStart!=std::string::npos && hdrEnd!=std::string::npos) ? tsx.substr(hdrStart, hdrEnd-hdrStart+1) : std::string();
+                int tw = std::max(1, std::atoi(getAttr(h, "tilewidth").c_str()));
+                int th = std::max(1, std::atoi(getAttr(h, "tileheight").c_str()));
+                int cols = std::max(0, std::atoi(getAttr(h, "columns").c_str()));
+                std::string name = getAttr(h, "name");
+                size_t imgS = tsx.find("<image"); size_t imgE = tsx.find('>', imgS);
+                std::string ih = (imgS!=std::string::npos && imgE!=std::string::npos) ? tsx.substr(imgS, imgE-imgS+1) : std::string();
+                std::string imgRel = getAttr(ih, "source");
+                std::string imgPath = joinPath(tsxPath, imgRel);
+                Texture* tex = nullptr;
+                if (assetManager) {
+                    tex = assetManager->getTexture(imgPath);
+                    if (!tex) tex = assetManager->getTexture(imgRel);
+                }
+                TmxTilesetInfo info; info.firstGid = firstGid; info.texture = tex; info.tileWidth = tw; info.tileHeight = th; info.name = name; info.imagePath = imgRel;
+                if (tex) {
+                    info.columns = (cols>0? cols : std::max(1, tex->getWidth() / std::max(1, tw)));
+                } else {
+                    info.columns = (cols>0? cols : 0);
+                }
+                tmxTilesets.push_back(info);
+            }
+        } else {
+            // Inline tileset with <image>
+            size_t imgTagStart = xml.find("<image", tsiEnd);
+            size_t nextTileOrTs = std::min(xml.find("<tileset", tsiEnd), xml.find("<layer", tsiEnd));
+            if (imgTagStart!=std::string::npos && (nextTileOrTs==std::string::npos || imgTagStart < nextTileOrTs)) {
+                size_t imgEnd = xml.find('>', imgTagStart);
+                if (imgEnd!=std::string::npos) {
+                    std::string imgHeader = xml.substr(imgTagStart, imgEnd - imgTagStart + 1);
+                    std::string src = getAttr(imgHeader, "source");
+                    TmxTilesetInfo info; info.firstGid = firstGid; info.imagePath = src; info.tileWidth = 32; info.tileHeight = 32; info.columns = 0;
+                    if (assetManager) {
+                        std::string fullRel = joinPath(filename, src);
+                        Texture* tex = assetManager->getTexture(fullRel);
+                        if (!tex) tex = assetManager->getTexture(src);
+                        info.texture = tex; if (tex) info.columns = std::max(1, tex->getWidth() / info.tileWidth);
+                    }
+                    tmxTilesets.push_back(info);
+                }
+            }
+        }
+        tsPos = tsiEnd + 1;
+    }
+
+    // Basic CSV gather per layer (all, to honor map order)
+    struct LayerData { std::string name; std::vector<int> gids; int w=0; int h=0; };
+    std::vector<LayerData> layers;
+
+    size_t pos = 0;
+    while (true) {
+        size_t li = xml.find("<layer", pos); if (li == std::string::npos) break;
+        size_t liEnd = xml.find('>', li); if (liEnd == std::string::npos) break;
+        std::string header = xml.substr(li, liEnd - li + 1);
+        // name
+        size_t nk = header.find("name=\""); if (nk == std::string::npos) { pos = liEnd + 1; continue; }
+        nk += 6; size_t nkE = header.find('"', nk); if (nkE == std::string::npos) { pos = liEnd + 1; continue; }
+        std::string lname = header.substr(nk, nkE - nk);
+        int lw = findAttr(header, "width", 0);
+        int lh = findAttr(header, "height", 0);
+        size_t dataStart = xml.find("<data", liEnd); if (dataStart == std::string::npos) { pos = liEnd + 1; continue; }
+        size_t dataTagEnd = xml.find('>', dataStart); if (dataTagEnd == std::string::npos) { pos = liEnd + 1; continue; }
+        size_t dataClose = xml.find("</data>", dataTagEnd); if (dataClose == std::string::npos) { pos = liEnd + 1; continue; }
+        std::string csv = xml.substr(dataTagEnd + 1, dataClose - dataTagEnd - 1);
+        // Sanitize
+        for (char& c : csv) { if (c=='\n' || c=='\r' || c=='\t') c = ' '; }
+        // Parse CSV ints
+        std::vector<int> gids; gids.reserve(std::max(0, lw*lh));
+        int val = 0; bool inNum = false; bool neg = false; 
+        auto flush = [&](){ if (inNum){ gids.push_back(neg?-val:val); val=0; neg=false; inNum=false; } };
+        for (size_t i = 0; i < csv.size(); ++i) {
+            char ch = csv[i];
+            if ((ch >= '0' && ch <= '9')) { inNum = true; val = val*10 + (ch - '0'); }
+            else if (ch == '-') { inNum = true; neg = true; }
+            else if (ch == ',' || ch == ' ') { flush(); }
+        }
+        flush();
+
+        LayerData ld; ld.name = lname; ld.gids = std::move(gids); ld.w = lw; ld.h = lh;
+        layers.push_back(std::move(ld));
+        if (mapW == 0 && lw > 0) { mapW = lw; mapH = lh; }
+        pos = dataClose + 7;
+    }
+
+    if (mapW <= 0 || mapH <= 0) { std::cerr << "TMX parse failed: width/height not found" << std::endl; return; }
+
+    // Switch world to prebaked grid sized to TMX
+    width = mapW; height = mapH; tileSize = 32; // TMX is 32px tiles in our assets
+    tiles.assign(height, std::vector<Tile>(width, Tile(TILE_STONE, true, true)));
+    visibleTiles.assign(height, std::vector<bool>(width, true));
+    exploredTiles.assign(height, std::vector<bool>(width, true));
+    usePrebakedChunks = true; visibleChunks.clear(); chunks.clear();
+    mapChunkCols = (width + tileGenConfig.chunkSize - 1) / tileGenConfig.chunkSize;
+    mapChunkRows = (height + tileGenConfig.chunkSize - 1) / tileGenConfig.chunkSize;
+
+    auto applyLayer = [&](const LayerData& L){
+        auto lower = L.name; for (auto& c: lower) c = static_cast<char>(::tolower(c));
+        bool isLava = (lower == "lava" || lower == "lava river"); // Only actual lava, not "lava passage" which might be decorative
+        bool isGround = (lower == "plat" || lower == "plat2" || lower.find("ground") != std::string::npos);
+        bool isStairs = (lower.find("stairs") != std::string::npos);
+        bool isPlatform = (lower == "plat" || lower == "plat2" || lower == "platform1" || lower == "platform2");
+        
+        // Process all relevant layers
+        if (!isLava && !isGround && !isStairs && !isPlatform) return;
+        if (static_cast<int>(L.gids.size()) != L.w * L.h) return;
+        
+        for (int y = 0; y < L.h; ++y) {
+            for (int x = 0; x < L.w; ++x) {
+                int gid = L.gids[y * L.w + x];
+                if (gid == 0) continue; // empty cell
+                if (isLava) {
+                    tiles[y][x] = Tile(TILE_LAVA, false, true);
+                } else if (isGround || isStairs || isPlatform) {
+                    // Default underworld ground: stone (walkable)
+                    tiles[y][x] = Tile(TILE_STONE, true, true);
+                }
+            }
+        }
+    };
+    for (const auto& L : layers) applyLayer(L);
+
+    // Store TMX layers and size for exact draw
+    tmxWidth = width; tmxHeight = height;
+    tmxLayers.clear();
+    for (const auto& L : layers) {
+        tmxLayers.push_back(L.gids);
+    }
+    // Build platform/stairs masks
+    platformMask.assign(height, std::vector<bool>(width,false));
+    platform1Mask.assign(height, std::vector<bool>(width,false));
+    platform2Mask.assign(height, std::vector<bool>(width,false));
+    stairsMask.assign(height, std::vector<bool>(width,false));
+    edgeMask.assign(height, std::vector<bool>(width,false));
+    lavaMask.assign(height, std::vector<bool>(width,false));
+    for (const auto& L : layers) {
+        auto lower = L.name; for (auto& c: lower) c = static_cast<char>(::tolower(c));
+        std::cout << "Processing layer: " << L.name << " (lowercase: " << lower << ")" << std::endl;
+        bool isPlat1 = (lower == "plat" || lower == "platform1");
+        bool isPlat2 = (lower == "plat2" || lower == "platform2");
+        bool isPlat = isPlat1 || isPlat2;
+        bool isStairs = (lower.find("stairs") != std::string::npos);
+        bool isEdge = (lower.find("floating land") != std::string::npos || lower.find("floating_land") != std::string::npos || lower.find("floating") != std::string::npos);
+        bool isLava = (lower == "lava" || lower == "lava river"); // Be specific about lava layers
+        if (isStairs) std::cout << "  -> Identified as stairs layer!" << std::endl;
+        if (!(isPlat || isStairs || isEdge || isLava)) continue;
+        if (static_cast<int>(L.gids.size()) != L.w*L.h) continue;
+        for (int y=0; y<L.h; ++y) {
+            for (int x=0; x<L.w; ++x) {
+                int gid = L.gids[y*L.w + x];
+                if (gid == 0) continue;
+                if (isPlat) platformMask[y][x] = true;
+                if (isPlat1) platform1Mask[y][x] = true;
+                if (isPlat2) platform2Mask[y][x] = true;
+                if (isStairs) stairsMask[y][x] = true;
+                if (isEdge) edgeMask[y][x] = true;
+                if (isLava) lavaMask[y][x] = true;
+            }
+        }
+    }
+    // First, set walkability based on tile type
+    // IMPORTANT: We need to distinguish between actual lava tiles and other tiles
+    // The lava layer should only mark real lava, not platforms or other tiles
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            // Only mark as lava if it's in the lava layer AND not a platform/stairs tile
+            if (lavaMask[y][x] && !platformMask[y][x] && !stairsMask[y][x]) {
+                // This is actual lava - mark as hazard
+                tiles[y][x].walkable = false;
+                tiles[y][x].id = TILE_LAVA;
+            } else {
+                // All other tiles are walkable by default (will be modified by edge detection)
+                tiles[y][x].walkable = true;
+                // Keep the original tile type, don't override it
+            }
+        }
+    }
+
+    // Now block specific edge tiles that are visual ledge faces
+    // Keep this list minimal to avoid invisible walls. Only include the
+    // obvious rocky faces that are never part of flat walkable top surfaces.
+    std::set<int> edgeTileGids = {
+        32, 36,  // vertical faces (left/right)
+        48, 52,  // vertical faces (inner variants / with shadows)
+        65, 67   // a couple of bottom-row rocky face variants
+    };
+    
+    // Block tiles that are specifically marked as edges or visual ledge faces
+    // Only check platform layers for edge tiles
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            // Skip if already non-walkable (like lava)
+            if (!tiles[y][x].walkable) continue;
+            
+            // Only check platform tiles for edges
+            if (!platformMask[y][x]) continue;
+            
+            // Heuristic 1: adjacency-based south cliff face detection.
+            // If this platform tile has platform directly above but NOT below,
+            // it visually represents a vertical face we should not stand on.
+            // We detect this separately for platform1 and platform2 so each
+            // level's ledges are blocked correctly.
+            // IMPORTANT: never block tiles that are part of or immediately adjacent
+            // to a staircase. Those tiles must remain walkable so players can
+            // step on/off the stairs cleanly at the top and bottom.
+            bool nearStairs = stairsMask[y][x]
+                || (y > 0 && stairsMask[y - 1][x])
+                || (y + 1 < height && stairsMask[y + 1][x])
+                || (x > 0 && stairsMask[y][x - 1])
+                || (x + 1 < width && stairsMask[y][x + 1]);
+            bool hasAbove = (y > 0) && platformMask[y - 1][x];
+            bool hasBelow = (y + 1 < height) && platformMask[y + 1][x];
+            bool hasLeft  = (x > 0) && platformMask[y][x - 1];
+            bool hasRight = (x + 1 < width) && platformMask[y][x + 1];
+            bool hasAboveP1 = (y > 0) && platform1Mask[y - 1][x];
+            bool hasBelowP1 = (y + 1 < height) && platform1Mask[y + 1][x];
+            bool hasLeftP1  = (x > 0) && platform1Mask[y][x - 1];
+            bool hasRightP1 = (x + 1 < width) && platform1Mask[y][x + 1];
+            bool hasAboveP2 = (y > 0) && platform2Mask[y - 1][x];
+            bool hasBelowP2 = (y + 1 < height) && platform2Mask[y + 1][x];
+            bool hasLeftP2  = (x > 0) && platform2Mask[y][x - 1];
+            bool hasRightP2 = (x + 1 < width) && platform2Mask[y][x + 1];
+			// Heuristic 1a: south cliff face via adjacency.
+			// If there is platform directly above but NOT below, this tile visually
+			// represents the front face of a ledge. Block it (except near stairs).
+			if (!nearStairs && ((hasAbove && !hasBelow) || (hasAboveP1 && !hasBelowP1) || (hasAboveP2 && !hasBelowP2))) {
+				tiles[y][x].walkable = false;
+				edgeMask[y][x] = true;
+				continue; // already blocked by adjacency rule
+			}
+
+            // Heuristic 1b: left/right vertical face detection.
+            // A tile that has platform above, and platform on one horizontal side but not the other,
+            // is part of a vertical cliff face. Do not allow standing on these.
+            if (!nearStairs) {
+                bool sideFaceAny = (hasAbove && ((hasRight && !hasLeft) || (hasLeft && !hasRight)));
+                bool sideFaceP1  = (hasAboveP1 && ((hasRightP1 && !hasLeftP1) || (hasLeftP1 && !hasRightP1)));
+                bool sideFaceP2  = (hasAboveP2 && ((hasRightP2 && !hasLeftP2) || (hasLeftP2 && !hasRightP2)));
+                if (sideFaceAny || sideFaceP1 || sideFaceP2) {
+                    tiles[y][x].walkable = false;
+                    edgeMask[y][x] = true;
+                    continue;
+                }
+            }
+
+            // Heuristic 2: explicit GID-based detection for special side pieces.
+            // Get the GID for this position from platform layers only
+            int layerIndex = 0;
+            for (const auto& L : layers) {
+                auto lower = L.name; 
+                for (auto& c: lower) c = static_cast<char>(::tolower(c));
+                bool isPlatformLayer = (lower == "plat" || lower == "plat2" || 
+                                      lower == "platform" || lower == "platform1" || 
+                                      lower == "platform2");
+                
+                if (isPlatformLayer && layerIndex < tmxLayers.size()) {
+                    int gid = tmxLayers[layerIndex][y * tmxWidth + x];
+                    if (gid > 0) {
+                        // Map GID -> local tileset ID using the tileset with the
+                        // largest firstGid that is <= gid. This avoids accidental
+                        // matches from earlier tilesets and makes localGid stable.
+                        int localGid = -1;
+                        int chosenFirst = -1;
+                        for (const auto& ts : tmxTilesets) {
+                            if (gid >= ts.firstGid && ts.firstGid > chosenFirst) {
+                                chosenFirst = ts.firstGid;
+                            }
+                        }
+                        if (chosenFirst >= 0) {
+                            localGid = gid - chosenFirst;
+                        }
+                        
+                        if (localGid >= 0 && edgeTileGids.count(localGid)) {
+                            // Only treat as a true edge when adjacency also suggests
+                            // a vertical face and it's not near stairs. Avoid marking
+                            // flat top surfaces as edges.
+                            bool adjacencyLooksLikeFace = (hasAbove && !hasBelow)
+                                || (hasAbove && ((hasRight && !hasLeft) || (hasLeft && !hasRight)))
+                                || (hasAboveP1 && ((hasRightP1 && !hasLeftP1) || (hasLeftP1 && !hasRightP1)))
+                                || (hasAboveP2 && ((hasRightP2 && !hasLeftP2) || (hasLeftP2 && !hasRightP2)));
+                            if (!nearStairs && adjacencyLooksLikeFace) {
+                                tiles[y][x].walkable = false;
+                                edgeMask[y][x] = true;
+                            }
+                        }
+                    }
+                }
+                layerIndex++;
+            }
+        }
+    }
+    
+    // Note: We're not blocking tiles adjacent to lava anymore - let players get close to danger!
+
+    // Debug: count walkable tiles and show breakdown
+    int walkableCount = 0;
+    int lavaCount = 0;
+    int edgeBlockedCount = 0;
+    int floatingLandCount = 0;
+    int platformCount = 0;
+    int stairsCount = 0;
+    int emptyCount = 0;
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            if (platformMask[y][x]) platformCount++;
+            if (stairsMask[y][x]) stairsCount++;
+            
+            if (tiles[y][x].walkable) {
+                walkableCount++;
+            } else {
+                if (tiles[y][x].id == TILE_LAVA) lavaCount++;
+                else if (edgeMask[y][x]) floatingLandCount++;
+                // Count other non-walkable tiles
+                else edgeBlockedCount++;
+            }
+        }
+    }
+    std::cout << "Underworld walkability: " << walkableCount << " walkable, " 
+              << lavaCount << " lava, " << edgeBlockedCount << " edge-blocked, " 
+              << floatingLandCount << " floating-land, " << emptyCount << " empty out of " << (width * height) << " total" << std::endl;
+    std::cout << "Platform tiles: " << platformCount << ", Stairs tiles: " << stairsCount << std::endl;
+    
+    // Debug: print first few stairs locations
+    if (stairsCount > 0) {
+        std::cout << "First few stairs locations: ";
+        int printCount = 0;
+        for (int y = 0; y < height && printCount < 10; ++y) {
+            for (int x = 0; x < width && printCount < 10; ++x) {
+                if (stairsMask[y][x]) {
+                    std::cout << "(" << x << "," << y << ") ";
+                    printCount++;
+                }
+            }
+        }
+        std::cout << std::endl;
+    }
+
+    // Switch to underworld visual set using atlas
+    underworldVisuals = true;
+    underworldAtlasPlatform1 = nullptr;
+    underworldAtlasPlatform2 = nullptr;
+    underworldAtlasCols = underworldAtlasRows = 0;
+    if (assetManager) {
+        // Load both platform atlases (same layout; platform2 includes glow-integration)
+        underworldAtlasPlatform1 = assetManager->getTexture("assets/Underworld Tilemap/Tilesets/platform1.png");
+        underworldAtlasPlatform2 = assetManager->getTexture("assets/Underworld Tilemap/Tilesets/platform2.png");
+        Texture* anyAtlas = underworldAtlasPlatform1 ? underworldAtlasPlatform1 : underworldAtlasPlatform2;
+        if (!anyAtlas) anyAtlas = assetManager->getTexture("assets/Underworld Tilemap/Tilesets/tileset.png");
+        if (anyAtlas) { underworldAtlasCols = std::max(1, anyAtlas->getWidth() / 32); underworldAtlasRows = std::max(1, anyAtlas->getHeight() / 32); }
+        // Swap lava sheet to the underworld version if available
+        lavaSpriteSheet = assetManager->loadSpriteSheet("assets/Underworld Tilemap/Tilesets/lava-16frames.png", 32, 32, 16, 16);
+    }
+    std::cout << "TMX loaded: " << width << "x" << height << " tiles. Lava tiles and ground applied (Underworld visuals)." << std::endl;
 }
 
 void World::setTile(int x, int y, int tileId) {
@@ -439,6 +904,126 @@ bool World::isSafeTile(int tileX, int tileY) const {
     if (tileX < 0 || tileX >= width || tileY < 0 || tileY >= height) return false;
     const Tile &t = tiles[tileY][tileX];
     return t.walkable && !isHazardTileId(t.id);
+}
+
+bool World::isLedgeBlockedVertical(int fromTileX, int fromTileY, int toTileX, int toTileY) const {
+    // Only for TMX underworld with platform/stairs masks
+    if (!usePrebakedChunks || platformMask.empty()) return false;
+    // Vertical move only
+    if (fromTileX != toTileX || std::abs(toTileY - fromTileY) != 1) return false;
+    // If either origin or destination is out of bounds, do not restrict
+    if (fromTileY < 0 || fromTileY >= static_cast<int>(platformMask.size()) || fromTileX < 0 || fromTileX >= static_cast<int>(platformMask[0].size())) return false;
+    if (toTileY < 0 || toTileY >= static_cast<int>(platformMask.size()) || toTileX < 0 || toTileX >= static_cast<int>(platformMask[0].size())) return false;
+    
+    bool fromPlat = platformMask[fromTileY][fromTileX];
+    bool toPlat = platformMask[toTileY][toTileX];
+    
+    // Check if this is a ledge crossing that should be blocked
+    // A ledge crossing happens when moving between different platform heights
+    
+    // First, always block movement into non-walkable tiles
+    if (!tiles[toTileY][toTileX].walkable) {
+        return true;
+    }
+    
+    // Check if either position has stairs - if so, always allow movement
+    bool stairAtOrigin = stairsMask[fromTileY][fromTileX];
+    bool stairAtDest = stairsMask[toTileY][toTileX];
+    if (stairAtOrigin || stairAtDest) {
+        return false; // Always allow movement on/to/from stairs
+    }
+    
+    // Only block actual elevation changes (non-platform -> platform when going up,
+    // platform -> non-platform when going down). Allow movement within the same
+    // platform area so players can move freely on flat surfaces.
+    // Additionally, if trying to step onto a tile we have marked as an edge face
+    // by adjacency or GID analysis, block it.
+    
+    // Moving up (negative Y direction)
+    if (toTileY < fromTileY) {
+        if (!fromPlat && toPlat) {
+            return true; // climbing up a ledge without stairs
+        }
+    }
+    
+    // Moving down (positive Y direction)
+    if (toTileY > fromTileY) {
+        if (fromPlat && !toPlat) {
+            return true; // dropping down a ledge without stairs
+        }
+    }
+
+    // Final guard: if destination tile is explicitly flagged as an edge, block.
+    if (edgeMask[toTileY][toTileX]) return true;
+
+    // Note: Do NOT hard-block vertical transitions between platform1 and platform2
+    // here. Treat platform1/2 differences as cosmetic within the top surface.
+    // True elevation changes are already caught above (non-platform <-> platform)
+    // and by ledge-crossing logic which consults edge markers and stairs.
+    
+    return false; // Allow horizontal movements on same level
+}
+
+bool World::isLedgeCrossingBlocked(int fromTileX, int fromTileY, int toTileX, int toTileY) const {
+    if (!usePrebakedChunks || platformMask.empty()) return false;
+    // Any move that changes platformMask state must go through a stairs cell
+    auto inb = [&](int x, int y){ return x>=0 && x<width && y>=0 && y<height; };
+    if (!inb(fromTileX,fromTileY) || !inb(toTileX,toTileY)) return false;
+    if (fromTileX == toTileX && fromTileY == toTileY) return false;
+    bool fromPlat = platformMask[fromTileY][fromTileX];
+    bool toPlat = platformMask[toTileY][toTileX];
+    bool stairHere = stairsMask[fromTileY][fromTileX] || stairsMask[toTileY][toTileX];
+
+    // Helper: when making a HORIZONTAL step at the top or bottom of a staircase,
+    // allow the transition if the destination or origin has a staircase directly
+    // above or below it. This lets you step off/on the staircase onto the platform.
+    bool isHorizontal = (fromTileY == toTileY) && (std::abs(toTileX - fromTileX) == 1);
+    bool isVertical   = (fromTileX == toTileX) && (std::abs(toTileY - fromTileY) == 1);
+    bool stairAdjFrom = false, stairAdjTo = false;
+    if (isHorizontal) {
+        if (inb(fromTileX, fromTileY - 1)) stairAdjFrom |= stairsMask[fromTileY - 1][fromTileX];
+        if (inb(fromTileX, fromTileY + 1)) stairAdjFrom |= stairsMask[fromTileY + 1][fromTileX];
+        if (inb(toTileX, toTileY - 1))     stairAdjTo   |= stairsMask[toTileY - 1][toTileX];
+        if (inb(toTileX, toTileY + 1))     stairAdjTo   |= stairsMask[toTileY + 1][toTileX];
+    }
+    // Do not relax vertical ledge transitions via side-adjacent stairs here.
+    // Vertical movement is handled by isLedgeBlockedVertical (with edge guard).
+
+    // Case 1: Crossing between non-platform and platform (any direction)
+    auto nearStairsAt = [&](int tx, int ty){
+        if (!inb(tx,ty)) return false;
+        if (stairsMask[ty][tx]) return true;
+        if (inb(tx,ty-1) && stairsMask[ty-1][tx]) return true;
+        if (inb(tx,ty+1) && stairsMask[ty+1][tx]) return true;
+        if (inb(tx-1,ty) && stairsMask[ty][tx-1]) return true;
+        if (inb(tx+1,ty) && stairsMask[ty][tx+1]) return true;
+        return false;
+    };
+    bool edgeFrom = edgeMask[fromTileY][fromTileX] && !nearStairsAt(fromTileX, fromTileY);
+    bool edgeTo   = edgeMask[toTileY][toTileX]     && !nearStairsAt(toTileX, toTileY);
+    bool edgeHere = edgeFrom || edgeTo;
+    if (fromPlat != toPlat) {
+        if (stairHere) return false;
+        if ((isHorizontal || isVertical) && (stairAdjFrom || stairAdjTo)) return false;
+        if (!edgeHere) return false;
+        return true;
+    }
+
+    // Case 2: Crossing between different platform levels (platform1 <-> platform2)
+    // Even though both are platform, treat them as different elevations that require stairs
+    bool fromP1 = platform1Mask[fromTileY][fromTileX];
+    bool toP1   = platform1Mask[toTileY][toTileX];
+    bool fromP2 = platform2Mask[fromTileY][fromTileX];
+    bool toP2   = platform2Mask[toTileY][toTileX];
+    bool crossingBetweenLevels = (fromP1 && toP2) || (fromP2 && toP1);
+    if (crossingBetweenLevels) {
+        if (stairHere) return false;
+        if ((isHorizontal || isVertical) && (stairAdjFrom || stairAdjTo)) return false;
+        if (!edgeHere) return false;
+        return true;
+    }
+
+    return false;
 }
 
 
@@ -965,7 +1550,23 @@ void World::generateChunkTiles(Chunk* chunk) {
     int worldStartX = chunk->chunkX * chunkSize;
     int worldStartY = chunk->chunkY * chunkSize;
     
-    // Generate per-tile from biomes
+    if (usePrebakedChunks) {
+        // Copy tiles directly from the loaded TMX grid; out-of-bounds fill with stone
+        for (int y = 0; y < chunkSize; y++) {
+            for (int x = 0; x < chunkSize; x++) {
+                int wx = worldStartX + x;
+                int wy = worldStartY + y;
+                if (wx >= 0 && wx < width && wy >= 0 && wy < height) {
+                    chunk->tiles[y][x] = tiles[wy][wx];
+                } else {
+                    chunk->tiles[y][x] = Tile(TILE_STONE, true, true);
+                }
+            }
+        }
+        return;
+    }
+
+    // Procedural generation per tile from biomes
     for (int y = 0; y < chunkSize; y++) {
         for (int x = 0; x < chunkSize; x++) {
             int wx = worldStartX + x;
@@ -1415,6 +2016,24 @@ void World::updateVisibleChunks(float playerX, float playerY) {
     
     // Generate and mark chunks within render distance as visible (smooth roaming)
     int renderDistance = tileGenConfig.renderDistance;
+    if (usePrebakedChunks) {
+        // For prebaked maps, synthesize flat chunks that simply reference the global tiles
+        visibleChunks.clear();
+        for (int cy = playerChunkY - renderDistance; cy <= playerChunkY + renderDistance; cy++) {
+            for (int cx = playerChunkX - renderDistance; cx <= playerChunkX + renderDistance; cx++) {
+                // Clamp to map chunk grid
+                Chunk* c = nullptr;
+                if (cx >= 0 && cy >= 0 && cx < mapChunkCols && cy < mapChunkRows) {
+                    generateChunk(cx, cy);
+                    c = getChunk(cx, cy);
+                } else {
+                    generateChunk(cx, cy);
+                    c = getChunk(cx, cy);
+                }
+                if (c) { c->isVisible = true; visibleChunks.push_back(c); }
+            }
+        }
+    } else {
     for (int cy = playerChunkY - renderDistance; cy <= playerChunkY + renderDistance; cy++) {
         for (int cx = playerChunkX - renderDistance; cx <= playerChunkX + renderDistance; cx++) {
             generateChunk(cx, cy);
@@ -1422,6 +2041,7 @@ void World::updateVisibleChunks(float playerX, float playerY) {
             if (c) {
                 c->isVisible = true;
                 visibleChunks.push_back(c);
+                }
             }
         }
     }

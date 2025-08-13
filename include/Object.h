@@ -38,6 +38,8 @@ enum class ObjectType {
     BONFIRE,
     // Interactable upgrade station for equipment items
     MAGIC_ANVIL,
+    // Teleport gate to the Underworld
+    PORTAL,
     // Experience orbs
     EXP_ORB1,
     EXP_ORB2,

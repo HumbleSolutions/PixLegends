@@ -56,6 +56,12 @@ Object::Object(ObjectType type, int xPos, int yPos, const std::string& texturePa
             totalFrames = 39;
             frameDuration = 0.08f;
             break;
+        case ObjectType::PORTAL:
+            interactable = true;
+            walkable = false;
+            totalFrames = 1;
+            frameDuration = 0.1f;
+            break;
         case ObjectType::EXP_ORB1:
         case ObjectType::EXP_ORB2:
         case ObjectType::EXP_ORB3:

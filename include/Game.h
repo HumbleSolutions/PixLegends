@@ -69,6 +69,13 @@ public:
     float getAverageFPS() const { return averageFPS; }
     Uint32 getFrameTime() const { return frameTime; }
 
+    // World transitions
+    void enterUnderworld();
+
+    // Spawner control
+    void setStopMonsterSpawns(bool stop) { stopMonsterSpawns = stop; }
+    bool getStopMonsterSpawns() const { return stopMonsterSpawns; }
+
 private:
     // SDL objects
     SDL_Window* window;
@@ -116,6 +123,7 @@ private:
     bool bossWasDead = false;
     float bossMusicHoldTimerSec = 0.0f;
     bool bossFadeOutPending = false;
+    bool stopMonsterSpawns = false; // options toggle to stop periodic monster spawns
     
     // Timing and performance monitoring
     Uint32 lastFrameTime;

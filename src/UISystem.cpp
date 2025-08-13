@@ -385,17 +385,18 @@ void UISystem::renderPlayerStats(const Player* player) {
             renderText("STR: " + std::to_string(player->getStrength()), textX, textY + 20);
             renderText("INT: " + std::to_string(player->getIntelligence()), textX, textY + 40);
             // Replace shield slot icon with bow_item.png under portrait area
-            if (assetManager) {
-                if (Texture* bowIcon = assetManager->getTexture("assets/Textures/UI/bow_item.png")) {
-                    int iw = 28, ih = 28; // scaled icon size
-                    int iconX = frameX + static_cast<int>(texW * 0.16f);
-                    int iconY = by3 + barHeight + 6 + 10; // near gold
-                    SDL_Rect s{0,0,bowIcon->getWidth(), bowIcon->getHeight()};
-                    SDL_Rect d{ iconX, iconY, iw, ih };
-                    SDL_RenderCopy(renderer, bowIcon->getTexture(), &s, &d);
-                    renderText("Bow", iconX + iw + 6, iconY + ih/2 - 8);
-                }
-            }
+            // Commented out to avoid texture not found spam
+            // if (assetManager) {
+            //     if (Texture* bowIcon = assetManager->getTexture("assets/Textures/UI/bow_item.png")) {
+            //         int iw = 28, ih = 28; // scaled icon size
+            //         int iconX = frameX + static_cast<int>(texW * 0.16f);
+            //         int iconY = by3 + barHeight + 6 + 10; // near gold
+            //         SDL_Rect s{0,0,bowIcon->getWidth(), bowIcon->getHeight()};
+            //         SDL_Rect d{ iconX, iconY, iw, ih };
+            //         SDL_RenderCopy(renderer, bowIcon->getTexture(), &s, &d);
+            //         renderText("Bow", iconX + iw + 6, iconY + ih/2 - 8);
+            //     }
+            // }
             renderedFrame = true;
         }
     }
@@ -1066,7 +1067,7 @@ void UISystem::renderOptionsMenu(int selectedIndex,
         lastMouseDown = mouseDown;
     } else if (activeTab == OptionsTab::Video) {
         // Video: Fullscreen and VSync toggles
-        const int rows = 2;
+        const int rows = 3;
         for (int i = 0; i < rows; ++i) {
             SDL_Rect rowRect{ panel.x + 30, startY + i * rowH, panelW - 60, rowH - 6 };
             bool selected = (mouseX >= rowRect.x && mouseX <= rowRect.x + rowRect.w && mouseY >= rowRect.y && mouseY <= rowRect.y + rowRect.h);
@@ -1074,17 +1075,28 @@ void UISystem::renderOptionsMenu(int selectedIndex,
             SDL_RenderFillRect(renderer, &rowRect);
             SDL_SetRenderDrawColor(renderer, 220,220,220,255);
             SDL_RenderDrawRect(renderer, &rowRect);
-            const char* labels[2] = { "Fullscreen", "VSync" };
+            const char* labels[3] = { "Fullscreen", "VSync", "Stop Monster Spawns" };
             renderText(labels[i], rowRect.x + 10, rowRect.y + 12);
             SDL_Rect valueArea{ rowRect.x + rowRect.w - 220, rowRect.y + 8, 200, rowRect.h - 16 };
             SDL_SetRenderDrawColor(renderer, 80, 120, 160, 255);
             SDL_RenderFillRect(renderer, &valueArea);
             SDL_SetRenderDrawColor(renderer, 255,255,255,255);
             SDL_RenderDrawRect(renderer, &valueArea);
-            renderText((i == 0 ? (fullscreenEnabled ? "On" : "Off") : (vsyncEnabled ? "On" : "Off")), valueArea.x + 12, valueArea.y + 8);
-            if (mouseDown && mouseX >= valueArea.x && mouseX <= valueArea.x + valueArea.w && mouseY >= valueArea.y && mouseY <= valueArea.y + valueArea.h) {
-                if (i == 0) outResult.clickedFullscreen = true;
-                // VSync is fixed at creation with present vsync, so no toggle here for now
+            if (i == 0) {
+                renderText(fullscreenEnabled ? "On" : "Off", valueArea.x + 12, valueArea.y + 8);
+                if (mouseDown && mouseX >= valueArea.x && mouseX <= valueArea.x + valueArea.w && mouseY >= valueArea.y && mouseY <= valueArea.y + valueArea.h) {
+                    outResult.clickedFullscreen = true;
+                }
+            } else if (i == 1) {
+                renderText(vsyncEnabled ? "On" : "Off", valueArea.x + 12, valueArea.y + 8);
+                // VSync toggle disabled (renderer created with vsync)
+            } else if (i == 2) {
+                static bool stopSpawnUi = false;
+                renderText(stopSpawnUi ? "On" : "Off", valueArea.x + 12, valueArea.y + 8);
+                if (mouseDown && mouseX >= valueArea.x && mouseX <= valueArea.x + valueArea.w && mouseY >= valueArea.y && mouseY <= valueArea.y + valueArea.h && !lastMouseDown) {
+                    stopSpawnUi = !stopSpawnUi;
+                    outResult.toggledStopSpawns = true; outResult.stopSpawnsNewValue = stopSpawnUi;
+                }
             }
         }
     }
