@@ -104,11 +104,12 @@ public:
     Item* createItem(const std::string& itemId, ItemRarity rarity = ItemRarity::COMMON, int stack = 1);
     Item* getItemTemplate(const std::string& itemId) const;
     
-    // Inventory management (separate bags for items and scrolls)
+    // Inventory management (separate bags for items, scrolls, and resources)
     static constexpr int INVENTORY_ROWS = 6;
     static constexpr int INVENTORY_COLS = 8;
     static constexpr int INVENTORY_SIZE = INVENTORY_ROWS * INVENTORY_COLS;
     static constexpr int SCROLL_INVENTORY_SIZE = 20; // Separate scroll inventory
+    static constexpr int RESOURCE_INVENTORY_SIZE = 30; // Separate resource inventory
     
     // Add item to appropriate inventory
     bool addItem(const std::string& itemId, int amount = 1, ItemRarity rarity = ItemRarity::COMMON);
@@ -121,6 +122,7 @@ public:
     // Get inventory contents
     const std::vector<InventorySlot>& getItemInventory() const { return itemInventory; }
     const std::vector<InventorySlot>& getScrollInventory() const { return scrollInventory; }
+    const std::vector<InventorySlot>& getResourceInventory() const { return resourceInventory; }
     
     // Equipment management
     const std::vector<InventorySlot>& getEquipmentSlots() const { return equipmentSlots; }
@@ -149,8 +151,9 @@ private:
     AssetManager* assetManager;
     
     // Inventories
-    std::vector<InventorySlot> itemInventory;      // Main item inventory (equipment, materials)
+    std::vector<InventorySlot> itemInventory;      // Main item inventory (equipment)
     std::vector<InventorySlot> scrollInventory;    // Scroll-only inventory
+    std::vector<InventorySlot> resourceInventory;  // Resource/material inventory
     std::vector<InventorySlot> equipmentSlots;     // Currently equipped items (9 slots)
     
     // Item templates and instances

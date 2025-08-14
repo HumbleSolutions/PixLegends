@@ -875,8 +875,14 @@ void Player::interact() {
                         notification += item.getRarityString() + " " + item.name;
                         break;
                     case LootType::MATERIAL:
-                        // For now, add materials to the legacy bag system
-                        addItemToInventory("material_" + item.name, item.amount);
+                        // Add materials to the ItemSystem resource inventory
+                        if (itemSystem) {
+                            ItemRarity rarity = static_cast<ItemRarity>(static_cast<int>(item.rarity));
+                            itemSystem->addItem(item.name, item.amount, rarity);
+                        } else {
+                            // Fallback to legacy system if ItemSystem is not available
+                            addItemToInventory("material_" + item.name, item.amount);
+                        }
                         notification += item.getRarityString() + " " + item.name + " x" + std::to_string(item.amount);
                         break;
                 }

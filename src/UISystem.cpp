@@ -1216,39 +1216,40 @@ UISystem::InventoryHit UISystem::renderEnhancedInventory(Player* player, bool& i
     SDL_RenderDrawRect(renderer, &closeBtn);
     renderTextCentered("X", closeBtn.x + closeBtn.w/2, closeBtn.y + closeBtn.h/2);
     
-    // Split into two sections: Items (left) and Scrolls (right)
-    int sectionW = (panelW - 60) / 2;
-    int itemsX = panelX + 20;
-    int scrollsX = panelX + 40 + sectionW;
+    // Split into three sections: Equipment (left), Scrolls (middle), Resources (right)
+    int sectionW = (panelW - 80) / 3;
+    int equipmentX = panelX + 20;
+    int scrollsX = panelX + 30 + sectionW;
+    int resourcesX = panelX + 40 + 2 * sectionW;
     int sectionY = panelY + 60;
     int sectionH = panelH - 100;
     
-    // Items section
-    SDL_Rect itemsSection = {itemsX, sectionY, sectionW, sectionH};
+    // Equipment section
+    SDL_Rect equipmentSection = {equipmentX, sectionY, sectionW, sectionH};
     SDL_SetRenderDrawColor(renderer, 30, 30, 45, 255);
-    SDL_RenderFillRect(renderer, &itemsSection);
+    SDL_RenderFillRect(renderer, &equipmentSection);
     SDL_SetRenderDrawColor(renderer, 120, 120, 140, 255);
-    SDL_RenderDrawRect(renderer, &itemsSection);
+    SDL_RenderDrawRect(renderer, &equipmentSection);
     
-    renderText("Equipment & Materials", itemsX + 10, sectionY + 10);
+    renderText("Equipment", equipmentX + 10, sectionY + 10);
     
-    // Draw item grid (6 columns, 8 rows) - adjusted layout to fit within section boundaries
-    int slotSize = 42;  // Slightly smaller slots to fit better
-    int slotSpacing = 5;  // Reduced spacing
-    int gridCols = 6;  // Reduced from 8 to 6 columns
-    int gridRows = 8;  // Increased from 6 to 8 rows to maintain 48 total slots
-    int gridStartX = itemsX + 15;  // Better left margin  
-    int gridStartY = sectionY + 45;  // Better top margin
+    // Draw equipment grid (4 columns, 12 rows) - adjusted for narrower section
+    int slotSize = 36;  // Smaller slots for three-column layout
+    int slotSpacing = 4;  // Reduced spacing
+    int equipmentCols = 4;  // Fewer columns due to narrower section
+    int equipmentRows = 12;  // More rows to maintain slot count
+    int equipmentGridStartX = equipmentX + 10;  // Better left margin  
+    int equipmentGridStartY = sectionY + 35;  // Better top margin
     
     const auto& itemInventory = itemSystem->getItemInventory();
     
-    for (int row = 0; row < gridRows; row++) {
-        for (int col = 0; col < gridCols; col++) {
-            int slotIndex = row * gridCols + col;
+    for (int row = 0; row < equipmentRows; row++) {
+        for (int col = 0; col < equipmentCols; col++) {
+            int slotIndex = row * equipmentCols + col;
             if (slotIndex >= ItemSystem::INVENTORY_SIZE) break;
             
-            int slotX = gridStartX + col * (slotSize + slotSpacing);
-            int slotY = gridStartY + row * (slotSize + slotSpacing);
+            int slotX = equipmentGridStartX + col * (slotSize + slotSpacing);
+            int slotY = equipmentGridStartY + row * (slotSize + slotSpacing);
             SDL_Rect slotRect = {slotX, slotY, slotSize, slotSize};
             
             // Slot background
@@ -1313,13 +1314,13 @@ UISystem::InventoryHit UISystem::renderEnhancedInventory(Player* player, bool& i
     SDL_SetRenderDrawColor(renderer, 140, 120, 120, 255);
     SDL_RenderDrawRect(renderer, &scrollsSection);
     
-    renderText("Scrolls & Enchantments", scrollsX + 10, sectionY + 10);
+    renderText("Scrolls", scrollsX + 10, sectionY + 10);
     
-    // Draw scroll grid (4 columns, 5 rows) with improved spacing
-    int scrollCols = 4;
-    int scrollRows = 5;
-    int scrollGridStartX = scrollsX + 15;  // Better left margin
-    int scrollGridStartY = sectionY + 45;  // Better top margin
+    // Draw scroll grid (3 columns, 7 rows) with improved spacing for narrower section
+    int scrollCols = 3;
+    int scrollRows = 7;
+    int scrollGridStartX = scrollsX + 10;  // Better left margin
+    int scrollGridStartY = sectionY + 35;  // Better top margin
     
     const auto& scrollInventory = itemSystem->getScrollInventory();
     
@@ -1382,6 +1383,87 @@ UISystem::InventoryHit UISystem::renderEnhancedInventory(Player* player, bool& i
                 if (!scrollInventory[slotIndex].isEmpty()) {
                     Item* scroll = scrollInventory[slotIndex].item;
                     renderTooltip(scroll->getTooltipText(), mx, my);
+                }
+            }
+        }
+    }
+    
+    // Resources section
+    SDL_Rect resourcesSection = {resourcesX, sectionY, sectionW, sectionH};
+    SDL_SetRenderDrawColor(renderer, 30, 45, 30, 255);
+    SDL_RenderFillRect(renderer, &resourcesSection);
+    SDL_SetRenderDrawColor(renderer, 120, 140, 120, 255);
+    SDL_RenderDrawRect(renderer, &resourcesSection);
+    
+    renderText("Resources", resourcesX + 10, sectionY + 10);
+    
+    // Draw resource grid (3 columns, 10 rows) 
+    int resourceCols = 3;
+    int resourceRows = 10;
+    int resourceGridStartX = resourcesX + 10;  // Better left margin
+    int resourceGridStartY = sectionY + 35;  // Better top margin
+    
+    const auto& resourceInventory = itemSystem->getResourceInventory();
+    
+    for (int row = 0; row < resourceRows; row++) {
+        for (int col = 0; col < resourceCols; col++) {
+            int slotIndex = row * resourceCols + col;
+            if (slotIndex >= ItemSystem::RESOURCE_INVENTORY_SIZE) break;
+            
+            int slotX = resourceGridStartX + col * (slotSize + slotSpacing);
+            int slotY = resourceGridStartY + row * (slotSize + slotSpacing);
+            SDL_Rect slotRect = {slotX, slotY, slotSize, slotSize};
+            
+            // Slot background
+            SDL_SetRenderDrawColor(renderer, 50, 70, 50, 255);
+            SDL_RenderFillRect(renderer, &slotRect);
+            SDL_SetRenderDrawColor(renderer, 100, 120, 100, 255);
+            SDL_RenderDrawRect(renderer, &slotRect);
+            
+            // Resource icon and info
+            if (!resourceInventory[slotIndex].isEmpty()) {
+                Item* resource = resourceInventory[slotIndex].item;
+                
+                // Draw rarity border
+                SDL_Color rarityColor = resource->getRarityColor();
+                SDL_SetRenderDrawColor(renderer, rarityColor.r, rarityColor.g, rarityColor.b, 255);
+                SDL_RenderDrawRect(renderer, &slotRect);
+                
+                // Draw resource icon if available
+                Texture* icon = itemSystem->getItemIcon(resource->id);
+                if (icon) {
+                    SDL_Rect srcRect = {0, 0, 0, 0};
+                    SDL_QueryTexture(icon->getTexture(), nullptr, nullptr, &srcRect.w, &srcRect.h);
+                    SDL_Rect dstRect = {slotX + 2, slotY + 2, slotSize - 4, slotSize - 4};
+                    SDL_RenderCopy(renderer, icon->getTexture(), &srcRect, &dstRect);
+                }
+                
+                // Draw stack count (resources can stack high)
+                if (resource->currentStack > 1) {
+                    std::string stackText = std::to_string(resource->currentStack);
+                    renderText(stackText, slotX + slotSize - 15, slotY + slotSize - 15, {255, 255, 255, 255});
+                }
+            }
+            
+            // Check for mouse clicks on this resource slot
+            int mx, my;
+            Uint32 mouseState = SDL_GetMouseState(&mx, &my);
+            bool leftClick = (mouseState & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
+            bool rightClick = (mouseState & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0;
+            
+            if (mx >= slotX && mx <= slotX + slotSize && my >= slotY && my <= slotY + slotSize) {
+                if (leftClick) {
+                    hit.clickedResourceSlot = slotIndex;
+                }
+                if (rightClick) {
+                    hit.rightClicked = true;
+                    hit.clickedResourceSlot = slotIndex;
+                }
+                
+                // Show tooltip on hover for resources
+                if (!resourceInventory[slotIndex].isEmpty()) {
+                    Item* resource = resourceInventory[slotIndex].item;
+                    renderTooltip(resource->getTooltipText(), mx, my);
                 }
             }
         }

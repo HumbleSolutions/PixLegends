@@ -44,6 +44,7 @@ public:
         bool clickedClose = false;
         int clickedItemSlot = -1;      // Item inventory slot
         int clickedScrollSlot = -1;    // Scroll inventory slot  
+        int clickedResourceSlot = -1;  // Resource inventory slot
         int clickedEquipSlot = -1;     // Equipment slot
         bool rightClicked = false;     // For tooltips/context menus
         bool dragging = false;         // Drag operation in progress

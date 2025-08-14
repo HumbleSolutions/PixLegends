@@ -92,6 +92,7 @@ ItemSystem::ItemSystem(AssetManager* assetManager) : assetManager(assetManager) 
     // Initialize inventories
     itemInventory.resize(INVENTORY_SIZE);
     scrollInventory.resize(SCROLL_INVENTORY_SIZE);
+    resourceInventory.resize(RESOURCE_INVENTORY_SIZE);
     equipmentSlots.resize(9); // 9 equipment slots
     
     // Initialize item templates
@@ -181,6 +182,56 @@ void ItemSystem::initializeItemTemplates() {
     
     createItemTemplate("armor_scroll", "Armor Enchantment", "Enhances armor defense.", 
                       "assets/Textures/Items/armor_enchant_scroll.png", ItemType::SCROLL);
+    
+    // Material items (Common rarity)
+    createItemTemplate("Iron Ore", "Iron Ore", "Basic iron ore for crafting.", 
+                      "assets/Textures/Items/iron_ore.png", ItemType::MATERIAL, EquipmentType::RING, ItemRarity::COMMON);
+    createItemTemplate("Cloth Scraps", "Cloth Scraps", "Small pieces of fabric.", 
+                      "assets/Textures/Items/cloth_scraps.png", ItemType::MATERIAL, EquipmentType::RING, ItemRarity::COMMON);
+    createItemTemplate("Leather Hide", "Leather Hide", "Raw leather material.", 
+                      "assets/Textures/Items/leather_hide.png", ItemType::MATERIAL, EquipmentType::RING, ItemRarity::COMMON);
+    createItemTemplate("Wood Planks", "Wood Planks", "Processed wood for construction.", 
+                      "assets/Textures/Items/wood_planks.png", ItemType::MATERIAL, EquipmentType::RING, ItemRarity::COMMON);
+                      
+    // Material items (Uncommon rarity)
+    createItemTemplate("Silver Ore", "Silver Ore", "Refined silver ore.", 
+                      "assets/Textures/Items/silver_ore.png", ItemType::MATERIAL, EquipmentType::RING, ItemRarity::UNCOMMON);
+    createItemTemplate("Fine Silk", "Fine Silk", "High quality silk thread.", 
+                      "assets/Textures/Items/fine_silk.png", ItemType::MATERIAL, EquipmentType::RING, ItemRarity::UNCOMMON);
+    createItemTemplate("Thick Leather", "Thick Leather", "Durable leather material.", 
+                      "assets/Textures/Items/thick_leather.png", ItemType::MATERIAL, EquipmentType::RING, ItemRarity::UNCOMMON);
+    createItemTemplate("Hardwood", "Hardwood", "Dense, strong wood.", 
+                      "assets/Textures/Items/hardwood.png", ItemType::MATERIAL, EquipmentType::RING, ItemRarity::UNCOMMON);
+                      
+    // Material items (Rare rarity)
+    createItemTemplate("Gold Ore", "Gold Ore", "Precious gold ore.", 
+                      "assets/Textures/Items/gold_ore.png", ItemType::MATERIAL, EquipmentType::RING, ItemRarity::RARE);
+    createItemTemplate("Enchanted Thread", "Enchanted Thread", "Magically infused thread.", 
+                      "assets/Textures/Items/enchanted_thread.png", ItemType::MATERIAL, EquipmentType::RING, ItemRarity::RARE);
+    createItemTemplate("Dragon Leather", "Dragon Leather", "Scales from a mighty dragon.", 
+                      "assets/Textures/Items/dragon_leather.png", ItemType::MATERIAL, EquipmentType::RING, ItemRarity::RARE);
+    createItemTemplate("Ancient Wood", "Ancient Wood", "Wood from an ancient tree.", 
+                      "assets/Textures/Items/ancient_wood.png", ItemType::MATERIAL, EquipmentType::RING, ItemRarity::RARE);
+                      
+    // Material items (Epic rarity)
+    createItemTemplate("Platinum Ore", "Platinum Ore", "Rare platinum ore.", 
+                      "assets/Textures/Items/platinum_ore.png", ItemType::MATERIAL, EquipmentType::RING, ItemRarity::EPIC);
+    createItemTemplate("Starweave Silk", "Starweave Silk", "Silk woven from starlight.", 
+                      "assets/Textures/Items/starweave_silk.png", ItemType::MATERIAL, EquipmentType::RING, ItemRarity::EPIC);
+    createItemTemplate("Phoenix Feather", "Phoenix Feather", "A feather from the legendary phoenix.", 
+                      "assets/Textures/Items/phoenix_feather.png", ItemType::MATERIAL, EquipmentType::RING, ItemRarity::EPIC);
+    createItemTemplate("World Tree Branch", "World Tree Branch", "A branch from the world tree.", 
+                      "assets/Textures/Items/world_tree_branch.png", ItemType::MATERIAL, EquipmentType::RING, ItemRarity::EPIC);
+                      
+    // Material items (Legendary rarity)
+    createItemTemplate("Mithril Ore", "Mithril Ore", "The legendary mithril ore.", 
+                      "assets/Textures/Items/mithril_ore.png", ItemType::MATERIAL, EquipmentType::RING, ItemRarity::LEGENDARY);
+    createItemTemplate("Void Silk", "Void Silk", "Silk from the void itself.", 
+                      "assets/Textures/Items/void_silk.png", ItemType::MATERIAL, EquipmentType::RING, ItemRarity::LEGENDARY);
+    createItemTemplate("Dragon Heart", "Dragon Heart", "The heart of an ancient dragon.", 
+                      "assets/Textures/Items/dragon_heart.png", ItemType::MATERIAL, EquipmentType::RING, ItemRarity::LEGENDARY);
+    createItemTemplate("Yggdrasil Wood", "Yggdrasil Wood", "Wood from the world tree Yggdrasil.", 
+                      "assets/Textures/Items/yggdrasil_wood.png", ItemType::MATERIAL, EquipmentType::RING, ItemRarity::LEGENDARY);
     
     // Set base stats for equipment items (BEFORE rarity scaling is applied)
     
@@ -275,6 +326,8 @@ void ItemSystem::createItemTemplate(const std::string& id, const std::string& na
     
     if (type == ItemType::SCROLL) {
         item.stackSize = 99; // Scrolls can stack
+    } else if (type == ItemType::MATERIAL) {
+        item.stackSize = 999; // Materials can stack highly
     } else if (type == ItemType::EQUIPMENT) {
         item.stackSize = 1;  // Equipment doesn't stack
         
@@ -356,18 +409,33 @@ bool ItemSystem::addItem(const std::string& itemId, int amount, ItemRarity rarit
     }
     
     bool isScroll = (templateIt->second.type == ItemType::SCROLL);
+    bool isMaterial = (templateIt->second.type == ItemType::MATERIAL);
+    
+    // Determine which inventory to use
+    std::vector<InventorySlot>* targetInventory;
+    int inventorySize;
+    
+    if (isScroll) {
+        targetInventory = &scrollInventory;
+        inventorySize = SCROLL_INVENTORY_SIZE;
+    } else if (isMaterial) {
+        targetInventory = &resourceInventory;
+        inventorySize = RESOURCE_INVENTORY_SIZE;
+    } else {
+        targetInventory = &itemInventory;
+        inventorySize = INVENTORY_SIZE;
+    }
     
     // Try to stack with existing items first
-    for (int i = 0; i < (isScroll ? SCROLL_INVENTORY_SIZE : INVENTORY_SIZE); i++) {
-        auto& inventory = isScroll ? scrollInventory : itemInventory;
-        if (!inventory[i].isEmpty() && 
-            inventory[i].item->id == itemId && 
-            inventory[i].item->rarity == rarity &&
-            inventory[i].item->canStackWith(*inventory[i].item)) {
+    for (int i = 0; i < inventorySize; i++) {
+        if (!(*targetInventory)[i].isEmpty() && 
+            (*targetInventory)[i].item->id == itemId && 
+            (*targetInventory)[i].item->rarity == rarity &&
+            (*targetInventory)[i].item->canStackWith(*(*targetInventory)[i].item)) {
             
-            int canAdd = inventory[i].item->stackSize - inventory[i].item->currentStack;
+            int canAdd = (*targetInventory)[i].item->stackSize - (*targetInventory)[i].item->currentStack;
             int toAdd = std::min(amount, canAdd);
-            inventory[i].item->currentStack += toAdd;
+            (*targetInventory)[i].item->currentStack += toAdd;
             amount -= toAdd;
             
             if (amount <= 0) return true;
@@ -376,7 +444,14 @@ bool ItemSystem::addItem(const std::string& itemId, int amount, ItemRarity rarit
     
     // Create new stacks for remaining amount
     while (amount > 0) {
-        int emptySlot = findEmptySlot(isScroll);
+        int emptySlot = -1;
+        for (int i = 0; i < inventorySize; i++) {
+            if ((*targetInventory)[i].isEmpty()) {
+                emptySlot = i;
+                break;
+            }
+        }
+        
         if (emptySlot == -1) {
             std::cout << "Inventory full!" << std::endl;
             return false;
@@ -386,8 +461,7 @@ bool ItemSystem::addItem(const std::string& itemId, int amount, ItemRarity rarit
         Item* newItem = createItem(itemId, rarity, stackAmount);
         if (!newItem) return false;
         
-        auto& inventory = isScroll ? scrollInventory : itemInventory;
-        inventory[emptySlot].setItem(newItem);
+        (*targetInventory)[emptySlot].setItem(newItem);
         amount -= stackAmount;
     }
     
@@ -531,6 +605,9 @@ void ItemSystem::loadInventoryFromSave(const std::string invKey[2][9], const int
     for (auto& slot : scrollInventory) {
         slot.clear();
     }
+    for (auto& slot : resourceInventory) {
+        slot.clear();
+    }
     
     // Load saved inventory items
     for (int b = 0; b < 2; ++b) {
@@ -553,12 +630,35 @@ void ItemSystem::loadInventoryFromSave(const std::string invKey[2][9], const int
                         
                         // Add to appropriate inventory
                         if (isScroll) {
-                            int emptySlot = findEmptySlot(true); // true for scroll inventory
+                            int emptySlot = -1;
+                            for (int s = 0; s < SCROLL_INVENTORY_SIZE; s++) {
+                                if (scrollInventory[s].isEmpty()) {
+                                    emptySlot = s;
+                                    break;
+                                }
+                            }
                             if (emptySlot != -1) {
                                 scrollInventory[emptySlot].setItem(item);
                             }
+                        } else if (templateIt->second.type == ItemType::MATERIAL) {
+                            int emptySlot = -1;
+                            for (int s = 0; s < RESOURCE_INVENTORY_SIZE; s++) {
+                                if (resourceInventory[s].isEmpty()) {
+                                    emptySlot = s;
+                                    break;
+                                }
+                            }
+                            if (emptySlot != -1) {
+                                resourceInventory[emptySlot].setItem(item);
+                            }
                         } else {
-                            int emptySlot = findEmptySlot(false); // false for item inventory
+                            int emptySlot = -1;
+                            for (int s = 0; s < INVENTORY_SIZE; s++) {
+                                if (itemInventory[s].isEmpty()) {
+                                    emptySlot = s;
+                                    break;
+                                }
+                            }
                             if (emptySlot != -1) {
                                 itemInventory[emptySlot].setItem(item);
                             }
