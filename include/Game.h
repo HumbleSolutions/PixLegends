@@ -100,6 +100,8 @@ public:
 
     // World transitions
     void enterUnderworld();
+    void exitUnderworld();
+    bool isInUnderworld() const { return inUnderworld; }
 
     // Spawner control
     void setStopMonsterSpawns(bool stop) { stopMonsterSpawns = stop; }
@@ -142,6 +144,7 @@ private:
     bool isPaused;
     bool optionsOpen = false;
     bool loginScreenActive = true;
+    bool inUnderworld = false;
     
     // Enhanced UI state
     bool equipmentOpen = false;

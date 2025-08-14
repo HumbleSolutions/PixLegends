@@ -495,6 +495,8 @@ void AssetManager::preloadAssets() {
     loadSpriteSheet(OBJECTS_PATH + "Bonfire.png", 32, 48, 6, 6);
     // Load Magic Anvil spritesheet with 39 frames
     loadSpriteSheetAuto(OBJECTS_PATH + "magic_anvil.png", 39, 0);
+    // Load Underworld Magic Anvil spritesheet with 39 frames
+    loadSpriteSheetAuto(OBJECTS_PATH + "underword_magic_anvil.png", 39, 0);
     
     // Preload primary UI/game font
     loadFont("assets/Fonts/retganon.ttf", 16);

@@ -46,6 +46,57 @@ void Renderer::renderTexture(SDL_Texture* texture, int x, int y, int width, int 
     SDL_RenderCopy(renderer, texture, nullptr, &dstRect);
 }
 
+void Renderer::renderTextureEx(SDL_Texture* texture, const SDL_Rect* srcRect, const SDL_Rect* dstRect, 
+                               double angle, const SDL_Point* center, SDL_RendererFlip flip) {
+    if (!texture) {
+        return;
+    }
+    
+    SDL_Rect adjustedDstRect;
+    if (dstRect) {
+        adjustedDstRect = *dstRect;
+        // Apply camera offset
+        adjustedDstRect.x -= cameraX;
+        adjustedDstRect.y -= cameraY;
+        // Apply zoom scaling
+        if (std::fabs(zoom - 1.0f) > 0.001f) {
+            adjustedDstRect.x = static_cast<int>(adjustedDstRect.x * zoom);
+            adjustedDstRect.y = static_cast<int>(adjustedDstRect.y * zoom);
+            adjustedDstRect.w = static_cast<int>(adjustedDstRect.w * zoom);
+            adjustedDstRect.h = static_cast<int>(adjustedDstRect.h * zoom);
+        }
+    }
+    
+    SDL_RenderCopyEx(renderer, texture, srcRect, dstRect ? &adjustedDstRect : nullptr, 
+                     angle, center, flip);
+}
+
+void Renderer::renderTextureFlipped(SDL_Texture* texture, int x, int y, int width, int height, 
+                                    bool flipHorizontal, bool flipVertical) {
+    if (!texture) {
+        return;
+    }
+    
+    SDL_Rect dstRect = {x - cameraX, y - cameraY, width, height};
+    if (std::fabs(zoom - 1.0f) > 0.001f) {
+        dstRect.x = static_cast<int>(dstRect.x * zoom);
+        dstRect.y = static_cast<int>(dstRect.y * zoom);
+        dstRect.w = static_cast<int>(dstRect.w * zoom);
+        dstRect.h = static_cast<int>(dstRect.h * zoom);
+    }
+    
+    SDL_RendererFlip flip = SDL_FLIP_NONE;
+    if (flipHorizontal && flipVertical) {
+        flip = static_cast<SDL_RendererFlip>(SDL_FLIP_HORIZONTAL | SDL_FLIP_VERTICAL);
+    } else if (flipHorizontal) {
+        flip = SDL_FLIP_HORIZONTAL;
+    } else if (flipVertical) {
+        flip = SDL_FLIP_VERTICAL;
+    }
+    
+    SDL_RenderCopyEx(renderer, texture, nullptr, &dstRect, 0.0, nullptr, flip);
+}
+
 void Renderer::renderText(const std::string& text, TTF_Font* font, int x, int y, SDL_Color color) {
     if (!font || text.empty()) {
         return;

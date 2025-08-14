@@ -1062,6 +1062,10 @@ void World::addObject(std::unique_ptr<Object> object) {
     }
 }
 
+void World::clearObjects() {
+    objects.clear();
+}
+
 void World::addEnemy(std::unique_ptr<Enemy> enemy) {
     if (enemy) {
         enemies.push_back(std::move(enemy));

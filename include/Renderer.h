@@ -13,6 +13,13 @@ public:
     void renderTexture(SDL_Texture* texture, const SDL_Rect* srcRect = nullptr, const SDL_Rect* dstRect = nullptr);
     void renderTexture(SDL_Texture* texture, int x, int y, int width = 0, int height = 0);
     
+    // Texture rendering with flip support
+    void renderTextureEx(SDL_Texture* texture, const SDL_Rect* srcRect, const SDL_Rect* dstRect, 
+                        double angle = 0.0, const SDL_Point* center = nullptr, 
+                        SDL_RendererFlip flip = SDL_FLIP_NONE);
+    void renderTextureFlipped(SDL_Texture* texture, int x, int y, int width, int height, 
+                             bool flipHorizontal = false, bool flipVertical = false);
+    
     // Text rendering
     void renderText(const std::string& text, TTF_Font* font, int x, int y, SDL_Color color = {255, 255, 255, 255});
     void renderTextCentered(const std::string& text, TTF_Font* font, int x, int y, SDL_Color color = {255, 255, 255, 255});

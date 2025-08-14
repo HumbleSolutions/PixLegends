@@ -16,7 +16,11 @@ enum class EnemyState {
     FLYING,
     ATTACKING,
     HURT,
-    DEAD
+    DEAD,
+    TRANSFORMING,
+    JUMPING,
+    DASHING,
+    SUPER_ATTACKING
 };
 
 enum class EnemyDirection {
@@ -25,9 +29,45 @@ enum class EnemyDirection {
 };
 
 enum class EnemyKind {
+    // Currently implemented
     Demon,
     Wizard,
-    Goblin
+    Goblin,
+    Skeleton,
+    
+    // Trash tier (Grey)
+    Imp,
+    FlyingEye,
+    PoisonSkull,
+    
+    // Common tier (White)
+    Lizardman,
+    DwarfWarrior,
+    Harpy,
+    
+    // Magic tier (Blue)
+    SkeletonMage,
+    Pyromancer,
+    Witch,
+    
+    // Elite tier (Gold)
+    Dragon,
+    Minotaur,
+    StoneGolem,
+    HugeKnight,
+    Centaur,
+    HeadlessHorseman,
+    Cyclops,
+    Medusa,
+    Cerberus,
+    Gryphon,
+    Gargoyle,
+    Werewolf,
+    Mimic,
+    MaskedOrc,
+    KoboldWarrior,
+    SatyrArcher,
+    BabyDragon
 };
 
 enum class PackRarity {
@@ -65,9 +105,45 @@ public:
     bool getIsAggroed() const { return isAggroed; }
     const char* getDisplayName() const {
         switch (kind) {
+            // Currently implemented
             case EnemyKind::Demon: return "Demon";
             case EnemyKind::Wizard: return "Wizard";
             case EnemyKind::Goblin: return "Goblin";
+            case EnemyKind::Skeleton: return "Skeleton";
+            
+            // Trash tier
+            case EnemyKind::Imp: return "Imp";
+            case EnemyKind::FlyingEye: return "Flying Eye";
+            case EnemyKind::PoisonSkull: return "Poison Skull";
+            
+            // Common tier
+            case EnemyKind::Lizardman: return "Lizardman";
+            case EnemyKind::DwarfWarrior: return "Dwarf Warrior";
+            case EnemyKind::Harpy: return "Harpy";
+            
+            // Magic tier
+            case EnemyKind::SkeletonMage: return "Skeleton Mage";
+            case EnemyKind::Pyromancer: return "Pyromancer";
+            case EnemyKind::Witch: return "Witch";
+            
+            // Elite tier
+            case EnemyKind::Dragon: return "Dragon";
+            case EnemyKind::Minotaur: return "Minotaur";
+            case EnemyKind::StoneGolem: return "Stone Golem";
+            case EnemyKind::HugeKnight: return "Huge Knight";
+            case EnemyKind::Centaur: return "Centaur";
+            case EnemyKind::HeadlessHorseman: return "Headless Horseman";
+            case EnemyKind::Cyclops: return "Cyclops";
+            case EnemyKind::Medusa: return "Medusa";
+            case EnemyKind::Cerberus: return "Cerberus";
+            case EnemyKind::Gryphon: return "Gryphon";
+            case EnemyKind::Gargoyle: return "Gargoyle";
+            case EnemyKind::Werewolf: return "Werewolf";
+            case EnemyKind::Mimic: return "Mimic";
+            case EnemyKind::MaskedOrc: return "Masked Orc";
+            case EnemyKind::KoboldWarrior: return "Kobold Warrior";
+            case EnemyKind::SatyrArcher: return "Satyr Archer";
+            case EnemyKind::BabyDragon: return "Baby Dragon";
         }
         return "Enemy";
     }
@@ -126,6 +202,42 @@ protected:
     SpriteSheet* hurtLeftSpriteSheet;
     SpriteSheet* hurtRightSpriteSheet;
     SpriteSheet* deathSpriteSheet;
+    
+    // Dual attack support (for Dragon)
+    SpriteSheet* attack2LeftSpriteSheet = nullptr;
+    SpriteSheet* attack2RightSpriteSheet = nullptr;
+    bool hasDualAttacks = false;
+    bool useAttack2 = false;  // Toggle between attack types
+    
+    // Transformation support (for Werewolf)
+    SpriteSheet* transformationSpriteSheet = nullptr;
+    SpriteSheet* humanIdleLeftSpriteSheet = nullptr;
+    SpriteSheet* humanIdleRightSpriteSheet = nullptr;
+    bool isTransformed = false;
+    bool hasTransformationAbility = false;
+    
+    // Advanced combat support (for Kobold Warrior)
+    SpriteSheet* attack3LeftSpriteSheet = nullptr;
+    SpriteSheet* attack3RightSpriteSheet = nullptr;
+    SpriteSheet* superAttackLeftSpriteSheet = nullptr;
+    SpriteSheet* superAttackRightSpriteSheet = nullptr;
+    SpriteSheet* jumpLeftSpriteSheet = nullptr;
+    SpriteSheet* jumpRightSpriteSheet = nullptr;
+    SpriteSheet* dashLeftSpriteSheet = nullptr;
+    SpriteSheet* dashRightSpriteSheet = nullptr;
+    bool hasAdvancedAbilities = false;
+    int currentAttackType = 1;  // 1, 2, 3, or 4 (super)
+    bool isJumping = false;
+    bool isDashing = false;
+    float dashCooldown = 0.0f;
+    float jumpCooldown = 0.0f;
+    float superAttackCooldown = 0.0f;
+    float dashTargetX = 0.0f;
+    float dashTargetY = 0.0f;
+    
+    // For enemies with only one direction sprites
+    bool usesSpriteFlipping = false;
+    bool baseSpriteFacesLeft = false;  // true if base sprite faces left, false if faces right
 
     // Helpers
     void loadSprites(AssetManager* assetManager);
@@ -134,7 +246,8 @@ protected:
     void setDirection(EnemyDirection newDirection);
     void updateAnimation(float deltaTime);
     void updateProjectiles(float deltaTime);
-    void fireProjectileTowards(float targetX, float targetY, AssetManager* assetManager);
+    void fireProjectileTowards(float targetX, float targetY, AssetManager* assetManager, const std::string& projectileSprite = "", int frames = 0);
+    void triggerTransformation();  // For werewolf transformation
 
     // Combat/behavior
     float aggroRadius;   // pixels

@@ -149,6 +149,7 @@ public:
     // Object management
     void addObject(std::unique_ptr<Object> object);
     void removeObject(int x, int y);
+    void clearObjects();
     Object* getObjectAt(int x, int y) const;
     const std::vector<std::unique_ptr<Object>>& getObjects() const { return objects; }
 

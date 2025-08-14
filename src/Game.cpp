@@ -24,6 +24,7 @@ Game::Game() : window(nullptr), sdlRenderer(nullptr), isRunning(false), isPaused
 void Game::enterUnderworld() {
     if (!world || !assetManager || !player) return;
     std::cout << "=== ENTERING UNDERWORLD ===" << std::endl;
+    inUnderworld = true;
     // Load the provided TMX underworld map
     world->loadTilemap("assets/Underworld Tilemap/TiledMap Editor/sample map.tmx");
     // Safe spawn: search for nearest safe tile around a preferred entrance
@@ -49,6 +50,33 @@ void Game::enterUnderworld() {
     // Update camera and visibility for the new map
     world->updateVisibility(player->getX(), player->getY());
     world->updateVisibleChunks(player->getX(), player->getY());
+    
+    // Reinitialize objects for the underworld
+    initializeObjects();
+}
+
+void Game::exitUnderworld() {
+    if (!world || !assetManager || !player) return;
+    std::cout << "=== EXITING UNDERWORLD ===" << std::endl;
+    inUnderworld = false;
+    // Reset to procedural world generation (the default state)
+    // Create a new world instance to reset to procedural generation
+    world = std::make_unique<World>(assetManager.get());
+    
+    // Set player spawn to the default overworld location
+    int ts = world->getTileSize();
+    float spawnX = static_cast<float>(20 * ts); // Default spawn near the original objects
+    float spawnY = static_cast<float>(11 * ts);
+    player->respawn(spawnX, spawnY);
+    
+    // Force player to reinitialize sprites after world change
+    player->setState(player->getState());
+    // Update camera and visibility for the new map
+    world->updateVisibility(player->getX(), player->getY());
+    world->updateVisibleChunks(player->getX(), player->getY());
+    
+    // Reinitialize objects for the overworld
+    initializeObjects();
 }
 
 Game::~Game() {
@@ -204,6 +232,183 @@ void Game::initializeSystems() {
             g->setRenderScale(0.75f); // smaller on-screen
             world->addEnemy(std::move(g));
         }
+        
+        // Add some skeleton warriors to test sprite flipping
+        for (int i = 0; i < 3; i++) {
+            float sx = (25.0f + i * 2.0f) * ts;
+            float sy = 18.0f * ts;
+            auto skeleton = std::make_unique<Enemy>(sx, sy, assetManager.get(), EnemyKind::Skeleton);
+            skeleton->setPackRarity(PackRarity::Common);
+            world->addEnemy(std::move(skeleton));
+        }
+        
+        // Add Trash tier enemies for testing
+        // Imps
+        for (int i = 0; i < 2; i++) {
+            float ix = (30.0f + i * 1.5f) * ts;
+            float iy = 15.0f * ts;
+            auto imp = std::make_unique<Enemy>(ix, iy, assetManager.get(), EnemyKind::Imp);
+            imp->setPackRarity(PackRarity::Trash);
+            world->addEnemy(std::move(imp));
+        }
+        
+        // Flying Eyes
+        for (int i = 0; i < 2; i++) {
+            float fx = (33.0f + i * 1.5f) * ts;
+            float fy = 16.0f * ts;
+            auto eye = std::make_unique<Enemy>(fx, fy, assetManager.get(), EnemyKind::FlyingEye);
+            eye->setPackRarity(PackRarity::Trash);
+            world->addEnemy(std::move(eye));
+        }
+        
+        // Poison Skulls
+        for (int i = 0; i < 2; i++) {
+            float px = (36.0f + i * 1.5f) * ts;
+            float py = 17.0f * ts;
+            auto skull = std::make_unique<Enemy>(px, py, assetManager.get(), EnemyKind::PoisonSkull);
+            skull->setPackRarity(PackRarity::Trash);
+            world->addEnemy(std::move(skull));
+        }
+        
+        // Add Common tier enemies for testing
+        // Lizardman
+        for (int i = 0; i < 2; i++) {
+            float lx = (40.0f + i * 1.5f) * ts;
+            float ly = 19.0f * ts;
+            auto lizard = std::make_unique<Enemy>(lx, ly, assetManager.get(), EnemyKind::Lizardman);
+            lizard->setPackRarity(PackRarity::Common);
+            world->addEnemy(std::move(lizard));
+        }
+        
+        // Dwarf Warrior
+        for (int i = 0; i < 2; i++) {
+            float dx = (43.0f + i * 1.5f) * ts;
+            float dy = 20.0f * ts;
+            auto dwarf = std::make_unique<Enemy>(dx, dy, assetManager.get(), EnemyKind::DwarfWarrior);
+            dwarf->setPackRarity(PackRarity::Common);
+            world->addEnemy(std::move(dwarf));
+        }
+        
+        // Harpy
+        for (int i = 0; i < 2; i++) {
+            float hx = (46.0f + i * 1.5f) * ts;
+            float hy = 21.0f * ts;
+            auto harpy = std::make_unique<Enemy>(hx, hy, assetManager.get(), EnemyKind::Harpy);
+            harpy->setPackRarity(PackRarity::Common);
+            world->addEnemy(std::move(harpy));
+        }
+        
+        // Add Magic tier enemies for testing
+        // Skeleton Mage
+        for (int i = 0; i < 2; i++) {
+            float smx = (50.0f + i * 2.0f) * ts;
+            float smy = 22.0f * ts;
+            auto skeleMage = std::make_unique<Enemy>(smx, smy, assetManager.get(), EnemyKind::SkeletonMage);
+            skeleMage->setPackRarity(PackRarity::Magic);
+            world->addEnemy(std::move(skeleMage));
+        }
+        
+        // Pyromancer
+        for (int i = 0; i < 2; i++) {
+            float pmx = (53.0f + i * 2.0f) * ts;
+            float pmy = 23.0f * ts;
+            auto pyro = std::make_unique<Enemy>(pmx, pmy, assetManager.get(), EnemyKind::Pyromancer);
+            pyro->setPackRarity(PackRarity::Magic);
+            world->addEnemy(std::move(pyro));
+        }
+        
+        // Witch
+        for (int i = 0; i < 2; i++) {
+            float wx = (56.0f + i * 2.0f) * ts;
+            float wy = 24.0f * ts;
+            auto witch = std::make_unique<Enemy>(wx, wy, assetManager.get(), EnemyKind::Witch);
+            witch->setPackRarity(PackRarity::Magic);
+            world->addEnemy(std::move(witch));
+        }
+        
+        // Elite tier enemies - spread across the world for testing
+        const float eliteSpacing = 8.0f;  // More space between powerful enemies
+        
+        // First row of Elite enemies (Dragons, Minotaur, etc.)
+        float eliteX = 80.0f * ts;
+        float eliteY = 10.0f * ts;
+        
+        auto dragon = std::make_unique<Enemy>(eliteX, eliteY, assetManager.get(), EnemyKind::Dragon);
+        dragon->setPackRarity(PackRarity::Elite);
+        world->addEnemy(std::move(dragon));
+        
+        auto minotaur = std::make_unique<Enemy>(eliteX + eliteSpacing * ts, eliteY, assetManager.get(), EnemyKind::Minotaur);
+        minotaur->setPackRarity(PackRarity::Elite);
+        world->addEnemy(std::move(minotaur));
+        
+        auto stoneGolem = std::make_unique<Enemy>(eliteX + 2 * eliteSpacing * ts, eliteY, assetManager.get(), EnemyKind::StoneGolem);
+        stoneGolem->setPackRarity(PackRarity::Elite);
+        world->addEnemy(std::move(stoneGolem));
+        
+        auto hugeKnight = std::make_unique<Enemy>(eliteX + 3 * eliteSpacing * ts, eliteY, assetManager.get(), EnemyKind::HugeKnight);
+        hugeKnight->setPackRarity(PackRarity::Elite);
+        world->addEnemy(std::move(hugeKnight));
+        
+        auto cyclops = std::make_unique<Enemy>(eliteX + 4 * eliteSpacing * ts, eliteY, assetManager.get(), EnemyKind::Cyclops);
+        cyclops->setPackRarity(PackRarity::Elite);
+        world->addEnemy(std::move(cyclops));
+        
+        // Second row of Elite enemies
+        eliteY = 15.0f * ts;
+        
+        auto centaur = std::make_unique<Enemy>(eliteX, eliteY, assetManager.get(), EnemyKind::Centaur);
+        centaur->setPackRarity(PackRarity::Elite);
+        world->addEnemy(std::move(centaur));
+        
+        auto headlessHorseman = std::make_unique<Enemy>(eliteX + eliteSpacing * ts, eliteY, assetManager.get(), EnemyKind::HeadlessHorseman);
+        headlessHorseman->setPackRarity(PackRarity::Elite);
+        world->addEnemy(std::move(headlessHorseman));
+        
+        auto medusa = std::make_unique<Enemy>(eliteX + 2 * eliteSpacing * ts, eliteY, assetManager.get(), EnemyKind::Medusa);
+        medusa->setPackRarity(PackRarity::Elite);
+        world->addEnemy(std::move(medusa));
+        
+        auto cerberus = std::make_unique<Enemy>(eliteX + 3 * eliteSpacing * ts, eliteY, assetManager.get(), EnemyKind::Cerberus);
+        cerberus->setPackRarity(PackRarity::Elite);
+        world->addEnemy(std::move(cerberus));
+        
+        auto gryphon = std::make_unique<Enemy>(eliteX + 4 * eliteSpacing * ts, eliteY, assetManager.get(), EnemyKind::Gryphon);
+        gryphon->setPackRarity(PackRarity::Elite);
+        world->addEnemy(std::move(gryphon));
+        
+        // Third row of Elite enemies
+        eliteY = 20.0f * ts;
+        
+        auto gargoyle = std::make_unique<Enemy>(eliteX, eliteY, assetManager.get(), EnemyKind::Gargoyle);
+        gargoyle->setPackRarity(PackRarity::Elite);
+        world->addEnemy(std::move(gargoyle));
+        
+        auto werewolf = std::make_unique<Enemy>(eliteX + eliteSpacing * ts, eliteY, assetManager.get(), EnemyKind::Werewolf);
+        werewolf->setPackRarity(PackRarity::Elite);
+        world->addEnemy(std::move(werewolf));
+        
+        auto mimic = std::make_unique<Enemy>(eliteX + 2 * eliteSpacing * ts, eliteY, assetManager.get(), EnemyKind::Mimic);
+        mimic->setPackRarity(PackRarity::Elite);
+        world->addEnemy(std::move(mimic));
+        
+        auto maskedOrc = std::make_unique<Enemy>(eliteX + 3 * eliteSpacing * ts, eliteY, assetManager.get(), EnemyKind::MaskedOrc);
+        maskedOrc->setPackRarity(PackRarity::Elite);
+        world->addEnemy(std::move(maskedOrc));
+        
+        auto koboldWarrior = std::make_unique<Enemy>(eliteX + 4 * eliteSpacing * ts, eliteY, assetManager.get(), EnemyKind::KoboldWarrior);
+        koboldWarrior->setPackRarity(PackRarity::Elite);
+        world->addEnemy(std::move(koboldWarrior));
+        
+        // Fourth row of Elite enemies (final ones)
+        eliteY = 25.0f * ts;
+        
+        auto satyrArcher = std::make_unique<Enemy>(eliteX, eliteY, assetManager.get(), EnemyKind::SatyrArcher);
+        satyrArcher->setPackRarity(PackRarity::Elite);
+        world->addEnemy(std::move(satyrArcher));
+        
+        auto babyDragon = std::make_unique<Enemy>(eliteX + eliteSpacing * ts, eliteY, assetManager.get(), EnemyKind::BabyDragon);
+        babyDragon->setPackRarity(PackRarity::Elite);
+        world->addEnemy(std::move(babyDragon));
     }
     
     // Set initial visibility and generate initial visible chunks around player starting position
@@ -1658,6 +1863,18 @@ void Game::handleEvents() {
                 } else if (!optionsOpen && event.key.keysym.sym == SDLK_F5) {
                     setInfinitePotions(!getInfinitePotions());
                     std::cout << "Infinite potions: " << (getInfinitePotions() ? "ON" : "OFF") << std::endl;
+                } else if (!optionsOpen && event.key.keysym.sym == SDLK_F7) {
+                    // Debug: Enter underworld
+                    if (!inUnderworld) {
+                        enterUnderworld();
+                        std::cout << "DEBUG: Entered underworld" << std::endl;
+                    }
+                } else if (!optionsOpen && event.key.keysym.sym == SDLK_F8) {
+                    // Debug: Exit underworld
+                    if (inUnderworld) {
+                        exitUnderworld();
+                        std::cout << "DEBUG: Exited underworld" << std::endl;
+                    }
                 } else if (!optionsOpen && event.key.keysym.sym == SDLK_i) {
                     // Toggle inventory UI
                     inventoryOpen = !inventoryOpen;
@@ -1956,6 +2173,9 @@ void Game::initializeObjects() {
         return;
     }
     
+    // Clear existing objects before spawning new ones
+    world->clearObjects();
+    
     // OPTIMIZATION: Reduced object count and implemented intelligent spawning
     // Only spawn objects in a reasonable area around the player starting position
     const int spawnRadius = 15; // Reduced from previous large area
@@ -1964,18 +2184,28 @@ void Game::initializeObjects() {
     std::cout << "Initializing optimized object spawning..." << std::endl;
     
     // Create a more controlled object spawning system
-    std::vector<std::pair<int, int>> spawnPositions = {
-        {20, 10},  // Nearby chest
-        {21, 11},  // Nearby pot
-        {20, 8},   // Flag
-        {18, 20},  // Bonfire
-        {25, 10},  // Wood sign
-        {24, 9},   // Portal to Underworld
-        {15, 12},  // Clay pot
-        {8, 15},   // Wood crate
-        {12, 18},  // Steel crate
-        {12, 26}   // Magic Anvil moved away from mobs
-    };
+    std::vector<std::pair<int, int>> spawnPositions;
+    
+    // Only add overworld objects if not in underworld
+    if (!inUnderworld) {
+        spawnPositions = {
+            {20, 10},  // Nearby chest
+            {21, 11},  // Nearby pot
+            {20, 8},   // Flag
+            {18, 20},  // Bonfire
+            {25, 10},  // Wood sign
+            {24, 9},   // Portal to Underworld
+            {15, 12},  // Clay pot
+            {8, 15},   // Wood crate
+            {12, 18},  // Steel crate
+            {12, 26}   // Magic Anvil (overworld position)
+        };
+    } else {
+        // Underworld only gets the magic anvil at a clear position avoiding props
+        spawnPositions = {
+            {12, 15}   // Magic Anvil (underworld position - moved to avoid clipping)
+        };
+    }
     maxObjects = static_cast<int>(spawnPositions.size());
     
     // Limit the number of objects to spawn
@@ -1986,15 +2216,26 @@ void Game::initializeObjects() {
         int x = pos.first;
         int y = pos.second;
         
-        // Check if position is within spawn radius
-        if (std::abs(x - 20) <= spawnRadius && std::abs(y - 11) <= spawnRadius) {
+        // Check if position is within spawn radius (or special case for underworld anvil)
+        bool withinRadius = (std::abs(x - 20) <= spawnRadius && std::abs(y - 11) <= spawnRadius);
+        bool isUnderworldAnvil = (inUnderworld && x == 12 && y == 15);
+        
+        
+        if (withinRadius || isUnderworldAnvil) {
             std::unique_ptr<Object> object;
             
-            // Do not place any object on the Magic Anvil tile (12,26)
-            if (x == 12 && y == 26) {
-                // Magic Anvil (animated)
-                object = std::make_unique<Object>(ObjectType::MAGIC_ANVIL, x, y, "assets/Textures/Objects/magic_anvil.png");
-                object->setSpriteSheet(assetManager->getSpriteSheet("assets/Textures/Objects/magic_anvil.png"));
+            // Magic Anvil at different positions based on world
+            // Overworld: (12,26), Underworld: (12,15) - moved to avoid clipping
+            bool isAnvilPosition = inUnderworld ? (x == 12 && y == 15) : (x == 12 && y == 26);
+            if (isAnvilPosition) {
+                // Magic Anvil (animated) - use different sprite based on world
+                std::string anvilSprite = inUnderworld ? 
+                    "assets/Textures/Objects/underword_magic_anvil.png" : 
+                    "assets/Textures/Objects/magic_anvil.png";
+                std::cout << "Creating anvil at (" << x << "," << y << "), inUnderworld=" << inUnderworld 
+                          << ", sprite=" << anvilSprite << std::endl;
+                object = std::make_unique<Object>(ObjectType::MAGIC_ANVIL, x, y, anvilSprite);
+                object->setSpriteSheet(assetManager->getSpriteSheet(anvilSprite));
             } else if (x == 20 && y == 10) {
                 // Create different object types based on position
                 // Nearby chest with good loot
