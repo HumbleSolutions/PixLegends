@@ -83,6 +83,7 @@ public:
     ~Enemy() = default;
 
     void update(float deltaTime, float playerX, float playerY);
+    void update(float deltaTime, float playerX, float playerY, const std::vector<std::unique_ptr<Enemy>>& otherEnemies);
     void render(Renderer* renderer) const;
     void renderProjectiles(Renderer* renderer) const;
 
@@ -246,7 +247,7 @@ protected:
     void setDirection(EnemyDirection newDirection);
     void updateAnimation(float deltaTime);
     void updateProjectiles(float deltaTime);
-    void fireProjectileTowards(float targetX, float targetY, AssetManager* assetManager, const std::string& projectileSprite = "", int frames = 0);
+    void fireProjectileTowards(float targetX, float targetY, AssetManager* assetManager, const std::string& projectileSprite = "", int frames = 0, bool rotateByDirection = false);
     void triggerTransformation();  // For werewolf transformation
 
     // Combat/behavior

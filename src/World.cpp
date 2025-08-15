@@ -66,7 +66,7 @@ void World::update(float deltaTime) {
 
 void World::updateEnemies(float deltaTime, float playerX, float playerY) {
     for (auto& enemy : enemies) {
-        if (enemy) enemy->update(deltaTime, playerX, playerY);
+        if (enemy) enemy->update(deltaTime, playerX, playerY, enemies);
     }
     
     // Update boss

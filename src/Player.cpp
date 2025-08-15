@@ -539,7 +539,7 @@ void Player::performMeleeAttack() {
         int fireProjectileDamage = static_cast<int>(rangedDamage) + getFireDamageForHit();
         projectiles.push_back(std::make_unique<Projectile>(
             projectileX, projectileY, direction, am, fireProjectileDamage,
-            std::string("assets/Textures/Spells/Projectile.png"), 5, 5, false));
+            std::string("assets/Textures/Spells/Projectile.png"), 5, 5, true));
     }
     // Play melee swing SFX at attack start (alternating variants), regardless of hit
     if (game && game->getAudioManager()) {

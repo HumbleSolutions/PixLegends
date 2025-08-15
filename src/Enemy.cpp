@@ -79,7 +79,7 @@ void Enemy::loadSprites(AssetManager* assetManager) {
         usesSpriteFlipping = true;
         baseSpriteFacesLeft = false;  // SkeletonMage faces RIGHT
         
-        SpriteSheet* idleSprite = assetManager->loadSpriteSheet(base + "IDLE.png", 192, 128, 4, 4);  // 4 frames: 768÷4=192
+        SpriteSheet* idleSprite = assetManager->loadSpriteSheet(base + "IDLE.png", 128, 128, 4, 4);  // 6 frames: 768÷6=128
         SpriteSheet* walkSprite = assetManager->loadSpriteSheet(base + "WALK.png", 128, 128, 6, 6);  // 6 frames: 768÷6=128
         SpriteSheet* attackSprite = assetManager->loadSpriteSheet(base + "ATTACK.png", 128, 128, 9, 9);  // 9 frames: 1152÷9=128
         SpriteSheet* hurtSprite = assetManager->loadSpriteSheet(base + "HURT.png", 128, 128, 4, 4);  // 4 frames: 512÷4=128  
@@ -430,11 +430,11 @@ void Enemy::loadSprites(AssetManager* assetManager) {
         usesSpriteFlipping = true;
         baseSpriteFacesLeft = true;  // Correct: Dwarf sprites face LEFT
         
-        SpriteSheet* idleSprite = assetManager->loadSpriteSheet(base + "IDLE.png", 75, 100, 4, 3);  // IDLE(3) - Fixed frame count
-        SpriteSheet* walkSprite = assetManager->loadSpriteSheet(base + "WALK.png", 100, 100, 6, 6);  // WALK(6) - Correct frame count
-        SpriteSheet* attackSprite = assetManager->loadSpriteSheet(base + "ATTACK.png", 150, 100, 4, 6);  // ATTACK(6) - Fixed frame count  
-        SpriteSheet* hurtSprite = assetManager->loadSpriteSheet(base + "HURT.png", 75, 100, 4, 3);  // HURT(3) - Fixed frame count
-        deathSpriteSheet = assetManager->loadSpriteSheet(base + "DEATH.png", 150, 100, 4, 6);  // DEATH(6) - Fixed frame count
+        SpriteSheet* idleSprite = assetManager->loadSpriteSheet(base + "IDLE.png", 100, 100, 3, 3);  // IDLE(3) - 
+        SpriteSheet* walkSprite = assetManager->loadSpriteSheet(base + "WALK.png", 100, 100, 6, 6);  // WALK(6) - 
+        SpriteSheet* attackSprite = assetManager->loadSpriteSheet(base + "ATTACK.png", 100, 100, 6, 6);  // ATTACK(6) - 
+        SpriteSheet* hurtSprite = assetManager->loadSpriteSheet(base + "HURT.png", 100, 100, 3, 3);  // HURT(3) - 
+        deathSpriteSheet = assetManager->loadSpriteSheet(base + "DEATH.png", 100, 100, 6, 6);  // DEATH(6) - 
         
         idleLeftSpriteSheet = idleRightSpriteSheet = idleSprite;
         flyingLeftSpriteSheet = flyingRightSpriteSheet = walkSprite;
@@ -455,9 +455,9 @@ void Enemy::loadSprites(AssetManager* assetManager) {
         baseSpriteFacesLeft = true;  // Fixed: Harpy sprites face LEFT
         
         SpriteSheet* idleSprite = assetManager->loadSpriteSheet(base + "IDLE_MOVE.png", 100, 100, 4, 4);  // IDLE(4) - Combined idle/move file
-        SpriteSheet* attackSprite = assetManager->loadSpriteSheet(base + "ATTACk.png", 200, 100, 4, 8);  // ATTACK(8) - Fixed frame count, weird capitalization
-        SpriteSheet* hurtSprite = assetManager->loadSpriteSheet(base + "HURT.png", 75, 100, 4, 3);  // HURT(3) - Fixed frame count
-        deathSpriteSheet = assetManager->loadSpriteSheet(base + "DEATH.png", 150, 100, 4, 6);  // DEATH(6) - Fixed frame count
+        SpriteSheet* attackSprite = assetManager->loadSpriteSheet(base + "ATTACk.png", 100, 100, 8, 8);  // ATTACK(8) - Fixed frame count, weird capitalization
+        SpriteSheet* hurtSprite = assetManager->loadSpriteSheet(base + "HURT.png", 100, 100, 3, 3);  // HURT(3) - Fixed frame count
+        deathSpriteSheet = assetManager->loadSpriteSheet(base + "DEATH.png", 100, 100, 6, 6);  // DEATH(6) - Fixed frame count
         
         idleLeftSpriteSheet = idleRightSpriteSheet = idleSprite;
         flyingLeftSpriteSheet = flyingRightSpriteSheet = idleSprite;  // Flying creature
@@ -729,7 +729,7 @@ void Enemy::loadSprites(AssetManager* assetManager) {
         hurtLeftSpriteSheet = hurtRightSpriteSheet = hurtSprite;
         
         packRarity = PackRarity::Elite;
-        renderScale = 2.1f;  // Young but dangerous dragon
+        renderScale = 0.9f;  // Young but dangerous dragon
         health = maxHealth = 430;
         moveSpeed = 90.0f;  // Fast flying
         contactDamage = 24;
@@ -1170,31 +1170,34 @@ void Enemy::update(float deltaTime, float playerX, float playerY) {
         }
     }
 
-    // Ranged behavior for wizard, dragon, cyclops, medusa, magic tier enemies, and flying eye
+    // Ranged behavior for wizard, dragon, cyclops, medusa, magic tier enemies, flying eye, and satyr archer
     if (kind == EnemyKind::Wizard || (kind == EnemyKind::Dragon && useAttack2) || (kind == EnemyKind::Cyclops && useAttack2) ||
         (kind == EnemyKind::Medusa && !useAttack2) || kind == EnemyKind::Pyromancer || kind == EnemyKind::SkeletonMage || 
-        kind == EnemyKind::Witch || kind == EnemyKind::FlyingEye) {
+        kind == EnemyKind::Witch || kind == EnemyKind::FlyingEye || kind == EnemyKind::SatyrArcher) {
         // Cooldown timer
         if (rangedCooldownTimer > 0.0f) rangedCooldownTimer -= deltaTime;
         // Fire at range if within rangedRange and has cooldown ready
         if (distSq <= rangedRange * rangedRange && rangedCooldownTimer <= 0.0f) {
             // Use specific projectile sprites for each enemy type
             if (kind == EnemyKind::Cyclops && useAttack2) {
-                fireProjectileTowards(playerX, playerY, assets, "assets/Cyclops/Sprite/cyclops_lazer_projectile.png", 1);
+                fireProjectileTowards(playerX, playerY, assets, "assets/Cyclops/Sprite/cyclops_lazer_projectile.png", 1, true);
             } else if (kind == EnemyKind::Pyromancer) {
-                fireProjectileTowards(playerX, playerY, assets, "assets/Pyromancer/Sprites/pyromancer_projectile.png", 4);
+                fireProjectileTowards(playerX, playerY, assets, "assets/Pyromancer/Sprites/pyromancer_projectile.png", 4, true);
             } else if (kind == EnemyKind::SkeletonMage) {
-                fireProjectileTowards(playerX, playerY, assets, "assets/Skeleton Mage/Sprites/skele_mage_projectile.png", 5);
+                fireProjectileTowards(playerX, playerY, assets, "assets/Skeleton Mage/Sprites/skele_mage_projectile.png", 5, true);
             } else if (kind == EnemyKind::Witch) {
-                fireProjectileTowards(playerX, playerY, assets, "assets/Witch/Sprite/WITCH_PROJECTILE.png", 6);
+                fireProjectileTowards(playerX, playerY, assets, "assets/Witch/Sprite/WITCH_PROJECTILE.png", 6, true);
             } else if (kind == EnemyKind::FlyingEye) {
-                fireProjectileTowards(playerX, playerY, assets, "assets/Flying Eye/Sprites/projectile.png", 1);
+                fireProjectileTowards(playerX, playerY, assets, "assets/Flying Eye/Sprites/projectile.png", 1, true);
             } else if (kind == EnemyKind::Medusa && !useAttack2) {
                 // Medusa magic attack projectile (petrifying gaze)
-                fireProjectileTowards(playerX, playerY, assets);  // Use default projectile for now
+                fireProjectileTowards(playerX, playerY, assets, "", 0, true);  // Default projectile with rotation
+            } else if (kind == EnemyKind::SatyrArcher) {
+                // Fire arrow - note: sprite will be rotated by Projectile class to match direction
+                fireProjectileTowards(playerX, playerY, assets, "assets/Satyr Archer/Sprite/satry_archer_arrow.png", 1, true);
             } else {
                 // Default projectile for other enemies (like Wizard)
-                fireProjectileTowards(playerX, playerY, assets);
+                fireProjectileTowards(playerX, playerY, assets, "", 0, true);
             }
             rangedCooldownTimer = rangedCooldownSeconds;
         }
@@ -1226,6 +1229,48 @@ void Enemy::update(float deltaTime, float playerX, float playerY) {
     }
 
     updateAnimation(deltaTime);
+}
+
+void Enemy::update(float deltaTime, float playerX, float playerY, const std::vector<std::unique_ptr<Enemy>>& otherEnemies) {
+    // Start with regular update logic
+    update(deltaTime, playerX, playerY);
+    
+    // Apply enemy-to-enemy collision avoidance when aggroed (both moving and attacking)
+    if (isAggroed && (currentState == EnemyState::FLYING || currentState == EnemyState::ATTACKING)) {
+        constexpr float COLLISION_RADIUS = 120.0f; // Much larger collision area for spreading
+        constexpr float AVOIDANCE_FORCE = 400.0f;  // Very strong separation force
+        
+        float separationX = 0.0f;
+        float separationY = 0.0f;
+        int nearbyCount = 0;
+        
+        // Check collision with other enemies
+        for (const auto& other : otherEnemies) {
+            if (!other || other.get() == this || other->isDead()) continue;
+            
+            float dx = x - other->getX();
+            float dy = y - other->getY();
+            float distSq = dx * dx + dy * dy;
+            
+            if (distSq < COLLISION_RADIUS * COLLISION_RADIUS && distSq > 0.01f) {
+                float dist = std::sqrt(distSq);
+                float force = (COLLISION_RADIUS - dist) / COLLISION_RADIUS;
+                
+                separationX += (dx / dist) * force;
+                separationY += (dy / dist) * force;
+                nearbyCount++;
+            }
+        }
+        
+        // Apply separation force if there are nearby enemies
+        if (nearbyCount > 0) {
+            separationX /= nearbyCount;  // Average the separation force
+            separationY /= nearbyCount;
+            
+            x += separationX * AVOIDANCE_FORCE * deltaTime;
+            y += separationY * AVOIDANCE_FORCE * deltaTime;
+        }
+    }
 }
 
 void Enemy::updateAnimation(float deltaTime) {
@@ -1388,18 +1433,18 @@ void Enemy::updateProjectiles(float deltaTime) {
     projectiles.erase(std::remove_if(projectiles.begin(), projectiles.end(), [](const std::unique_ptr<Projectile>& p){ return !p || !p->isActive(); }), projectiles.end());
 }
 
-void Enemy::fireProjectileTowards(float targetX, float targetY, AssetManager* assetManager, const std::string& projectileSprite, int frames) {
+void Enemy::fireProjectileTowards(float targetX, float targetY, AssetManager* assetManager, const std::string& projectileSprite, int frames, bool rotateByDirection) {
     if (!assetManager) assetManager = assets;
     float px = x; float py = y;
     float dirX = targetX - px; float dirY = targetY - py;
     ProjectileDirection dir(dirX, dirY); dir.normalize();
     
     if (!projectileSprite.empty() && frames > 0) {
-        // Use specific projectile sprite
-        projectiles.push_back(std::make_unique<Projectile>(px, py, dir, assetManager, 12, projectileSprite, frames, frames));
+        // Use specific projectile sprite with optional rotation
+        projectiles.push_back(std::make_unique<Projectile>(px, py, dir, assetManager, 12, projectileSprite, frames, frames, rotateByDirection));
     } else {
-        // Use default projectile
-        projectiles.push_back(std::make_unique<Projectile>(px, py, dir, assetManager, 12));
+        // Use default projectile with rotation
+        projectiles.push_back(std::make_unique<Projectile>(px, py, dir, assetManager, 12, "", 0, 0, rotateByDirection));
     }
 }
 
