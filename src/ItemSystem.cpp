@@ -578,6 +578,7 @@ void ItemSystem::loadEquipmentFromSave(const std::string equipNames[9], const in
     for (int i = 0; i < 9; ++i) {
         const std::string& itemId = equipNames[i];
         if (!itemId.empty()) {
+            std::cout << "Loading equipment slot " << i << ": " << itemId << " (rarity: " << equipRarity[i] << ", plus: " << equipPlus[i] << ")" << std::endl;
             // Create item from template with saved rarity
             ItemRarity rarity = static_cast<ItemRarity>(std::clamp(equipRarity[i], 0, 4));
             Item* item = createItem(itemId, rarity, 1);
@@ -591,6 +592,9 @@ void ItemSystem::loadEquipmentFromSave(const std::string equipNames[9], const in
                 
                 // Equip the item
                 equipmentSlots[i].setItem(item);
+                std::cout << "Successfully equipped " << itemId << " in slot " << i << std::endl;
+            } else {
+                std::cout << "FAILED to create item: " << itemId << std::endl;
             }
         }
     }
@@ -598,6 +602,15 @@ void ItemSystem::loadEquipmentFromSave(const std::string equipNames[9], const in
 
 void ItemSystem::loadInventoryFromSave(const std::string invKey[2][9], const int invCnt[2][9], 
                                       const int invRarity[2][9], const int invPlusLevel[2][9]) {
+    // Call the full version with nullptr for resource arrays
+    loadInventoryFromSave(invKey, invCnt, invRarity, invPlusLevel, nullptr, nullptr, nullptr, nullptr);
+}
+
+void ItemSystem::loadInventoryFromSave(const std::string invKey[2][9], const int invCnt[2][9], 
+                                      const int invRarity[2][9], const int invPlusLevel[2][9],
+                                      const std::string resourceKey[9], const int resourceCnt[9],
+                                      const int resourceRarity[9], const int resourcePlusLevel[9]) {
+    std::cout << "ItemSystem: Loading inventory from save..." << std::endl;
     // Clear current inventories
     for (auto& slot : itemInventory) {
         slot.clear();
@@ -617,6 +630,7 @@ void ItemSystem::loadInventoryFromSave(const std::string invKey[2][9], const int
             ItemRarity rarity = static_cast<ItemRarity>(std::clamp(invRarity[b][i], 0, 4));
             
             if (!itemId.empty() && count > 0) {
+                std::cout << "Loading inv[" << b << "][" << i << "]: " << itemId << " (count: " << count << ", rarity: " << invRarity[b][i] << ")" << std::endl;
                 // Determine if it's a scroll or regular item
                 auto templateIt = itemTemplates.find(itemId);
                 if (templateIt != itemTemplates.end()) {
@@ -625,10 +639,11 @@ void ItemSystem::loadInventoryFromSave(const std::string invKey[2][9], const int
                     // Create item with correct count and rarity
                     Item* item = createItem(itemId, rarity, count);
                     if (item) {
+                        std::cout << "Successfully created item: " << itemId << std::endl;
                         // Set the saved +level
                         item->plusLevel = std::max(0, invPlusLevel[b][i]);
                         
-                        // Add to appropriate inventory
+                        // Add to appropriate inventory based on item type
                         if (isScroll) {
                             int emptySlot = -1;
                             for (int s = 0; s < SCROLL_INVENTORY_SIZE; s++) {
@@ -663,9 +678,49 @@ void ItemSystem::loadInventoryFromSave(const std::string invKey[2][9], const int
                                 itemInventory[emptySlot].setItem(item);
                             }
                         }
+                    } else {
+                        std::cout << "FAILED to create item: " << itemId << std::endl;
                     }
+                } else {
+                    std::cout << "Item template not found: " << itemId << std::endl;
                 }
             }
         }
     }
+    
+    // Load resource inventory (if provided)
+    if (resourceKey && resourceCnt && resourceRarity && resourcePlusLevel) {
+        std::cout << "Loading resource inventory..." << std::endl;
+        for (int i = 0; i < 9; ++i) {
+        if (!resourceKey[i].empty() && resourceCnt[i] > 0) {
+            std::cout << "Loading resource[" << i << "]: " << resourceKey[i] << " (count: " << resourceCnt[i] << ", rarity: " << resourceRarity[i] << ")" << std::endl;
+            auto templateIt = itemTemplates.find(resourceKey[i]);
+            if (templateIt != itemTemplates.end()) {
+                ItemRarity rarity = static_cast<ItemRarity>(std::clamp(resourceRarity[i], 0, 4));
+                Item* item = createItem(resourceKey[i], rarity, resourceCnt[i]);
+                if (item) {
+                    std::cout << "Successfully created resource item: " << resourceKey[i] << std::endl;
+                    item->plusLevel = std::max(0, resourcePlusLevel[i]);
+                    
+                    int emptySlot = -1;
+                    for (int s = 0; s < RESOURCE_INVENTORY_SIZE; s++) {
+                        if (resourceInventory[s].isEmpty()) {
+                            emptySlot = s;
+                            break;
+                        }
+                    }
+                    if (emptySlot != -1) {
+                        resourceInventory[emptySlot].setItem(item);
+                    }
+                } else {
+                    std::cout << "FAILED to create resource item: " << resourceKey[i] << std::endl;
+                }
+            } else {
+                std::cout << "Resource item template not found: " << resourceKey[i] << std::endl;
+            }
+        }
+        }
+    }
+    
+    std::cout << "ItemSystem: Inventory load complete" << std::endl;
 }

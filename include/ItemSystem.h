@@ -1,6 +1,6 @@
 #pragma once
 
-#include <SDL2/SDL.h>
+#include <SDL.h>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -146,6 +146,10 @@ public:
                               const int equipRarity[9]);
     void loadInventoryFromSave(const std::string invKey[2][9], const int invCnt[2][9], 
                               const int invRarity[2][9], const int invPlusLevel[2][9]);
+    void loadInventoryFromSave(const std::string invKey[2][9], const int invCnt[2][9], 
+                              const int invRarity[2][9], const int invPlusLevel[2][9],
+                              const std::string resourceKey[9], const int resourceCnt[9],
+                              const int resourceRarity[9], const int resourcePlusLevel[9]);
     
 private:
     AssetManager* assetManager;

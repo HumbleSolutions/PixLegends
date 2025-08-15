@@ -8,8 +8,9 @@
 #include "Object.h"
 #include "World.h"
 #include "Enemy.h"
-#include "Database.h"
+#include "DatabaseSQLite.h"
 #include "ItemSystem.h"
+#include "SpellSystem.h"
 #include <iostream>
 #include <algorithm>
 #include <cmath>
@@ -60,6 +61,9 @@ Player::Player(Game* game) : game(game), x(Game::WINDOW_WIDTH / 2.0f - 32.0f), y
     // Initialize enhanced item system
     if (game && game->getAssetManager()) {
         itemSystem = std::make_unique<ItemSystem>(game->getAssetManager());
+        
+        // Initialize spell system
+        spellSystem = std::make_unique<SpellSystem>(game, this);
         // Give player starter equipment and auto-equip it
         const char* starterItems[9] = {
             "copper_ring",      // RING - slot 0
@@ -119,10 +123,10 @@ void Player::loadSprites() {
     walkUpSpriteSheet    = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "RUN/Sword_Run_Up.png");
     walkDownSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "RUN/Sword_Run_Down.png");
 
-    meleeAttackLeftSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "ATTACK 1/Sword_Attack_1_Left.png");
-    meleeAttackRightSpriteSheet = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "ATTACK 1/Sword_Attack_1_Right.png");
-    meleeAttackUpSpriteSheet    = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "ATTACK 1/Sword_Attack_1_Up.png");
-    meleeAttackDownSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "ATTACK 1/Sword_Attack_1_Down.png");
+    meleeAttackLeftSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "SWORD ATTACK 1/Sword_Attack_1_Left.png");
+    meleeAttackRightSpriteSheet = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "SWORD ATTACK 1/Sword_Attack_1_Right.png");
+    meleeAttackUpSpriteSheet    = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "SWORD ATTACK 1/Sword_Attack_1_Up.png");
+    meleeAttackDownSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "SWORD ATTACK 1/Sword_Attack_1_Down.png");
 
     // Do not load Sword_Attack_2 yet; reserve for future ability
     rangedAttackLeftSpriteSheet  = nullptr;
@@ -131,10 +135,10 @@ void Player::loadSprites() {
     rangedAttackDownSpriteSheet  = nullptr;
 
     // Attack end sheets (sword 4 frames, bow end may be 2 frames but reused via ATTACK_END logic)
-    attackEndLeftSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "End Sword Animation/Sword_Attack_End_Left.png");
-    attackEndRightSpriteSheet = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "End Sword Animation/Sword_Attack_End_Right.png");
-    attackEndUpSpriteSheet    = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "End Sword Animation/Sword_Attack_End_Up.png");
-    attackEndDownSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "End Sword Animation/Sword_Attack_End_Down.png");
+    attackEndLeftSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "END ANIMATION/Sword_Attack_End_Left.png");
+    attackEndRightSpriteSheet = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "END ANIMATION/Sword_Attack_End_Right.png");
+    attackEndUpSpriteSheet    = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "END ANIMATION/Sword_Attack_End_Up.png");
+    attackEndDownSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "END ANIMATION/Sword_Attack_End_Down.png");
     // Bow idle/run
     bowIdleLeftSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "IDLE/Bow_Idle_Left.png");
     bowIdleRightSpriteSheet = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "IDLE/Bow_Idle_Right.png");
@@ -161,15 +165,11 @@ void Player::loadSprites() {
     dashDownSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "DASH/Dash_Down.png");
 
     // Hurt (take damage) sheets: 6 frames each
-    // Hurt sheets: try Damage_* then fallback to hurt_*
-    hurtLeftSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "TAKE_DMG/Damage_Left.png");
-    if (!hurtLeftSpriteSheet)  hurtLeftSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "TAKE_DMG/hurt_left.png");
-    hurtRightSpriteSheet = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "TAKE_DMG/Damage_Right.png");
-    if (!hurtRightSpriteSheet) hurtRightSpriteSheet = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "TAKE_DMG/hurt_right.png");
-    hurtUpSpriteSheet    = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "TAKE_DMG/Damage_Up.png");
-    if (!hurtUpSpriteSheet)    hurtUpSpriteSheet    = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "TAKE_DMG/hurt_up.png");
-    hurtDownSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "TAKE_DMG/Damage_Down.png");
-    if (!hurtDownSpriteSheet)  hurtDownSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "TAKE_DMG/hurt_down.png");
+    // Hurt sheets: load hurt_* files directly (Damage_*.png files don't exist)
+    hurtLeftSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "TAKE_DMG/hurt_left.png");
+    hurtRightSpriteSheet = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "TAKE_DMG/hurt_right.png");
+    hurtUpSpriteSheet    = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "TAKE_DMG/hurt_up.png");
+    hurtDownSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "TAKE_DMG/hurt_down.png");
     // Death sheets: 12 frames each, choose by direction during DEAD state
     deathLeftSpriteSheet  = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "DEATH/Death_Left.png");
     deathRightSpriteSheet = assetManager->getSpriteSheet(AssetManager::MAIN_CHAR_PATH + "DEATH/Death_Right.png");
@@ -229,6 +229,20 @@ void Player::update(float deltaTime) {
     
     // Update projectiles
     updateProjectiles(deltaTime);
+    
+    // Update spell system
+    if (spellSystem) {
+        spellSystem->update(deltaTime);
+        
+        // Apply passive health regen if available
+        float regen = spellSystem->getRegenPerSecond();
+        if (regen > 0) {
+            health = std::min(maxHealth, health + static_cast<int>(regen * deltaTime));
+        }
+    }
+    
+    // Mana regeneration (base rate)
+    mana = std::min(maxMana, mana + static_cast<int>(5.0f * deltaTime)); // 5 mana per second
 
     // Handle delayed second melee SFX (does not re-trigger animation)
     if (meleeSecondSfxPending && game && game->getAudioManager()) {
@@ -252,7 +266,10 @@ void Player::update(float deltaTime) {
         fireShieldTimer += deltaTime;
         if (fireShieldTimer >= fireShieldFrameDuration) {
             fireShieldTimer = 0.0f;
-            fireShieldFrame = (fireShieldFrame + 1) % std::max(1, fireShieldSpriteSheet->getTotalFrames());
+            // Safety check for null sprite sheet before accessing getTotalFrames()
+            if (fireShieldSpriteSheet) {
+                fireShieldFrame = (fireShieldFrame + 1) % std::max(1, fireShieldSpriteSheet->getTotalFrames());
+            }
         }
         // Tick AoE damage
         fireShieldTickTimer -= deltaTime;
@@ -260,17 +277,21 @@ void Player::update(float deltaTime) {
             fireShieldTickTimer = FIRE_SHIELD_TICK_SECONDS;
             // Deal AoE to nearby enemies
             if (game && game->getWorld()) {
-                auto& enemies = const_cast<std::vector<std::unique_ptr<Enemy>>&>(game->getWorld()->getEnemies());
-                SDL_Rect area = getCollisionRect();
-                // Expand radius
-                area.x -= 40; area.y -= 40; area.w += 80; area.h += 80;
-                for (auto& e : enemies) {
-                    if (!e || e->isDead()) continue;
-                    SDL_Rect er = e->getCollisionRect();
-                    SDL_Rect inter;
-                    if (SDL_IntersectRect(&area, &er, &inter)) {
-                        e->takeDamage(getFireShieldDamage());
+                try {
+                    auto& enemies = const_cast<std::vector<std::unique_ptr<Enemy>>&>(game->getWorld()->getEnemies());
+                    SDL_Rect area = getCollisionRect();
+                    // Expand radius
+                    area.x -= 40; area.y -= 40; area.w += 80; area.h += 80;
+                    for (auto& e : enemies) {
+                        if (!e || e->isDead()) continue;
+                        SDL_Rect er = e->getCollisionRect();
+                        SDL_Rect inter;
+                        if (SDL_IntersectRect(&area, &er, &inter)) {
+                            e->takeDamage(getFireShieldDamage());
+                        }
                     }
+                } catch (...) {
+                    std::cout << "Error: Exception in Fire Shield AoE damage calculation" << std::endl;
                 }
             }
         }
@@ -330,12 +351,12 @@ void Player::handleInput(const InputManager* inputManager) {
         performRangedAttack();
     }
 
-    // Dash ability on F (press)
+    // Dash ability on Spacebar (press)
     if (inputManager->isActionPressed(InputAction::DASH) && canDash()) {
         performDash();
     }
 
-    // Shield hold: while held, keep active; on release, stop
+    // Fire shield on F key: while held, keep active; on release, stop
     if (inputManager->isActionHeld(InputAction::SHIELD)) {
         if (hasFireShield()) startShield();
     } else if (shieldActive) {
@@ -371,11 +392,48 @@ void Player::handleInput(const InputManager* inputManager) {
             std::cout << "No MP potion charges left or MP already full." << std::endl;
         }
     }
+    
+    // Spell casting: 3-6 keys or Q,E,R,F
+    if (spellSystem && currentState != PlayerState::ATTACKING_MELEE && currentState != PlayerState::ATTACKING_RANGED) {
+        const Uint8* keyState = SDL_GetKeyboardState(nullptr);
+        
+        // Number keys 3-6 for spells (with cooldown checks)
+        if (keyState[SDL_SCANCODE_3] && isSpellSlotReady(0)) {
+            spellSystem->castSpell(0);
+        } else if (keyState[SDL_SCANCODE_4] && isSpellSlotReady(1)) {
+            spellSystem->castSpell(1);
+        } else if (keyState[SDL_SCANCODE_5] && isSpellSlotReady(2)) {
+            spellSystem->castSpell(2);
+        } else if (keyState[SDL_SCANCODE_6] && isSpellSlotReady(3)) {
+            spellSystem->castSpell(3);
+        }
+        
+        // Alternative QERF keys (with cooldown checks)
+        else if (keyState[SDL_SCANCODE_Q] && isSpellSlotReady(0)) {
+            spellSystem->castSpell(0);
+        } else if (keyState[SDL_SCANCODE_E] && !inputManager->isActionPressed(InputAction::INTERACT) && isSpellSlotReady(1)) {
+            spellSystem->castSpell(1);
+        } else if (keyState[SDL_SCANCODE_R] && isSpellSlotReady(2)) {
+            spellSystem->castSpell(2);
+        } else if (keyState[SDL_SCANCODE_F] && !inputManager->isActionPressed(InputAction::DASH) && isSpellSlotReady(3)) {
+            spellSystem->castSpell(3);
+        }
+        
+        // Stop channeling if movement keys pressed
+        if (moveX != 0.0f || moveY != 0.0f) {
+            spellSystem->stopChanneling();
+        }
+    }
 }
 
 void Player::move(float deltaTime) {
     if (currentState == PlayerState::DEAD) {
         return; // Can't move when dead
+    }
+    
+    // Can't move while channeling spells
+    if (spellSystem && spellSystem->getIsChanneling()) {
+        return; // Player is stunned in place while channeling
     }
     // During dash: move along dash velocity and consume remaining distance
     if (currentState == PlayerState::DASHING) {
@@ -1088,6 +1146,16 @@ void Player::render(Renderer* renderer) {
 
     // Render fire shield overlay centered on player
     if (shieldActive && mana > 0 && fireShieldSpriteSheet) {
+        // Additional safety checks for texture access
+        if (!fireShieldSpriteSheet->getTexture()) {
+            std::cout << "Error: Fire shield sprite sheet has null texture" << std::endl;
+            return;
+        }
+        if (!fireShieldSpriteSheet->getTexture()->getTexture()) {
+            std::cout << "Error: Fire shield sprite sheet texture SDL_Texture is null" << std::endl;
+            return;
+        }
+        
         SDL_Rect fs = fireShieldSpriteSheet->getFrameRect(fireShieldFrame);
         int fW = fireShieldSpriteSheet->getFrameWidth();
         int fH = fireShieldSpriteSheet->getFrameHeight();
@@ -1104,12 +1172,21 @@ void Player::render(Renderer* renderer) {
         SDL_Rect dst2{ tl2.x, tl2.y, std::max(1, br2.x - tl2.x), std::max(1, br2.y - tl2.y) };
         SDL_RenderCopy(renderer->getSDLRenderer(), fireShieldSpriteSheet->getTexture()->getTexture(), &fs, &dst2);
     }
+    
+    // Render spell effects
+    if (spellSystem) {
+        spellSystem->render(renderer);
+    }
 }
 
 void Player::startShield() {
     if (shieldActive) return;
     if (!hasFireShield()) return;
     if (mana <= 0) return;
+    if (!fireShieldSpriteSheet) {
+        std::cout << "Warning: Fire shield sprite sheet not loaded, cannot activate shield" << std::endl;
+        return;
+    }
     shieldActive = true;
     fireShieldTickTimer = 0.0f;
     fireShieldTimer = 0.0f;
@@ -1331,7 +1408,11 @@ void Player::addItemToInventory(const std::string& key, int amount) {
     // Prefer bag 0; if key not present use bag 0 else keep stacking where present
     for (int i = 0; i < 2; ++i) {
         auto it = bags[i].find(key);
-        if (it != bags[i].end()) { it->second += amount; return; }
+        if (it != bags[i].end()) { it->second += amount; 
+            // Trigger save after inventory change - TEMPORARILY DISABLED
+            // if (game) game->saveCurrentUserState();
+            return; 
+        }
     }
     bags[0][key] += amount;
     // Keep the special counters in sync for canonical keys
@@ -1344,6 +1425,8 @@ void Player::addItemToInventory(const std::string& key, int amount) {
     } else if (key == "poison_scroll" || key == "poison") {
         elementScrolls["poison"] += amount;
     }
+    // Trigger save after inventory change - TEMPORARILY DISABLED
+    // if (game) game->saveCurrentUserState();
 }
 
 int Player::getInventoryCount(const std::string& key) const {
@@ -1427,7 +1510,8 @@ void Player::applySaveState(const PlayerSave& s) {
         }
         
         // Load inventory into ItemSystem with rarity and +levels
-        itemSystem->loadInventoryFromSave(s.invKey, s.invCnt, s.invRarity, s.invPlusLevel);
+        itemSystem->loadInventoryFromSave(s.invKey, s.invCnt, s.invRarity, s.invPlusLevel,
+                                          s.resourceKey, s.resourceCnt, s.resourceRarity, s.resourcePlusLevel);
         
         // Recompute melee damage with sword stats
         updateSwordStatsByPlus();
@@ -1483,19 +1567,34 @@ PlayerSave Player::makeSaveState() const {
     s.upgradeScrolls = upgradeScrolls;
     // Persist equipment from ItemSystem if available
     if (itemSystem) {
+        std::cout << "Saving equipment from ItemSystem..." << std::endl;
         const auto& equipSlots = itemSystem->getEquipmentSlots();
+        std::cout << "Equipment slots size: " << equipSlots.size() << std::endl;
         for (int i = 0; i < 9; ++i) {
             if (i < equipSlots.size() && !equipSlots[i].isEmpty()) {
                 Item* item = equipSlots[i].item;
-                s.equipPlus[i] = item->plusLevel;
-                s.equipFire[i] = item->stats.fireAttack;
-                s.equipIce[i] = item->stats.waterAttack;
-                s.equipLightning[i] = 0; // Lightning not implemented yet
-                s.equipPoison[i] = item->stats.poisonAttack;
-                s.equipNames[i] = item->id; // Save item ID, not display name
-                s.equipRarity[i] = static_cast<int>(item->rarity);
+                if (item) {  // Safety check
+                    s.equipPlus[i] = item->plusLevel;
+                    s.equipFire[i] = item->stats.fireAttack;
+                    s.equipIce[i] = item->stats.waterAttack;
+                    s.equipLightning[i] = 0; // Lightning not implemented yet
+                    s.equipPoison[i] = item->stats.poisonAttack;
+                    s.equipNames[i] = item->id; // Save item ID, not display name
+                    s.equipRarity[i] = static_cast<int>(item->rarity);
+                    std::cout << "Saving slot " << i << ": " << item->id << " (plus: " << item->plusLevel << ", fire: " << item->stats.fireAttack << ")" << std::endl;
+                } else {
+                    // Null item, treat as empty
+                    s.equipPlus[i] = 0;
+                    s.equipFire[i] = 0;
+                    s.equipIce[i] = 0;
+                    s.equipLightning[i] = 0;
+                    s.equipPoison[i] = 0;
+                    s.equipNames[i].clear();
+                    s.equipRarity[i] = 0;
+                }
             } else {
                 // Empty slot
+                std::cout << "Empty slot " << i << " (either out of range or isEmpty)" << std::endl;
                 s.equipPlus[i] = 0;
                 s.equipFire[i] = 0;
                 s.equipIce[i] = 0;
@@ -1507,6 +1606,7 @@ PlayerSave Player::makeSaveState() const {
         }
     } else {
         // Fallback to old equipment array if ItemSystem not available
+        std::cout << "ItemSystem not available, falling back to legacy equipment array" << std::endl;
         for (int i = 0; i < 9; ++i) {
             s.equipPlus[i] = equipment[i].plusLevel;
             s.equipFire[i] = equipment[i].fire;
@@ -1514,13 +1614,17 @@ PlayerSave Player::makeSaveState() const {
             s.equipLightning[i] = equipment[i].lightning;
             s.equipPoison[i] = equipment[i].poison;
             s.equipNames[i] = equipment[i].name;
+            std::cout << "Legacy slot " << i << ": " << equipment[i].name << " (plus: " << equipment[i].plusLevel << ", fire: " << equipment[i].fire << ")" << std::endl;
         }
     }
     // Inventory persistence
     if (itemSystem) {
+        std::cout << "Saving inventory from ItemSystem..." << std::endl;
         // Save from ItemSystem inventories
         const auto& itemInv = itemSystem->getItemInventory();
         const auto& scrollInv = itemSystem->getScrollInventory();
+        const auto& resourceInv = itemSystem->getResourceInventory();
+        std::cout << "Item inventory size: " << itemInv.size() << ", Scroll inventory size: " << scrollInv.size() << ", Resource inventory size: " << resourceInv.size() << std::endl;
         
         // Clear arrays first
         for (int b = 0; b < 2; ++b) {
@@ -1531,32 +1635,66 @@ PlayerSave Player::makeSaveState() const {
                 s.invPlusLevel[b][i] = 0;
             }
         }
+        // Clear resource inventory
+        for (int i = 0; i < 9; ++i) {
+            s.resourceKey[i].clear();
+            s.resourceCnt[i] = 0;
+            s.resourceRarity[i] = 0;
+            s.resourcePlusLevel[i] = 0;
+        }
         
         // Save main item inventory (bag 0)
         int idx = 0;
+        std::cout << "Saving item inventory (bag 0)..." << std::endl;
         for (int i = 0; i < itemInv.size() && idx < 9; ++i) {
-            if (!itemInv[i].isEmpty()) {
+            if (!itemInv[i].isEmpty() && itemInv[i].item) {  // Safety check for null item
                 s.invKey[0][idx] = itemInv[i].item->id;
                 s.invCnt[0][idx] = itemInv[i].item->currentStack;
                 s.invRarity[0][idx] = static_cast<int>(itemInv[i].item->rarity);
                 s.invPlusLevel[0][idx] = itemInv[i].item->plusLevel;
+                std::cout << "Saving item inv[0][" << idx << "]: " << itemInv[i].item->id << " (count: " << itemInv[i].item->currentStack << ")" << std::endl;
                 idx++;
+            } else {
+                std::cout << "Skipping empty item inventory slot " << i << std::endl;
             }
         }
+        std::cout << "Saved " << idx << " items to bag 0" << std::endl;
         
         // Save scroll inventory (bag 1)
         idx = 0;
+        std::cout << "Saving scroll inventory (bag 1)..." << std::endl;
         for (int i = 0; i < scrollInv.size() && idx < 9; ++i) {
-            if (!scrollInv[i].isEmpty()) {
+            if (!scrollInv[i].isEmpty() && scrollInv[i].item) {  // Safety check for null item
                 s.invKey[1][idx] = scrollInv[i].item->id;
                 s.invCnt[1][idx] = scrollInv[i].item->currentStack;
                 s.invRarity[1][idx] = static_cast<int>(scrollInv[i].item->rarity);
                 s.invPlusLevel[1][idx] = scrollInv[i].item->plusLevel;
+                std::cout << "Saving scroll inv[1][" << idx << "]: " << scrollInv[i].item->id << " (count: " << scrollInv[i].item->currentStack << ")" << std::endl;
                 idx++;
+            } else {
+                std::cout << "Skipping empty scroll inventory slot " << i << std::endl;
             }
         }
+        std::cout << "Saved " << idx << " scrolls to bag 1" << std::endl;
+        
+        // Save resource inventory (separate from bags)
+        idx = 0;
+        std::cout << "Saving resource inventory..." << std::endl;
+        for (int i = 0; i < resourceInv.size() && idx < 9; ++i) {
+            if (!resourceInv[i].isEmpty() && resourceInv[i].item) {  // Safety check for null item
+                s.resourceKey[idx] = resourceInv[i].item->id;
+                s.resourceCnt[idx] = resourceInv[i].item->currentStack;
+                s.resourceRarity[idx] = static_cast<int>(resourceInv[i].item->rarity);
+                s.resourcePlusLevel[idx] = resourceInv[i].item->plusLevel;
+                std::cout << "Saving resource [" << idx << "]: " << resourceInv[i].item->id << " (count: " << resourceInv[i].item->currentStack << ")" << std::endl;
+                idx++;
+            } else {
+                std::cout << "Skipping empty resource inventory slot " << i << std::endl;
+            }
+        }
+        std::cout << "Saved " << idx << " resources" << std::endl;
     } else {
-        // Fallback to old bag system
+        // Fallback to old bag system (only 2 bags in legacy system)
         for (int b = 0; b < 2; ++b) {
             int idx = 0;
             for (const auto& kv : bags[b]) {
@@ -1576,7 +1714,8 @@ bool Player::consumeHealthPotion() {
     if (healthPotionCooldown > 0.0f || (!infinite && healthPotionCharges <= 0) || health >= maxHealth) {
         return false;
     }
-    heal(HEALTH_POTION_HEAL);
+    int healAmount = static_cast<int>(maxHealth * 0.2f); // 20% of max health
+    heal(healAmount);
     if (!infinite) {
         healthPotionCharges--;
     }
@@ -1590,7 +1729,8 @@ bool Player::consumeManaPotion() {
     if (manaPotionCooldown > 0.0f || (!infinite && manaPotionCharges <= 0) || mana >= maxMana) {
         return false;
     }
-    mana = std::min(mana + MANA_POTION_RESTORE, maxMana);
+    int manaRestore = static_cast<int>(maxMana * 0.2f); // 20% of max mana
+    mana = std::min(mana + manaRestore, maxMana);
     if (!infinite) {
         manaPotionCharges--;
     }
@@ -1918,5 +2058,21 @@ int Player::getFireShieldDamage() {
 void Player::addItemToInventoryWithRarity(const std::string& itemId, int amount, int rarity) {
     if (itemSystem) {
         itemSystem->addItem(itemId, amount, static_cast<ItemRarity>(rarity));
+        // Trigger save after inventory change - TEMPORARILY DISABLED
+        // if (game) game->saveCurrentUserState();
     }
+}
+
+bool Player::isSpellSlotReady(int slot) const {
+    if (!spellSystem) {
+        return false;
+    }
+    
+    std::vector<SpellType> available = spellSystem->getAvailableSpells();
+    if (slot < 0 || slot >= available.size()) {
+        return false;
+    }
+    
+    SpellType spell = available[slot];
+    return spellSystem->getCooldownRemaining(spell) <= 0.0f;
 }

@@ -67,6 +67,11 @@ struct PlayerSave {
     int         invRarity[2][9] = {};
     // Inventory +levels per bag slot
     int         invPlusLevel[2][9] = {};
+    // Resource inventory (separate from main bags for now)
+    std::string resourceKey[9];
+    int         resourceCnt[9] = {};
+    int         resourceRarity[9] = {};
+    int         resourcePlusLevel[9] = {};
 };
 
 struct ItemRecord {
