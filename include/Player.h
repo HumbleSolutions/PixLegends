@@ -1,6 +1,6 @@
 #pragma once
 
-#include <SDL2/SDL.h>
+#include <SDL.h>
 #include <memory>
 #include <vector>
 #include <string>
@@ -10,6 +10,7 @@
 // Forward declarations
 class Projectile;
 class Enemy;
+class SpellSystem;
 
 // Forward declarations
 class Game;
@@ -189,6 +190,11 @@ public:
     class ItemSystem* getItemSystem() const { return itemSystem.get(); }
     void addItemToInventoryWithRarity(const std::string& itemId, int amount, int rarity = 0);
     
+    // Spell system
+    SpellSystem* getSpellSystem() { return spellSystem.get(); }
+    const SpellSystem* getSpellSystem() const { return spellSystem.get(); }
+    Direction getFacingDirection() const { return currentDirection; }
+    
     // Legacy inventory support (for compatibility)
     void addItemToInventory(const std::string& key, int amount);
     int getInventoryCount(const std::string& key) const;
@@ -196,6 +202,9 @@ public:
 
     // Collision
     SDL_Rect getCollisionRect() const;
+    
+    // Spell helper
+    bool isSpellSlotReady(int slot) const;
 
 private:
     Game* game;
@@ -242,6 +251,9 @@ private:
 
     // Enhanced item system
     std::unique_ptr<class ItemSystem> itemSystem;
+    
+    // Spell system
+    std::unique_ptr<SpellSystem> spellSystem;
     
     // Legacy equipment and upgrade resources (for compatibility)
     std::array<EquipmentItem, static_cast<size_t>(EquipmentSlot::COUNT)> equipment;

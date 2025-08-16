@@ -1,6 +1,6 @@
 #pragma once
 
-#include <SDL2/SDL.h>
+#include <SDL.h>
 #include <memory>
 #include <vector>
 #include <unordered_map>
@@ -13,9 +13,10 @@ class InputManager;
 class AssetManager;
 class Player;
 class World;
+class Enemy;
 class UISystem;
 class AudioManager;
-class Database;
+class DatabaseSQLite;
 
 // Forward declarations
 class Item;
@@ -47,7 +48,7 @@ public:
     World* getWorld() const { return world.get(); }
     UISystem* getUISystem() const { return uiSystem.get(); }
     AudioManager* getAudioManager() const { return audioManager.get(); }
-    Database* getDatabase() const { return database.get(); }
+    DatabaseSQLite* getDatabase() const { return database.get(); }
     bool isOptionsOpen() const { return optionsOpen; }
 
     // Magic Anvil UI state
@@ -106,6 +107,17 @@ public:
     // Spawner control
     void setStopMonsterSpawns(bool stop) { stopMonsterSpawns = stop; }
     bool getStopMonsterSpawns() const { return stopMonsterSpawns; }
+    
+    // Spell system helpers
+    std::vector<std::unique_ptr<Enemy>>& getEnemies() { return enemies; }
+    const std::vector<std::unique_ptr<Enemy>>& getEnemies() const { return enemies; }
+    float getCameraX() const;
+    float getCameraY() const;
+    float getWorldWidth() const;
+    float getWorldHeight() const;
+    
+    // Save/load system
+    void saveCurrentUserState();
 
 private:
     // SDL objects
@@ -120,7 +132,10 @@ private:
     std::unique_ptr<World> world;
     std::unique_ptr<UISystem> uiSystem;
     std::unique_ptr<AudioManager> audioManager;
-    std::unique_ptr<Database> database;
+    std::unique_ptr<DatabaseSQLite> database;
+    
+    // Game entities
+    std::vector<std::unique_ptr<Enemy>> enemies;
 
     // Modal UI state
     bool anvilOpen = false;
@@ -186,7 +201,6 @@ private:
     void cleanup();
     void updatePerformanceMetrics();
     void loadOrCreateDefaultUserAndSave();
-    void saveCurrentUserState();
 
     void renderOptionsMenuOverlay();
     void handleOptionsInput(const SDL_Event& event);

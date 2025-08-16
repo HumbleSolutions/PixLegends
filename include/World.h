@@ -4,7 +4,7 @@
 #include <memory>
 #include <string>
 #include <random>
-#include <SDL2/SDL.h>
+#include <SDL.h>
 #include <unordered_map> // Added for unordered_map
 
 // Forward declarations

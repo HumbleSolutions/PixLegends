@@ -1,0 +1,12 @@
+burning ground 406x48, 5 frames.
+explosion 768x48, 16 frames.
+explosion_02, 576x48, 12 frames.
+explosion_03, 864x96, 18 frames.
+fire_ground_impact, 570x48, 6 frames.
+fire_vortex_red, 2592x144, 27 frames.
+fire_partical, 768x48, 16 frames.
+fire hurricain_red 2176x128, 17 frames
+firebolt 192x48, 4 frames.
+flame_wave 12000x600, 20 frames.
+smoke cloud 5120x256, 10 frames
+Meteor shower-red, 2024.384, 24 frames, 3 rows 8 colloums

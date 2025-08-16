@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(build.bat)",
+      "Bash(cmd /c:*)",
+      "Bash(copy:*)",
+      "Bash(PixLegends.exe)",
+      "Bash(./PixLegends.exe)",
+      "Bash(powershell:*)",
+      "Bash(cmake:*)",
+      "Bash(rm:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

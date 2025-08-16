@@ -98,11 +98,12 @@ PixLegends is a 2D action-adventure game built with SDL2 using C++17. The archit
 
 ### Default Controls
 - **Movement**: WASD
-- **Combat**: Space/LMB (melee), Shift/RMB (ranged)
-- **Abilities**: Space (fire shield when belt has fire enchantment), Dash (movement direction)
+- **Combat**: LMB (melee), Shift/RMB (ranged)
+- **Abilities**: Space (dash), F (fire shield when belt has fire enchantment)
+- **Spells**: 3-6 or Q,E,R,T (cast elemental spells based on weapon enchantment)
 - **Interact**: E (objects, NPCs)
 - **Potions**: 1 (HP), 2 (MP)
-- **UI**: I (inventory), U (equipment), P (pause), Esc (options), F1/F3 (debug)
+- **UI**: I (inventory), U (equipment), B (spell book), P (pause), Esc (options), F1/F3 (debug)
 - **Mouse**: Left-click (melee direction), Right-click (ranged targeting), Hover (tooltips)
 
 ## Current Implementation Status

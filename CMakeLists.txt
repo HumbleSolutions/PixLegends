@@ -156,6 +156,7 @@ set(SOURCES
     src/main.cpp
     src/Game.cpp
     src/Database.cpp
+    src/DatabaseSQLite.cpp
     src/AssetManager.cpp
     src/InputManager.cpp
     src/Player.cpp
@@ -169,6 +170,7 @@ set(SOURCES
     src/Boss.cpp
     src/LootGenerator.cpp
     src/ItemSystem.cpp
+    src/SpellSystem.cpp
 )
 
 # Create executable

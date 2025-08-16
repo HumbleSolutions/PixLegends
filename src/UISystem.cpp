@@ -4,6 +4,7 @@
 #include "AssetManager.h"
 #include "ItemSystem.h"
 #include "Game.h"
+#include "SpellSystem.h"
 #include <iostream>
 #include <sstream>
 #include <algorithm>
@@ -1880,4 +1881,561 @@ void UISystem::renderTooltip(const std::string& tooltipText, int mouseX, int mou
     for (size_t i = 0; i < lines.size(); i++) {
         renderText(lines[i], tooltipX + padding, tooltipY + padding + i * lineHeight, {255, 255, 255, 255});
     }
+}
+
+void UISystem::renderSkillBar(const Player* player) {
+    if (!player || !player->getSpellSystem() || !assetManager) return;
+    
+    // Get actual screen dimensions for both fullscreen and windowed mode
+    int screenW, screenH;
+    SDL_GetRendererOutputSize(renderer, &screenW, &screenH);
+    
+    int barWidth = SKILL_BAR_COLS * (SKILL_SLOT_SIZE + SKILL_SLOT_PADDING);
+    int barHeight = SKILL_BAR_ROWS * (SKILL_SLOT_SIZE + SKILL_SLOT_PADDING);
+    
+    // Center horizontally, anchor to bottom edge
+    skillBarX = (screenW - barWidth) / 2;
+    skillBarY = screenH - barHeight - 20;
+    
+    // Draw background for skill bar
+    SDL_Rect barBg = {
+        skillBarX - 10,
+        skillBarY - 10,
+        barWidth + 20,
+        barHeight + 20
+    };
+    SDL_SetRenderDrawColor(renderer, 20, 20, 30, 200);
+    SDL_RenderFillRect(renderer, &barBg);
+    
+    // Draw border
+    SDL_SetRenderDrawColor(renderer, 100, 100, 120, 255);
+    SDL_RenderDrawRect(renderer, &barBg);
+    
+    // Get available spells from spell system
+    auto spellSystem = player->getSpellSystem();
+    auto availableSpells = spellSystem->getAvailableSpells();
+    
+    // Map spell types to icon paths
+    std::unordered_map<int, std::string> spellIcons = {
+        {static_cast<int>(SpellType::FIRE_BOLT), "assets/Textures/UI/firebolt_ui.png"},
+        {static_cast<int>(SpellType::FLAME_WAVE), "assets/Textures/UI/flame_wave_ui.png"},
+        {static_cast<int>(SpellType::METEOR_STRIKE), "assets/Textures/UI/meteor_strike_ui.png"},
+        {static_cast<int>(SpellType::DRAGONS_BREATH), "assets/Textures/UI/dragons_breath_ui.png"}
+    };
+    
+    // Add special abilities (always available)
+    const std::string dashIcon = "assets/Textures/UI/dash_ui.png";
+    const std::string fireShieldIcon = "assets/Textures/UI/fire_sheild_ui.png";
+    
+    // Render skill slots
+    for (int row = 0; row < SKILL_BAR_ROWS; row++) {
+        for (int col = 0; col < SKILL_BAR_COLS; col++) {
+            int slotIndex = row * SKILL_BAR_COLS + col;
+            int x = skillBarX + col * (SKILL_SLOT_SIZE + SKILL_SLOT_PADDING);
+            int y = skillBarY + row * (SKILL_SLOT_SIZE + SKILL_SLOT_PADDING);
+            
+            // Draw slot background
+            SDL_Rect slotRect = {x, y, SKILL_SLOT_SIZE, SKILL_SLOT_SIZE};
+            SDL_SetRenderDrawColor(renderer, 40, 40, 50, 255);
+            SDL_RenderFillRect(renderer, &slotRect);
+            
+            // Draw slot border
+            SDL_SetRenderDrawColor(renderer, 80, 80, 100, 255);
+            SDL_RenderDrawRect(renderer, &slotRect);
+            
+            // Special slots for dash and fire shield (swapped)
+            if (slotIndex == 0) {
+                // Dash ability (Spacebar key)
+                auto* dashTex = assetManager->getTexture(dashIcon);
+                if (dashTex) {
+                    SDL_RenderCopy(renderer, dashTex->getTexture(), nullptr, &slotRect);
+                }
+                
+                // Render cooldown overlay if on cooldown
+                float dashCooldown = player->getDashCooldownRemaining();
+                if (dashCooldown > 0) {
+                    float cooldownPercent = dashCooldown / player->getDashCooldownMax();
+                    int overlayHeight = static_cast<int>(SKILL_SLOT_SIZE * cooldownPercent);
+                    SDL_Rect cooldownRect = {x, y + SKILL_SLOT_SIZE - overlayHeight, SKILL_SLOT_SIZE, overlayHeight};
+                    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 180);
+                    SDL_RenderFillRect(renderer, &cooldownRect);
+                    
+                    // Render cooldown text
+                    char cooldownText[8];
+                    snprintf(cooldownText, sizeof(cooldownText), "%.1f", dashCooldown);
+                    renderTextCentered(cooldownText, x + SKILL_SLOT_SIZE/2, y + SKILL_SLOT_SIZE/2, {255, 255, 255, 255});
+                }
+                
+                // Render hotkey
+                renderText("SPC", x + 2, y + SKILL_SLOT_SIZE - 14, {255, 255, 100, 255});
+            }
+            else if (slotIndex == 1 && player->hasFireShield()) {
+                // Fire shield ability (F key)
+                auto* shieldTex = assetManager->getTexture(fireShieldIcon);
+                if (shieldTex) {
+                    SDL_RenderCopy(renderer, shieldTex->getTexture(), nullptr, &slotRect);
+                }
+                renderText("F", x + 2, y + SKILL_SLOT_SIZE - 14, {255, 255, 100, 255});
+            }
+            else if (slotIndex >= 2 && slotIndex - 2 < static_cast<int>(availableSpells.size())) {
+                // Regular spells
+                int spellIdx = slotIndex - 2;
+                auto spellType = availableSpells[spellIdx];
+                
+                // Get icon for this spell
+                auto iconIt = spellIcons.find(static_cast<int>(spellType));
+                if (iconIt != spellIcons.end()) {
+                    auto* spellTex = assetManager->getTexture(iconIt->second);
+                    if (spellTex) {
+                        SDL_RenderCopy(renderer, spellTex->getTexture(), nullptr, &slotRect);
+                    }
+                }
+                
+                // Check cooldown
+                float cooldown = spellSystem->getCooldownRemaining(spellType);
+                if (cooldown > 0) {
+                    float cooldownPercent = spellSystem->getCooldownPercent(spellType);
+                    int overlayHeight = static_cast<int>(SKILL_SLOT_SIZE * cooldownPercent);
+                    SDL_Rect cooldownRect = {x, y + SKILL_SLOT_SIZE - overlayHeight, SKILL_SLOT_SIZE, overlayHeight};
+                    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 180);
+                    SDL_RenderFillRect(renderer, &cooldownRect);
+                    
+                    // Render cooldown text
+                    char cooldownText[8];
+                    snprintf(cooldownText, sizeof(cooldownText), "%.1f", cooldown);
+                    renderTextCentered(cooldownText, x + SKILL_SLOT_SIZE/2, y + SKILL_SLOT_SIZE/2, {255, 255, 255, 255});
+                }
+                
+                // Check mana cost
+                int manaCost = spellSystem->getSpellManaCost(spellType);
+                if (player->getMana() < manaCost) {
+                    // Tint red if not enough mana
+                    SDL_SetRenderDrawColor(renderer, 100, 0, 0, 100);
+                    SDL_RenderFillRect(renderer, &slotRect);
+                }
+                
+                // Render hotkey (3-6 or Q,E,R,F+)
+                const char* hotkeys[] = {"3", "4", "5", "6", "Q", "E", "R", "T"};
+                if (spellIdx < 8) {
+                    renderText(hotkeys[spellIdx], x + 2, y + SKILL_SLOT_SIZE - 14, {255, 255, 100, 255});
+                }
+            }
+        }
+    }
+}
+
+void UISystem::renderSpellBook(const Player* player, int mouseX, int mouseY, bool mouseClicked) {
+    if (!spellBookOpen || !player || !player->getSpellSystem() || !assetManager) return;
+    
+    // Get actual screen dimensions
+    int screenW, screenH;
+    SDL_GetRendererOutputSize(renderer, &screenW, &screenH);
+    
+    // Spell book window dimensions - larger for better layout
+    int bookWidth = 800;
+    int bookHeight = 600;
+    int bookX = (screenW - bookWidth) / 2;
+    int bookY = (screenH - bookHeight) / 2;
+    
+    // Draw main background
+    SDL_Rect bookBg = {bookX, bookY, bookWidth, bookHeight};
+    SDL_SetRenderDrawColor(renderer, 20, 15, 30, 250);
+    SDL_RenderFillRect(renderer, &bookBg);
+    
+    // Draw decorative border
+    SDL_SetRenderDrawColor(renderer, 180, 140, 70, 255);
+    for (int i = 0; i < 4; i++) {
+        SDL_Rect border = {bookX - i, bookY - i, bookWidth + i*2, bookHeight + i*2};
+        SDL_RenderDrawRect(renderer, &border);
+    }
+    
+    // Title with enhanced styling
+    renderTextCentered("ARCANE SPELL COMPENDIUM", bookX + bookWidth/2, bookY + 15, {255, 215, 0, 255});
+    
+    // Tab system for spell schools
+    int tabHeight = 40;
+    int tabWidth = bookWidth / 4;
+    int tabY = bookY + 45;
+    
+    // Static tab selection (for now, will be interactive later)
+    static int selectedTab = 0; // 0=Fire, 1=Water, 2=Poison, 3=Lightning
+    
+    // Get spell system info
+    auto spellSystem = player->getSpellSystem();
+    auto activeElement = spellSystem->getActiveElement();
+    const auto& weapon = player->getEquipment(Player::EquipmentSlot::SWORD);
+    
+    // Tab data
+    struct TabInfo {
+        const char* name;
+        SDL_Color color;
+        SpellElement element;
+        int enchantLevel;
+    };
+    
+    TabInfo tabs[4] = {
+        {"Fire", {255, 100, 50, 255}, SpellElement::FIRE, weapon.fire},
+        {"Water", {100, 180, 255, 255}, SpellElement::WATER, weapon.ice},
+        {"Poison", {120, 255, 80, 255}, SpellElement::POISON, weapon.poison},
+        {"Lightning", {255, 255, 100, 255}, SpellElement::NONE, 0} // Future implementation
+    };
+    
+    // Auto-select tab based on active element
+    for (int i = 0; i < 4; i++) {
+        if (tabs[i].element == activeElement) {
+            selectedTab = i;
+            break;
+        }
+    }
+    
+    // Render tabs
+    for (int i = 0; i < 4; i++) {
+        int tabX = bookX + i * tabWidth;
+        bool isSelected = (i == selectedTab);
+        bool isActive = (tabs[i].element == activeElement && tabs[i].enchantLevel > 0);
+        
+        // Tab background
+        SDL_Color bgColor = isSelected ? SDL_Color{60, 50, 80, 255} : SDL_Color{40, 35, 55, 255};
+        if (isActive) {
+            bgColor.r = std::min(255, bgColor.r + 20);
+            bgColor.g = std::min(255, bgColor.g + 20);
+            bgColor.b = std::min(255, bgColor.b + 20);
+        }
+        
+        SDL_Rect tabRect = {tabX, tabY, tabWidth, tabHeight};
+        SDL_SetRenderDrawColor(renderer, bgColor.r, bgColor.g, bgColor.b, bgColor.a);
+        SDL_RenderFillRect(renderer, &tabRect);
+        
+        // Tab border
+        SDL_Color borderColor = isSelected ? tabs[i].color : SDL_Color{100, 100, 100, 255};
+        SDL_SetRenderDrawColor(renderer, borderColor.r, borderColor.g, borderColor.b, borderColor.a);
+        SDL_RenderDrawRect(renderer, &tabRect);
+        
+        // Tab text
+        SDL_Color textColor = isActive ? tabs[i].color : SDL_Color{150, 150, 150, 255};
+        char tabText[32];
+        if (tabs[i].enchantLevel > 0) {
+            snprintf(tabText, sizeof(tabText), "%s +%d", tabs[i].name, tabs[i].enchantLevel);
+        } else {
+            snprintf(tabText, sizeof(tabText), "%s", tabs[i].name);
+        }
+        renderTextCentered(tabText, tabX + tabWidth/2, tabY + tabHeight/2 - 8, textColor);
+    }
+    
+    // Content area
+    int contentY = tabY + tabHeight + 20;
+    int contentHeight = bookHeight - (contentY - bookY) - 40;
+    
+    // Current tab spell grid
+    TabInfo& currentTab = tabs[selectedTab];
+    
+    // Define spells for current tab
+    std::vector<std::tuple<SpellType, int, const char*>> spells;
+    
+    if (selectedTab == 0) { // Fire
+        spells = {
+            // Active Spells
+            {SpellType::FIRE_BOLT, 0, "firebolt_ui.png"},
+            {SpellType::FLAME_WAVE, 10, "flame_wave_ui.png"},
+            {SpellType::METEOR_STRIKE, 20, "meteor_strike_ui.png"},
+            {SpellType::DRAGONS_BREATH, 30, "dragons_breath_ui.png"},
+            // Passive Abilities
+            {SpellType::FIRE_MASTERY, 5, "fire_mastery.png"},
+            {SpellType::BURNING_AURA, 15, "burning_aura.png"},
+            {SpellType::INFERNO_LORD, 25, "inferno_lord.png"}
+        };
+    } else if (selectedTab == 1) { // Water
+        spells = {
+            {SpellType::ICE_SHARD, 0, "firebolt_ui.png"}, // Placeholder
+            {SpellType::FROZEN_GROUND, 10, "flame_wave_ui.png"}, // Placeholder
+            {SpellType::BLIZZARD, 20, "meteor_strike_ui.png"}, // Placeholder
+            {SpellType::ABSOLUTE_ZERO, 30, "dragons_breath_ui.png"} // Placeholder
+        };
+    } else if (selectedTab == 2) { // Poison
+        spells = {
+            {SpellType::TOXIC_DART, 0, "firebolt_ui.png"}, // Placeholder
+            {SpellType::POISON_CLOUD, 10, "flame_wave_ui.png"}, // Placeholder
+            {SpellType::PLAGUE_BOMB, 20, "meteor_strike_ui.png"}, // Placeholder
+            {SpellType::DEATHS_EMBRACE, 30, "dragons_breath_ui.png"} // Placeholder
+        };
+    }
+    
+    // Spell grid layout - Active spells in top row (4), passives in bottom row (3)
+    int spellSize = 64;
+    int spellSpacing = 80;
+    int gridStartX = bookX + 60;
+    int gridStartY = contentY + 40;
+    
+    // Ensure selected spell index is valid for current tab
+    if (selectedSpellIndex >= static_cast<int>(spells.size())) {
+        selectedSpellIndex = 0;
+    }
+    
+    // Add section headers
+    renderText("ACTIVE SPELLS", gridStartX, gridStartY - 25, {255, 200, 100, 255});
+    renderText("PASSIVE ABILITIES", gridStartX, gridStartY + spellSize + 60, {255, 200, 100, 255});
+    
+    for (size_t i = 0; i < spells.size(); i++) {
+        auto [spellType, reqLevel, iconFile] = spells[i];
+        
+        int col, row;
+        if (i < 4) {
+            // Active spells: top row (4 columns)
+            col = i % 4;
+            row = 0;
+        } else {
+            // Passive abilities: bottom row (3 columns, centered)
+            col = (i - 4) % 3;
+            row = 1;
+        }
+        
+        int spellX = gridStartX + col * spellSpacing;
+        int spellY = gridStartY + row * (spellSize + 80); // Extra spacing between rows
+        
+        // Center the passive abilities row
+        if (i >= 4) {
+            spellX += spellSpacing / 2; // Offset to center 3 items
+        }
+        
+        bool unlocked = currentTab.enchantLevel >= reqLevel;
+        bool isActive = (currentTab.element == activeElement);
+        
+        // Spell icon background
+        SDL_Rect iconBg = {spellX - 5, spellY - 5, spellSize + 10, spellSize + 10};
+        SDL_Color bgColor = unlocked ? SDL_Color{60, 60, 60, 200} : SDL_Color{30, 30, 30, 200};
+        SDL_SetRenderDrawColor(renderer, bgColor.r, bgColor.g, bgColor.b, bgColor.a);
+        SDL_RenderFillRect(renderer, &iconBg);
+        
+        // Check for mouse click on this spell icon
+        bool isSelected = (static_cast<int>(i) == selectedSpellIndex);
+        if (mouseClicked) {
+            SDL_Rect clickArea = {spellX - 5, spellY - 5, spellSize + 10, spellSize + 10};
+            if (mouseX >= clickArea.x && mouseX <= clickArea.x + clickArea.w &&
+                mouseY >= clickArea.y && mouseY <= clickArea.y + clickArea.h) {
+                selectedSpellIndex = static_cast<int>(i);
+                isSelected = true;
+            }
+        }
+        
+        // Spell icon border with selection highlighting
+        bool isPassiveAbility = (spellType == SpellType::FIRE_MASTERY || 
+                                 spellType == SpellType::BURNING_AURA || 
+                                 spellType == SpellType::INFERNO_LORD);
+        
+        SDL_Color borderColor = unlocked ? currentTab.color : SDL_Color{80, 80, 80, 255};
+        if (unlocked && isActive) {
+            borderColor = {255, 255, 255, 255}; // White border for available spells
+        }
+        if (isPassiveAbility && unlocked) {
+            borderColor = {180, 100, 255, 255}; // Purple border for passive abilities
+        }
+        if (isSelected) {
+            borderColor = {255, 255, 0, 255}; // Yellow border for selected spell
+            // Add extra thick border for selected spell
+            for (int thickness = 0; thickness < 3; thickness++) {
+                SDL_Rect thickBorder = {
+                    spellX - 5 - thickness, 
+                    spellY - 5 - thickness, 
+                    spellSize + 10 + thickness*2, 
+                    spellSize + 10 + thickness*2
+                };
+                SDL_SetRenderDrawColor(renderer, borderColor.r, borderColor.g, borderColor.b, borderColor.a);
+                SDL_RenderDrawRect(renderer, &thickBorder);
+            }
+        } else {
+            SDL_SetRenderDrawColor(renderer, borderColor.r, borderColor.g, borderColor.b, borderColor.a);
+            SDL_RenderDrawRect(renderer, &iconBg);
+        }
+        
+        // Spell icon
+        std::string iconPath = "assets/Textures/UI/" + std::string(iconFile);
+        Texture* iconTexture = assetManager->getTexture(iconPath);
+        if (iconTexture) {
+            SDL_Rect iconRect = {spellX, spellY, spellSize, spellSize};
+            
+            // Apply grayscale effect for locked spells
+            if (!unlocked) {
+                SDL_SetTextureColorMod(iconTexture->getTexture(), 100, 100, 100);
+            } else {
+                SDL_SetTextureColorMod(iconTexture->getTexture(), 255, 255, 255);
+            }
+            
+            SDL_RenderCopy(renderer, iconTexture->getTexture(), nullptr, &iconRect);
+        }
+        
+        // Spell name below icon
+        std::string spellName = spellSystem->getSpellName(spellType);
+        SDL_Color nameColor = unlocked ? SDL_Color{255, 255, 255, 255} : SDL_Color{120, 120, 120, 255};
+        renderTextCentered(spellName, spellX + spellSize/2, spellY + spellSize + 10, nameColor);
+        
+        // Requirement text
+        char reqText[32];
+        snprintf(reqText, sizeof(reqText), "Req: +%d", reqLevel);
+        SDL_Color reqColor = unlocked ? SDL_Color{100, 255, 100, 255} : SDL_Color{255, 100, 100, 255};
+        renderTextCentered(reqText, spellX + spellSize/2, spellY + spellSize + 25, reqColor);
+    }
+    
+    // Detailed info panel on the right
+    int infoPanelX = bookX + bookWidth - 280;
+    int infoPanelY = contentY;
+    int infoPanelW = 250;
+    int infoPanelH = contentHeight - 20;
+    
+    // Info panel background
+    SDL_Rect infoPanel = {infoPanelX, infoPanelY, infoPanelW, infoPanelH};
+    SDL_SetRenderDrawColor(renderer, 25, 20, 35, 220);
+    SDL_RenderFillRect(renderer, &infoPanel);
+    SDL_SetRenderDrawColor(renderer, 100, 100, 120, 255);
+    SDL_RenderDrawRect(renderer, &infoPanel);
+    
+    // Info panel title
+    renderTextCentered("SPELL DETAILS", infoPanelX + infoPanelW/2, infoPanelY + 15, {255, 215, 0, 255});
+    
+    // Show details for selected spell
+    if (!spells.empty() && selectedSpellIndex >= 0 && selectedSpellIndex < static_cast<int>(spells.size())) {
+        auto [detailSpell, detailReq, detailIcon] = spells[selectedSpellIndex];
+        bool detailUnlocked = currentTab.enchantLevel >= detailReq;
+        
+        int detailY = infoPanelY + 45;
+        
+        // Spell name
+        std::string detailName = spellSystem->getSpellName(detailSpell);
+        renderText(detailName, infoPanelX + 10, detailY, currentTab.color);
+        detailY += 25;
+        
+        // Description
+        std::string desc = spellSystem->getSpellDescription(detailSpell);
+        // Word wrap description
+        std::vector<std::string> descLines;
+        std::string currentLine;
+        std::istringstream iss(desc);
+        std::string word;
+        
+        while (iss >> word) {
+            if (currentLine.length() + word.length() + 1 > 25) { // ~25 chars per line
+                if (!currentLine.empty()) {
+                    descLines.push_back(currentLine);
+                    currentLine = word;
+                } else {
+                    descLines.push_back(word);
+                }
+            } else {
+                if (!currentLine.empty()) currentLine += " ";
+                currentLine += word;
+            }
+        }
+        if (!currentLine.empty()) descLines.push_back(currentLine);
+        
+        for (const auto& line : descLines) {
+            renderText(line, infoPanelX + 10, detailY, {200, 200, 200, 255});
+            detailY += 18;
+        }
+        
+        detailY += 10;
+        
+        if (detailUnlocked) {
+            // Check if this is a passive ability
+            bool isPassive = (detailSpell == SpellType::FIRE_MASTERY || 
+                             detailSpell == SpellType::BURNING_AURA || 
+                             detailSpell == SpellType::INFERNO_LORD);
+            
+            if (isPassive) {
+                // Passive ability stats
+                renderText("PASSIVE BONUSES:", infoPanelX + 10, detailY, {255, 200, 100, 255});
+                detailY += 20;
+                
+                // Specific bonuses based on passive type
+                if (detailSpell == SpellType::FIRE_MASTERY) {
+                    renderText("• +10% Fire Damage", infoPanelX + 10, detailY, {255, 150, 150, 255});
+                    detailY += 15;
+                    renderText("• +5 Mana Regen/sec", infoPanelX + 10, detailY, {150, 200, 255, 255});
+                    detailY += 15;
+                } else if (detailSpell == SpellType::BURNING_AURA) {
+                    renderText("• Aura Damage: 5/sec", infoPanelX + 10, detailY, {255, 150, 150, 255});
+                    detailY += 15;
+                    renderText("• Aura Radius: 100px", infoPanelX + 10, detailY, {150, 255, 150, 255});
+                    detailY += 15;
+                } else if (detailSpell == SpellType::INFERNO_LORD) {
+                    renderText("• +25% Fire Damage", infoPanelX + 10, detailY, {255, 150, 150, 255});
+                    detailY += 15;
+                    renderText("• +10% Critical Hit", infoPanelX + 10, detailY, {255, 200, 100, 255});
+                    detailY += 15;
+                    renderText("• Fire Immunity", infoPanelX + 10, detailY, {255, 100, 100, 255});
+                    detailY += 15;
+                }
+                
+                renderText("Type: Always Active", infoPanelX + 10, detailY, {180, 180, 180, 255});
+                detailY += 15;
+            } else {
+                // Active spell stats
+                renderText("COMBAT STATS:", infoPanelX + 10, detailY, {255, 200, 100, 255});
+                detailY += 20;
+                
+                // Calculate damage based on enchantment level
+                int baseDamage = 10; // Base damage for spells
+                int enchantBonus = currentTab.enchantLevel * 2; // +2 damage per enchant level
+                int totalDamage = baseDamage + enchantBonus;
+                
+                char damageText[64];
+                snprintf(damageText, sizeof(damageText), "Damage: %d (%d + %d)", totalDamage, baseDamage, enchantBonus);
+                renderText(damageText, infoPanelX + 10, detailY, {255, 150, 150, 255});
+                detailY += 18;
+                
+                // Mana cost
+                int manaCost = spellSystem->getSpellManaCost(detailSpell);
+                char manaText[32];
+                snprintf(manaText, sizeof(manaText), "Mana Cost: %d", manaCost);
+                renderText(manaText, infoPanelX + 10, detailY, {150, 200, 255, 255});
+                detailY += 18;
+                
+                // Cooldown
+                char cooldownText[32];
+                snprintf(cooldownText, sizeof(cooldownText), "Cooldown: %.1fs", spellSystem->getCooldownRemaining(detailSpell));
+                renderText(cooldownText, infoPanelX + 10, detailY, {200, 200, 150, 255});
+                detailY += 18;
+                
+                // Range/Area
+                renderText("Range: Medium", infoPanelX + 10, detailY, {150, 255, 150, 255});
+                detailY += 18;
+                
+                renderText("Type: Castable", infoPanelX + 10, detailY, {180, 180, 180, 255});
+                detailY += 15;
+            }
+        } else {
+            renderText("LOCKED", infoPanelX + 10, detailY, {255, 100, 100, 255});
+            detailY += 20;
+            
+            char unlockText[64];
+            snprintf(unlockText, sizeof(unlockText), "Requires %s +%d enchantment", currentTab.name, detailReq);
+            
+            // Word wrap unlock text
+            std::vector<std::string> unlockLines;
+            std::string currentUnlockLine;
+            std::istringstream unlockIss(unlockText);
+            std::string unlockWord;
+            
+            while (unlockIss >> unlockWord) {
+                if (currentUnlockLine.length() + unlockWord.length() + 1 > 25) {
+                    if (!currentUnlockLine.empty()) {
+                        unlockLines.push_back(currentUnlockLine);
+                        currentUnlockLine = unlockWord;
+                    } else {
+                        unlockLines.push_back(unlockWord);
+                    }
+                } else {
+                    if (!currentUnlockLine.empty()) currentUnlockLine += " ";
+                    currentUnlockLine += unlockWord;
+                }
+            }
+            if (!currentUnlockLine.empty()) unlockLines.push_back(currentUnlockLine);
+            
+            for (const auto& line : unlockLines) {
+                renderText(line, infoPanelX + 10, detailY, {200, 150, 150, 255});
+                detailY += 15;
+            }
+        }
+    }
+    
+    // Controls hint at bottom
+    renderTextCentered("Press B to close", bookX + bookWidth/2, bookY + bookHeight - 20, {180, 180, 180, 255});
 }

@@ -1,7 +1,7 @@
 #pragma once
 
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_ttf.h>
+#include <SDL.h>
+#include <SDL_ttf.h>
 #include <memory>
 #include <string>
 
@@ -36,6 +36,12 @@ public:
     void renderInteractionPrompt(const std::string& prompt, int x, int y);
     void renderLootNotification(const std::string& lootText, int x, int y);
     void renderFPSCounter(float currentFPS, float averageFPS, Uint32 frameTime);
+    
+    // Skill bar and spell book
+    void renderSkillBar(const Player* player);
+    void renderSpellBook(const Player* player, int mouseX, int mouseY, bool mouseClicked);
+    void toggleSpellBook() { spellBookOpen = !spellBookOpen; }
+    bool isSpellBookOpen() const { return spellBookOpen; }
     // Death popup
     void renderDeathPopup(bool& outClickedRespawn, float fadeAlpha01);
     
@@ -156,6 +162,18 @@ private:
     SDL_Color experienceColor;
     SDL_Color backgroundColor;
     SDL_Color textColor;
+    
+    // Skill bar state
+    bool spellBookOpen = false;
+    int skillBarX = 0;
+    int skillBarY = 0;
+    static constexpr int SKILL_BAR_COLS = 8;
+    static constexpr int SKILL_BAR_ROWS = 2;
+    static constexpr int SKILL_SLOT_SIZE = 48;
+    static constexpr int SKILL_SLOT_PADDING = 4;
+    
+    // Spell book state
+    int selectedSpellIndex = 0; // Index of currently selected spell in spell book
     
     // Helper functions
     void initializeFonts();

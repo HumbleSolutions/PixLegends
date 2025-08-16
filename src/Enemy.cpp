@@ -28,12 +28,12 @@ void Enemy::loadSprites(AssetManager* assetManager) {
         usesSpriteFlipping = true;  // Enable sprite flipping for Wizard
         baseSpriteFacesLeft = false;  // Wizard sprites face right (renamed from RIGHT)
         
-        // Load single direction sprites and use for both directions
-        SpriteSheet* idleSprite = assetManager->loadSpriteSheet(base + "IDLE.png", 128, 78, 6, 6);
-        SpriteSheet* walkSprite = assetManager->loadSpriteSheet(base + "WALK.png", 128, 78, 4, 4);
-        SpriteSheet* attackSprite = assetManager->loadSpriteSheet(base + "MELEE ATTACK.png", 128, 78, 6, 6);
-        SpriteSheet* hurtSprite = assetManager->loadSpriteSheet(base + "HURT.png", 128, 78, 4, 4);
-        deathSpriteSheet = assetManager->loadSpriteSheet(base + "DEATH.png", 128, 78, 6, 6);
+        // Load single direction sprites and use for both directions (use auto-detection for frame sizes)
+        SpriteSheet* idleSprite = assetManager->loadSpriteSheetAuto(base + "IDLE.png", 6, 6);
+        SpriteSheet* walkSprite = assetManager->loadSpriteSheetAuto(base + "WALK.png", 4, 4);
+        SpriteSheet* attackSprite = assetManager->loadSpriteSheetAuto(base + "MELEE ATTACK.png", 6, 6);
+        SpriteSheet* hurtSprite = assetManager->loadSpriteSheetAuto(base + "HURT.png", 4, 4);
+        deathSpriteSheet = assetManager->loadSpriteSheetAuto(base + "DEATH.png", 6, 6);
         
         // Assign same sprite to both directions
         idleLeftSpriteSheet = idleRightSpriteSheet = idleSprite;
@@ -764,12 +764,12 @@ void Enemy::loadSprites(AssetManager* assetManager) {
             usesSpriteFlipping = true;  // Enable sprite flipping for Goblin
             baseSpriteFacesLeft = false;  // Goblin sprites face right (renamed from RIGHT)
             
-            // Load single direction sprites
-            SpriteSheet* idleSprite = assetManager->loadSpriteSheet(base + "IDLE.png", 115, 78, 3, 3);
-            SpriteSheet* runSprite = assetManager->loadSpriteSheet(base + "RUN.png", 115, 78, 6, 6);
-            SpriteSheet* attackSprite = assetManager->loadSpriteSheet(base + "ATTACK1.png", 115, 78, 6, 6);
-            SpriteSheet* hurtSprite = assetManager->loadSpriteSheet(base + "HURT.png", 115, 78, 3, 3);
-            deathSpriteSheet = assetManager->loadSpriteSheet(base + "DEATH.png", 115, 78, 10, 10);
+            // Load single direction sprites (use auto-detection for frame sizes)
+            SpriteSheet* idleSprite = assetManager->loadSpriteSheetAuto(base + "IDLE.png", 3, 3);
+            SpriteSheet* runSprite = assetManager->loadSpriteSheetAuto(base + "RUN.png", 6, 6);
+            SpriteSheet* attackSprite = assetManager->loadSpriteSheetAuto(base + "ATTACK1.png", 6, 6);
+            SpriteSheet* hurtSprite = assetManager->loadSpriteSheetAuto(base + "HURT.png", 3, 3);
+            deathSpriteSheet = assetManager->loadSpriteSheetAuto(base + "DEATH.png", 10, 10);
             
             // Assign same sprite to both directions
             idleLeftSpriteSheet = idleRightSpriteSheet = idleSprite;

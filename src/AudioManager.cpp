@@ -1,7 +1,7 @@
 #include "AudioManager.h"
 #include <iostream>
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_audio.h>
+#include <SDL.h>
+#include <SDL_audio.h>
 #ifdef USE_SDL_MIXER
 #include <SDL_mixer.h>
 #endif

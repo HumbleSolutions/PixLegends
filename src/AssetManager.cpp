@@ -4,7 +4,7 @@
 
 // Static member initialization
 const std::string AssetManager::ASSETS_PATH = "assets/";
-const std::string AssetManager::WIZARD_PATH = ASSETS_PATH + "Wizard 2D Pixel Art v2.0/Sprites/without_outline/";
+const std::string AssetManager::WIZARD_PATH = ASSETS_PATH + "Wizard/Sprites/";
 // New main character root (top folder contains subfolders per action and direction)
 const std::string AssetManager::MAIN_CHAR_PATH = ASSETS_PATH + "Main Character/";
 const std::string AssetManager::TILESET_PATH = ASSETS_PATH + "Textures/Tiles/";
@@ -342,32 +342,24 @@ void AssetManager::preloadAssets() {
     // OPTIMIZATION: Load assets in batches to improve performance
     // Load wizard sprites for enemy AI
     std::cout << "Loading wizard sprites (enemy)..." << std::endl;
-    loadSpriteSheet(WIZARD_PATH + "IDLE_LEFT.png", 128, 78, 6, 6);
-    loadSpriteSheet(WIZARD_PATH + "IDLE_RIGHT.png", 128, 78, 6, 6);
-    loadSpriteSheet(WIZARD_PATH + "WALK_LEFT.png", 128, 78, 4, 4);
-    loadSpriteSheet(WIZARD_PATH + "WALK_RIGHT.png", 128, 78, 4, 4);
-    loadSpriteSheet(WIZARD_PATH + "MELEE ATTACK_LEFT.png", 128, 78, 6, 6);
-    loadSpriteSheet(WIZARD_PATH + "MELEE ATTACK_RIGHT.png", 128, 78, 6, 6);
-    loadSpriteSheet(WIZARD_PATH + "RANGED ATTACK_LEFT.png", 128, 78, 10, 10);
-    loadSpriteSheet(WIZARD_PATH + "RANGED ATTACK_RIGHT.png", 128, 78, 10, 10);
-    loadSpriteSheet(WIZARD_PATH + "Projectile.png", 32, 32, 5, 5);
-    loadSpriteSheet(WIZARD_PATH + "HURT_LEFT.png", 128, 78, 4, 4);
-    loadSpriteSheet(WIZARD_PATH + "HURT_RIGHT.png", 128, 78, 4, 4);
-    loadSpriteSheet(WIZARD_PATH + "DEATH.png", 128, 78, 6, 6);
+    loadSpriteSheetAuto(WIZARD_PATH + "IDLE.png", 6, 6);
+    loadSpriteSheetAuto(WIZARD_PATH + "WALK.png", 4, 4);
+    loadSpriteSheetAuto(WIZARD_PATH + "MELEE ATTACK.png", 6, 6);
+    loadSpriteSheetAuto(WIZARD_PATH + "RANGED ATTACK.png", 10, 10);
+    loadSpriteSheetAuto(WIZARD_PATH + "Projectile.png", 5, 5);
+    loadSpriteSheetAuto(WIZARD_PATH + "HURT.png", 4, 4);
+    loadSpriteSheetAuto(WIZARD_PATH + "DEATH.png", 6, 6);
 
     // Load goblin minion sprites (optional preload; they will auto-load on demand too)
     std::cout << "Loading goblin sprites (minion)..." << std::endl;
-    const std::string GOBLIN_BASE = "assets/Goblin 2D Pixel Art v1.1/Sprites/without_outline/";
-    // Each sheet has fixed layout per your assets: attack 6, hurt 3, idle 3, death 10, run 6
-    loadSpriteSheet(GOBLIN_BASE + "LEFT_IDLE.png",   115, 78, 3, 3);
-    loadSpriteSheet(GOBLIN_BASE + "RIGHT_IDLE.png",  115, 78, 3, 3);
-    loadSpriteSheet(GOBLIN_BASE + "LEFT_RUN.png",    115, 78, 6, 6);
-    loadSpriteSheet(GOBLIN_BASE + "RIGHT_RUN.png",   115, 78, 6, 6);
-    loadSpriteSheet(GOBLIN_BASE + "LEFT_ATTACK1.png",115, 78, 6, 6);
-    loadSpriteSheet(GOBLIN_BASE + "RIGHT_ATTACK1.png",115, 78, 6, 6);
-    loadSpriteSheet(GOBLIN_BASE + "LEFT_HURT.png",   115, 78, 3, 3);
-    loadSpriteSheet(GOBLIN_BASE + "RIGHT_HURT.png",  115, 78, 3, 3);
-    loadSpriteSheet(GOBLIN_BASE + "LEFT_DEATH.png",  115, 78, 10, 10);
+    const std::string GOBLIN_BASE = "assets/Goblin/Sprites/";
+    // Available files: ATTACK1.png, ATTACK2.png, DEATH.png, HURT.png, IDLE.png, RUN.png
+    loadSpriteSheetAuto(GOBLIN_BASE + "IDLE.png", 3, 3);
+    loadSpriteSheetAuto(GOBLIN_BASE + "RUN.png", 6, 6);
+    loadSpriteSheetAuto(GOBLIN_BASE + "ATTACK1.png", 6, 6);
+    loadSpriteSheetAuto(GOBLIN_BASE + "ATTACK2.png", 6, 6);
+    loadSpriteSheetAuto(GOBLIN_BASE + "HURT.png", 3, 3);
+    loadSpriteSheetAuto(GOBLIN_BASE + "DEATH.png", 10, 10);
 
     // Load new main character directional sheets
     // Files exist under assets/Main Character/{IDLE,RUN,TAKE_DMG,DEATH,ATTACK 1,ATTACK 2}/
@@ -398,20 +390,21 @@ void AssetManager::preloadAssets() {
             loadSpriteSheetAuto(b, 6, 6);
         }
     };
-    tryLoadHurt(MAIN_CHAR_PATH + "TAKE_DMG/Damage_Left.png",  MAIN_CHAR_PATH + "TAKE_DMG/hurt_left.png");
-    tryLoadHurt(MAIN_CHAR_PATH + "TAKE_DMG/Damage_Right.png", MAIN_CHAR_PATH + "TAKE_DMG/hurt_right.png");
-    tryLoadHurt(MAIN_CHAR_PATH + "TAKE_DMG/Damage_Up.png",    MAIN_CHAR_PATH + "TAKE_DMG/hurt_up.png");
-    tryLoadHurt(MAIN_CHAR_PATH + "TAKE_DMG/Damage_Down.png",  MAIN_CHAR_PATH + "TAKE_DMG/hurt_down.png");
+    // Load hurt sprites directly (Damage_*.png files don't exist)
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "TAKE_DMG/hurt_left.png", 6, 6);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "TAKE_DMG/hurt_right.png", 6, 6);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "TAKE_DMG/hurt_up.png", 6, 6);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "TAKE_DMG/hurt_down.png", 6, 6);
     // DEATH (12 frames each, 128x128)
     loadSpriteSheetAuto(MAIN_CHAR_PATH + "DEATH/Death_Left.png", 12, 12);
     loadSpriteSheetAuto(MAIN_CHAR_PATH + "DEATH/Death_Right.png", 12, 12);
     loadSpriteSheetAuto(MAIN_CHAR_PATH + "DEATH/Death_Up.png", 12, 12);
     loadSpriteSheetAuto(MAIN_CHAR_PATH + "DEATH/Death_Down.png", 12, 12);
     // ATTACKS: Sword (melee) and Bow (ranged)
-    loadSpriteSheetAuto(MAIN_CHAR_PATH + "ATTACK 1/Sword_Attack_1_Left.png", 8, 8);
-    loadSpriteSheetAuto(MAIN_CHAR_PATH + "ATTACK 1/Sword_Attack_1_Right.png", 8, 8);
-    loadSpriteSheetAuto(MAIN_CHAR_PATH + "ATTACK 1/Sword_Attack_1_Up.png", 8, 8);
-    loadSpriteSheetAuto(MAIN_CHAR_PATH + "ATTACK 1/Sword_Attack_1_Down.png", 8, 8);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "SWORD ATTACK 1/Sword_Attack_1_Left.png", 8, 8);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "SWORD ATTACK 1/Sword_Attack_1_Right.png", 8, 8);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "SWORD ATTACK 1/Sword_Attack_1_Up.png", 8, 8);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "SWORD ATTACK 1/Sword_Attack_1_Down.png", 8, 8);
     // (Sword_Attack_2 reserved for future ability)
     // Bow attack 1 (6 frames)
     loadSpriteSheetAuto(MAIN_CHAR_PATH + "BOW ATTACK 1/Bow_Attack_1_Left.png", 6, 6);
@@ -419,15 +412,15 @@ void AssetManager::preloadAssets() {
     loadSpriteSheetAuto(MAIN_CHAR_PATH + "BOW ATTACK 1/Bow_Attack_1_Up.png", 6, 6);
     loadSpriteSheetAuto(MAIN_CHAR_PATH + "BOW ATTACK 1/Bow_Attack_1_Down.png", 6, 6);
     // End-of-attack wind-down (sword 4 frames)
-    loadSpriteSheetAuto(MAIN_CHAR_PATH + "End Sword Animation/Sword_Attack_End_Left.png", 4, 4);
-    // Bow end attack (2 frames) - optional
-    loadSpriteSheetAuto(MAIN_CHAR_PATH + "BOW ATTACK 1/Bow_Attack_End_Left.png", 2, 2);
-    loadSpriteSheetAuto(MAIN_CHAR_PATH + "BOW ATTACK 1/Bow_Attack_End_Right.png", 2, 2);
-    loadSpriteSheetAuto(MAIN_CHAR_PATH + "BOW ATTACK 1/Bow_Attack_End_Up.png", 2, 2);
-    loadSpriteSheetAuto(MAIN_CHAR_PATH + "BOW ATTACK 1/Bow_Attack_End_Down.png", 2, 2);
-    loadSpriteSheetAuto(MAIN_CHAR_PATH + "End Sword Animation/Sword_Attack_End_Right.png", 4, 4);
-    loadSpriteSheetAuto(MAIN_CHAR_PATH + "End Sword Animation/Sword_Attack_End_Up.png", 4, 4);
-    loadSpriteSheetAuto(MAIN_CHAR_PATH + "End Sword Animation/Sword_Attack_End_Down.png", 4, 4);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "END ANIMATION/Sword_Attack_End_Left.png", 4, 4);
+    // Bow end attack (2 frames) - optional - DISABLED: Files not found
+    // loadSpriteSheetAuto(MAIN_CHAR_PATH + "BOW ATTACK 1/Bow_Attack_End_Left.png", 2, 2);
+    // loadSpriteSheetAuto(MAIN_CHAR_PATH + "BOW ATTACK 1/Bow_Attack_End_Right.png", 2, 2);
+    // loadSpriteSheetAuto(MAIN_CHAR_PATH + "BOW ATTACK 1/Bow_Attack_End_Up.png", 2, 2);
+    // loadSpriteSheetAuto(MAIN_CHAR_PATH + "BOW ATTACK 1/Bow_Attack_End_Down.png", 2, 2);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "END ANIMATION/Sword_Attack_End_Right.png", 4, 4);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "END ANIMATION/Sword_Attack_End_Up.png", 4, 4);
+    loadSpriteSheetAuto(MAIN_CHAR_PATH + "END ANIMATION/Sword_Attack_End_Down.png", 4, 4);
     // DASH (8 frames)
     loadSpriteSheetAuto(MAIN_CHAR_PATH + "DASH/Dash_Left.png", 8, 8);
     // Bow arrow sprite (single frame)
@@ -503,33 +496,61 @@ void AssetManager::preloadAssets() {
     loadFont("assets/Fonts/retganon.ttf", 12);
     loadFont("assets/Fonts/retganon.ttf", 24);
 
-  // UI textures (HP/MP/EXP bars)
-  loadTexture(UI_PATH + "hp_bar.png");
-  loadTexture(UI_PATH + "mana_bar.png");
-  loadTexture(UI_PATH + "exp_bar.png");
+  // UI textures (HP/MP/EXP bars) - DISABLED: Files not found, loaded on demand instead
+  // loadTexture(UI_PATH + "hp_bar.png");
+  // loadTexture(UI_PATH + "mana_bar.png");
+  // loadTexture(UI_PATH + "exp_bar.png");
   // Optional: full composite UI sheet if we want to use it later
-  loadTexture(UI_PATH + "hp_mana_bar_ui.png");
+  // loadTexture(UI_PATH + "hp_mana_bar_ui.png");
   // Upgrade inventory panel
-  loadTexture(UI_PATH + "Item_inv.png");
+  // loadTexture(UI_PATH + "Item_inv.png");
   // Upgrade UI slots and indicators
-  loadTexture(UI_PATH + "ring_upgrade_slot.png");
-  loadTexture(UI_PATH + "helm_upgrade_slot.png");
-  loadTexture(UI_PATH + "necklace_upgrade_slot.png");
-  loadTexture(UI_PATH + "sword_upgrade_slot.png");
-  loadTexture(UI_PATH + "chest_upgrade_slot.png");
-  loadTexture(UI_PATH + "sheild_upgrade_slot.png"); // filename spelled as provided
-  loadTexture(UI_PATH + "gloves_upgrade_slot.png");
-  loadTexture(UI_PATH + "belt_upgrade_slot.png");
-  loadTexture(UI_PATH + "boots_upgrade_slot.png");
-  loadTexture(UI_PATH + "scrol slot.png");
-  loadTexture(UI_PATH + "upgrade_indicator.png");
-  loadTexture(UI_PATH + "upgrade_succeed.png");
-  loadTexture(UI_PATH + "upgrade_failed.png");
-  loadTexture(UI_PATH + "item_upgrade_slot.png");
-  loadTexture(UI_PATH + "scroll_slot.png");
-  loadTexture(UI_PATH + "upgrade_button.png");
+  // loadTexture(UI_PATH + "ring_upgrade_slot.png");
+  // loadTexture(UI_PATH + "helm_upgrade_slot.png");
+  // loadTexture(UI_PATH + "necklace_upgrade_slot.png");
+  // loadTexture(UI_PATH + "sword_upgrade_slot.png");
+  // loadTexture(UI_PATH + "chest_upgrade_slot.png");
+  // loadTexture(UI_PATH + "sheild_upgrade_slot.png"); // filename spelled as provided
+  // loadTexture(UI_PATH + "gloves_upgrade_slot.png");
+  // loadTexture(UI_PATH + "belt_upgrade_slot.png");
+  // loadTexture(UI_PATH + "boots_upgrade_slot.png");
+  // loadTexture(UI_PATH + "scrol slot.png");
+  // loadTexture(UI_PATH + "upgrade_indicator.png");
+  // loadTexture(UI_PATH + "upgrade_succeed.png");
+  // loadTexture(UI_PATH + "upgrade_failed.png");
+  // loadTexture(UI_PATH + "item_upgrade_slot.png");
+  // loadTexture(UI_PATH + "scroll_slot.png");
+  // loadTexture(UI_PATH + "upgrade_button.png");
   // Inventory panel (bag)
-  loadTexture(UI_PATH + "Inventory.png");
+  // loadTexture(UI_PATH + "Inventory.png");
+  
+  // Skill icons - DISABLED: Files not found, loaded on demand instead
+  // loadTexture(UI_PATH + "dash_ui.png");
+  // loadTexture(UI_PATH + "fire_sheild_ui.png");
+  // loadTexture(UI_PATH + "firebolt_ui.png");
+  // loadTexture(UI_PATH + "flame_wave_ui.png");
+  // loadTexture(UI_PATH + "meteor_strike_ui.png");
+  // loadTexture(UI_PATH + "dragons_breath_ui.png");
+  
+  // Fire passive ability icons - DISABLED: Files not found
+  // loadTexture(UI_PATH + "fire_mastery.png");
+  // loadTexture(UI_PATH + "burning_aura.png");
+  // loadTexture(UI_PATH + "inferno_lord.png");
+  
+  // Fire spell animations
+  const std::string SPELLS_PATH = "assets/Textures/Spells/";
+  loadSpriteSheetAuto(SPELLS_PATH + "firebolt.png", 4, 4);
+  loadSpriteSheetAuto(SPELLS_PATH + "flame_wave_new.png", 27, 27);
+  loadSpriteSheetAuto(SPELLS_PATH + "meteor shower-red.png", 24, 8); // 3 rows x 8 columns
+  loadSpriteSheetAuto(SPELLS_PATH + "dragon_breath.png", 20, 20);
+  loadSpriteSheetAuto(SPELLS_PATH + "fire_sheild.png", 8, 8); // 8-frame 48x48 shield animation
+  loadSpriteSheetAuto(SPELLS_PATH + "explosion.png", 16, 16);
+  loadSpriteSheetAuto(SPELLS_PATH + "explosion_02.png", 12, 12);
+  loadSpriteSheetAuto(SPELLS_PATH + "explosion_03.png", 18, 9); // 2 rows x 9 columns
+  loadSpriteSheetAuto(SPELLS_PATH + "fire_ground_impact.png", 6, 6);
+  loadSpriteSheetAuto(SPELLS_PATH + "burning_ground.png", 5, 5);
+  loadSpriteSheetAuto(SPELLS_PATH + "fire_partical.png", 16, 16);
+  loadSpriteSheetAuto(SPELLS_PATH + "smoke cloud.png", 10, 10);
 
   // Item scrolls (for upgrades and enchants)
   loadTexture("assets/Textures/Items/upgrade_scroll.png");

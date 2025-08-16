@@ -10,9 +10,10 @@
 #include "UISystem.h"
 #include "AudioManager.h"
 #include "Object.h"
-#include "Database.h"
+#include "DatabaseSQLite.h"
 #include "LootGenerator.h"
 #include "ItemSystem.h"
+#include "SpellSystem.h"
 #include <iostream>
 #include <random>
 
@@ -79,6 +80,38 @@ void Game::exitUnderworld() {
     initializeObjects();
 }
 
+float Game::getCameraX() const {
+    if (renderer) {
+        int camX, camY;
+        renderer->getCamera(camX, camY);
+        return static_cast<float>(camX);
+    }
+    return 0.0f;
+}
+
+float Game::getCameraY() const {
+    if (renderer) {
+        int camX, camY;
+        renderer->getCamera(camX, camY);
+        return static_cast<float>(camY);
+    }
+    return 0.0f;
+}
+
+float Game::getWorldWidth() const {
+    if (world) {
+        return static_cast<float>(world->getWidth() * world->getTileSize());
+    }
+    return 0.0f;
+}
+
+float Game::getWorldHeight() const {
+    if (world) {
+        return static_cast<float>(world->getHeight() * world->getTileSize());
+    }
+    return 0.0f;
+}
+
 Game::~Game() {
     saveCurrentUserState();
     cleanup();
@@ -112,21 +145,39 @@ void Game::initializeSystems() {
     }
 
     // Initialize systems
-    database = std::make_unique<Database>();
+    database = std::make_unique<DatabaseSQLite>();
     // Use executable directory as base so saves are consistent regardless of working directory
     std::string dataRootPath = "data";
     if (const char* basePath = SDL_GetBasePath()) {
         dataRootPath = std::string(basePath) + "data";
         SDL_free((void*)basePath);
     }
-    database->initialize(dataRootPath);
+    database->initialize(dataRootPath + "/pixlegends.db");
     // Preload remembered login if any
     {
         auto remember = database->loadRememberState();
+        std::cout << "Checking remember state... remember=" << (remember.remember ? "true" : "false") << ", username=" << remember.username << std::endl;
         if (remember.remember) {
             loginRemember = true;
             loginUsername = remember.username;
             loginPassword = remember.password;
+            
+            // Automatically attempt login with remembered credentials
+            std::string error;
+            auto user = database->authenticate(loginUsername, loginPassword, &error);
+            if (user) {
+                loggedInUserId = user->userId;
+                loginIsAdmin = (user->role == UserRole::ADMIN);
+                loginScreenActive = false;
+                std::cout << "Auto-logged in user: " << loginUsername << " (ID: " << user->userId << ")" << std::endl;
+            } else {
+                std::cout << "Auto-login failed for remembered user: " << loginUsername << " - " << error << std::endl;
+                // Clear invalid remember state
+                database->clearRememberState();
+                loginRemember = false;
+                loginUsername.clear();
+                loginPassword.clear();
+            }
         }
     }
     renderer = std::make_unique<Renderer>(sdlRenderer);
@@ -172,8 +223,29 @@ void Game::initializeSystems() {
     
     // Create player after other systems are initialized
     player = std::make_unique<Player>(this);
-    // Start at login screen; defer save load until authenticated
-    loadOrCreateDefaultUserAndSave();
+    
+    // Load player save data if auto-logged in from remembered credentials
+    if (!loginScreenActive && loggedInUserId > 0) {
+        auto save = database->loadPlayerState(loggedInUserId);
+        if (save) {
+            player->applySaveState(*save);
+            std::cout << "Loaded save data for auto-logged user (level " << save->level << ")" << std::endl;
+        }
+        // Load audio settings
+        if (audioManager) {
+            int m=100, mu=100, s=100, mon=100, pl=100;
+            if (database->loadAudioSettings(loggedInUserId, m, mu, s, mon, pl)) {
+                audioManager->setMasterVolume(m);
+                audioManager->setMusicVolume(mu);
+                audioManager->setSoundVolume(s);
+                audioManager->setMonsterVolume(mon);
+                audioManager->setPlayerVolume(pl);
+            }
+        }
+    } else {
+        // Start at login screen; defer save load until authenticated
+        loadOrCreateDefaultUserAndSave();
+    }
     // Safe spawn: find nearest non-hazard tile around preferred spot
     if (world && player) {
         int ts = world->getTileSize();
@@ -1036,6 +1108,16 @@ void Game::render() {
     if (player) {
         player->render(renderer.get());
         player->renderProjectiles(renderer.get());
+        
+        // Render spell effects
+        if (player->getSpellSystem()) {
+            player->getSpellSystem()->render(renderer.get());
+            
+            // Render channeling indicators (range and target)
+            int mouseX, mouseY;
+            SDL_GetMouseState(&mouseX, &mouseY);
+            player->getSpellSystem()->renderIndicators(renderer.get(), mouseX, mouseY);
+        }
     }
     
     // Render UI
@@ -1089,8 +1171,22 @@ void Game::render() {
         }
         // Draw HUD frame and stats above the minimap
         uiSystem->renderPlayerStats(player.get());
-        // Dash cooldown at bottom middle
-        uiSystem->renderDashCooldown(player.get());
+        
+        // Render skill bar
+        uiSystem->renderSkillBar(player.get());
+        
+        // Render channeling bar above skill bar
+        if (player->getSpellSystem()) {
+            player->getSpellSystem()->renderChannelBar(renderer.get());
+        }
+        
+        // Render spell book if open
+        if (uiSystem->isSpellBookOpen()) {
+            int mouseX = inputManager->getMouseX();
+            int mouseY = inputManager->getMouseY();
+            bool mouseClicked = inputManager->isMouseButtonPressed(SDL_BUTTON_LEFT);
+            uiSystem->renderSpellBook(player.get(), mouseX, mouseY, mouseClicked);
+        }
         uiSystem->renderDebugInfo(player.get());
         // Render FPS counter
         uiSystem->renderFPSCounter(currentFPS, averageFPS, frameTime);
@@ -1828,7 +1924,7 @@ void Game::handleEvents() {
                                 loginIsAdmin = (u->role == UserRole::ADMIN);
                                 loginScreenActive = false;
                                 loginError.clear();
-                                if (loginRemember) database->saveRememberState(Database::RememberState{loginUsername, loginPassword, true}); else database->clearRememberState();
+                                if (loginRemember) database->saveRememberState(DatabaseSQLite::RememberState{loginUsername, loginPassword, true}); else database->clearRememberState();
                                 auto save = database->loadPlayerState(loggedInUserId);
                                 if (save) player->applySaveState(*save);
                                 // Load persisted audio settings and theme on login
@@ -1863,6 +1959,10 @@ void Game::handleEvents() {
                 } else if (!optionsOpen && event.key.keysym.sym == SDLK_F5) {
                     setInfinitePotions(!getInfinitePotions());
                     std::cout << "Infinite potions: " << (getInfinitePotions() ? "ON" : "OFF") << std::endl;
+                } else if (!optionsOpen && event.key.keysym.sym == SDLK_F6) {
+                    // Manual save
+                    std::cout << "Manual save triggered (F6) - User ID: " << loggedInUserId << std::endl;
+                    saveCurrentUserState();
                 } else if (!optionsOpen && event.key.keysym.sym == SDLK_F7) {
                     // Debug: Enter underworld
                     if (!inUnderworld) {
@@ -1878,6 +1978,9 @@ void Game::handleEvents() {
                 } else if (!optionsOpen && event.key.keysym.sym == SDLK_i) {
                     // Toggle inventory UI
                     inventoryOpen = !inventoryOpen;
+                } else if (!optionsOpen && event.key.keysym.sym == SDLK_b) {
+                    // Toggle spell book
+                    uiSystem->toggleSpellBook();
                 } else if (!optionsOpen && event.key.keysym.sym == SDLK_u) {
                     // Toggle equipment UI
                     equipmentOpen = !equipmentOpen;
@@ -1943,7 +2046,7 @@ void Game::handleEvents() {
                                 loginIsAdmin = (u->role == UserRole::ADMIN);
                                 loginScreenActive = false;
                                 loginError.clear();
-                                if (loginRemember) database->saveRememberState(Database::RememberState{loginUsername, loginPassword, true}); else database->clearRememberState();
+                                if (loginRemember) database->saveRememberState(DatabaseSQLite::RememberState{loginUsername, loginPassword, true}); else database->clearRememberState();
                                 // Load save
                                 auto save = database->loadPlayerState(loggedInUserId);
                                 if (save) player->applySaveState(*save);
@@ -1960,7 +2063,7 @@ void Game::handleEvents() {
                                 loginIsAdmin = false;
                                 loginScreenActive = false;
                                 loginError.clear();
-                                if (loginRemember) database->saveRememberState(Database::RememberState{loginUsername, loginPassword, true}); else database->clearRememberState();
+                                if (loginRemember) database->saveRememberState(DatabaseSQLite::RememberState{loginUsername, loginPassword, true}); else database->clearRememberState();
                                 // Create initial save
                                 database->savePlayerState(loggedInUserId, player->makeSaveState());
                                 // Initialize audio file defaults on first register
@@ -2149,7 +2252,7 @@ void Game::renderOptionsMenuOverlay() {
         // Persist remember state on logout based on checkbox
         if (database) {
             if (loginRemember) {
-                database->saveRememberState(Database::RememberState{ loginUsername, loginPassword, true });
+                database->saveRememberState(DatabaseSQLite::RememberState{ loginUsername, loginPassword, true });
             } else {
                 database->clearRememberState();
                 loginUsername.clear();
@@ -2319,7 +2422,17 @@ void Game::cleanup() {
 
 void Game::saveCurrentUserState() {
     if (database && loggedInUserId > 0 && player) {
-        database->savePlayerState(loggedInUserId, player->makeSaveState());
+        try {
+            std::string error;
+            bool success = database->savePlayerState(loggedInUserId, player->makeSaveState(), &error);
+            if (!success) {
+                std::cout << "Error saving player state: " << error << std::endl;
+            }
+        } catch (const std::exception& e) {
+            std::cout << "Exception during save: " << e.what() << std::endl;
+        } catch (...) {
+            std::cout << "Unknown exception during save" << std::endl;
+        }
     }
 }
 
